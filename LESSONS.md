@@ -22,10 +22,11 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 013 | [MyST cannot resolve {ref}`fn-name` to footnote anchors](lessons/013-footnote-refs-unresolvable.md) | myst | 🟢 | codified |
 | 014 | [algorithm2e bodies need a custom parser — pandoc destroys their structure](lessons/014-algorithm2e-resolution.md) | post-processing | 🔴 | codified |
 | 015 | [Minted source listings need preprocessor + source-file inlining](lessons/015-minted-listings-resolution.md) | post-processing | 🟡 | codified |
+| 016 | [§ Section: qe-v5 section labels double the prefix in §\\ref{...} prose](lessons/016-section-symbol-doubled-prefix.md) | post-processing | 🟡 | codified |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016
 - **regex-safety:** 002
 - **katex:** 003, 006
 - **myst:** 013
@@ -33,5 +34,5 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 
 ## Open (gaps to close on the next book)
 
-_None — both gaps from the dp1 parity test are now codified. New lessons
-will appear here as they're captured._
+_None — all currently catalogued lessons are codified. New lessons will
+appear here as they're captured._

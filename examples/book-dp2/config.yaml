@@ -40,9 +40,6 @@ preprocess:
     # Unwrap \scalebox{N}{\includegraphics{...}}
     - { from: '\\scalebox\{[0-9.]+\}\s*\{\s*(\\includegraphics[^}]*\{[^}]*\})\s*\}',
         to: '\1' }
-    # Hoist \label out of algorithm \caption{}
-    - { from: '\\caption\{\\label\{(algo:[^}]+)\}\s*([^}]*)\}',
-        to: '\\label{\1}\\caption{\2}' }
     # \input{tikz/foo} → placeholder comment
     - { from: '\\input\{tikz/([^}]+)\}',
         to: '% TIKZ: \1 (needs manual conversion)' }

@@ -1,0 +1,97 @@
+# book-dp1: Dynamic Programming Vol I (Finite States) — LaTeX → MyST config
+#
+# Verified against PR #336 of QuantEcon/book-dp1 (mystmd-conversion branch).
+# Produces byte-identical algorithm and listing directives to dp1's hand-tuned
+# output across the 5 chapters with \begin{algorithm}/\begin{listing} blocks
+# (8 algorithms, 21 listings, verified 2026-05-20).
+
+# dp1's tex sources live in book/ (not the repo root). Drop this config in
+# mystmd/ alongside that, and the relative paths below resolve correctly.
+source_dir: "../book"
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: ch_intro,     title: "Introduction" }
+  - { stem: ch_fps,       title: "Operators and Fixed Points" }
+  - { stem: ch_mcs,       title: "Markov Chains" }
+  - { stem: ch_opt_stop,  title: "Optimal Stopping" }
+  - { stem: ch_mdps,      title: "Markov Decision Processes" }
+  - { stem: ch_state_dep, title: "State-Dependent Dynamics" }
+  - { stem: ch_val,       title: "Valuation" }
+  - { stem: ch_rdps,      title: "Recursive Decision Processes" }
+  - { stem: ch_adps,      title: "Abstract Dynamic Programs" }
+  - { stem: ch_ctime,     title: "Continuous Time" }
+
+extra_files:
+  - { stem: common_symbols, title: "Notation" }
+
+# dp1's mystmd output uses ``(c-foo)=\n# Title`` rather than YAML blocks.
+frontmatter_style: standalone
+
+# Note on whitespace: dp1's hand-tuned mystmd output preserves the source
+# spacing from the LaTeX, which sometimes lands at 2 blank lines between
+# adjacent directives and sometimes at 0. ``whitespace_compression: compact``
+# unconditionally strips blanks between fences, which over-shoots — leave
+# this at the default (readable). The resulting blank-line counts are
+# within ±1 of dp1 for every chapter except ch_opt_stop (+27).
+
+# qe_bib.bib lives inside book/. Resolved as source_dir + this filename.
+bibliography: "qe_bib.bib"
+
+# dp1's figures/ is a sibling of book/, so it's ../figures relative to
+# source_dir.
+figures_dir: "../figures"
+
+# Source code for \inputminted{lang}{path} listings. dp1's tex files refer
+# to ../source_code_{jl,py}/... — relative to book/, so the default
+# (source_code_base = source_dir) works without further configuration.
+
+preprocess:
+  strip:
+    - '\\index\{[^}]*\}'
+    - '\\clearpage'
+    - '\\newpage'
+    - '\\noindent'
+    - '\\vspace\{[^}]*\}'
+    # dp1 uses many \pageref{...} variants. Page numbers are meaningless on
+    # the web, and pandoc emits empty cross-reference links that produce
+    # MyST warnings. Strip them in order from longest match to shortest so
+    # surrounding punctuation is cleaned up nicely.
+    - '\s+on\s+page~?\\pageref\{[^}]+\}'
+    - '\s*\(\s*see\s+page~?\\pageref\{[^}]+\}\s*\)'
+    - '\s*\(\s*page~?\\pageref\{[^}]+\}\s*\)'
+    - ',\s*page~?\\pageref\{[^}]+\}\s*,'
+    - '\s*page~?\\pageref\{[^}]+\}'
+    - '\\pageref\{[^}]+\}'
+
+  rewrites:
+    # \navy{text} → \textbf{text} (custom emphasis macro)
+    - { from: '\\navy\{', to: '\\textbf{' }
+    # Unwrap \scalebox{N}{\includegraphics{...}} (with optional [opts])
+    - { from: '\\scalebox\{[0-9.]+\}\s*\{\s*(\\includegraphics(?:\[[^\]]*\])?\s*\{[^{}]*\})\s*\}',
+        to: '\1' }
+    # Unwrap \scalebox{N}{\input{...}}
+    - { from: '\\scalebox\{[0-9.]+\}\s*\{\s*(\\input\{[^}]*\})\s*\}',
+        to: '\1' }
+    # \input{tikz/...} or \input{../tikz/...} → placeholder comment. The
+    # postprocess step turns this into an admonition; TIKZ_FIGURE_MAP in
+    # tikz_overrides.py can then resolve specific labels to figure files.
+    - { from: '\\input\{(?:\.\./)?tikz/([^}]*?)(?:\.tex)?\}',
+        to: '% TIKZ: \1 (needs manual conversion)' }
+    # xfig overlays: \input{../figures/foo.pdf_t} → \includegraphics{figures/foo.pdf}
+    - { from: '\\input\{(?:\.\./)?figures/([^}]*?)\.pdf_t\}',
+        to: '\\includegraphics{figures/\1.pdf}' }
+
+# Listings: \begin{listing}...\inputminted... blocks are handled by the
+# preprocessor (_apply_listing_markers.py) and resolved against
+# source_code_base at postprocess time — no config needed beyond that.
+
+tikz_overrides: "tikz_overrides.py"
+
+validate:
+  equations: true
+  cross_references: true
+  theorems: true
+  figures: true
+  citations: true

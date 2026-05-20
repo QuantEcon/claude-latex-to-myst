@@ -80,6 +80,11 @@ setup_dp1() {
   for d in "$BOOK_DP1_SRC"/source_code_*; do
     [[ -d "$d" ]] && cp -R "$d" "$dst/$(basename "$d")"
   done
+  # Figures (sibling of book/). Tex sources reference these as
+  # ../figures/foo.{pdf,png}.
+  if [[ -d "$BOOK_DP1_SRC/figures" ]]; then
+    cp -R "$BOOK_DP1_SRC/figures" "$dst/figures"
+  fi
   echo "fixtures/book-dp1 ready ($(find "$dst/book" -name '*.tex' | wc -l | tr -d ' ') .tex files)"
 }
 

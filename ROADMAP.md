@@ -5,6 +5,28 @@ expected impact, and pointers to the relevant lesson(s) or report(s).
 
 ## Recently closed
 
+- **`examples/book-dp1/` config promoted** (closed 2026-05-20). Verified
+  config + `tikz_overrides.py` stub + README that reproduces dp1's
+  algorithm and listing directives byte-for-byte. Sets
+  `frontmatter_style: standalone` to match dp1's convention. New books
+  cloning the dp1 workflow now have a template instead of re-deriving.
+
+- **#016 — `§ Section` doubled prefix** (closed 2026-05-20). Added
+  `strip_doubled_section_symbol` in `postprocess.py`, parallel to lesson
+  011's noun-strip. Drops 471 `§{ref}` occurrences in dp2's regen output
+  to 0; preserves the 13 legitimate external-section references like
+  "§10.2 of {cite}`sargent2025dynamic`".
+
+- **frontmatter_style flag** (closed 2026-05-20). Two valid MyST forms
+  for chapter heading + label: `absorbed` (YAML block, default) and
+  `standalone` (`(label)=` + `# Title`, dp1 style). Verified both work
+  byte-for-byte against their reference outputs; idempotent on re-runs.
+
+- **whitespace_compression flag** (closed 2026-05-20). Optional
+  `compact` mode collapses blank lines between adjacent ` ``` ` fences
+  for denser source; `readable` (default) preserves them. Honest scope:
+  approximation of dp1's hand-tuned spacing, not byte-identical.
+
 - **#015 — minted listings** (closed 2026-05-20). Ported as
   `scripts/_apply_listing_markers.py` + `postprocess.py::resolve_listings`.
   Adds `source_code_base` config option (defaults to `source_dir`). All
@@ -23,84 +45,64 @@ expected impact, and pointers to the relevant lesson(s) or report(s).
 
 ## Open issues (prioritised)
 
-### 🟡 1. Regenerate `book-dp2/mystmd/` to absorb pipeline improvements
+### 🟡 1. Selectively regenerate `book-dp2/mystmd/` to absorb pipeline improvements
 
-**Effort:** ~30 minutes
-**Impact:** Low (cosmetic) but ongoing — every future maintenance run
-against dp2 will produce the same drift until this happens.
+**Effort:** ~2 hours (was ~30 min — see below)
+**Impact:** Medium. Affects how dp2's MyST output looks and which
+features (algorithm bullet lists, `§ Section` dedupe, etc.) are visible.
 
-The 3 dp1 transforms we ported affect dp2's output by:
+Originally scoped as "cosmetic blank-line drift + 1 semantic fix". After
+the algorithm2e port (#014), minted port (#015), and § dedupe (#016), the
+diff is much larger:
 
-- +440 cosmetic blank lines after closing `$$`
-- 1 correctness improvement in `ch_adps2.md` (`Theorem~\ref` → `{prf:ref}`)
+| File | Diff lines | Semantic |
+|------|-----------:|---------:|
+| ch_apps.md | 156 | 0 |
+| ch_rdps.md | 98 | 0 |
+| ch_math_foundations.md | 68 | 0 |
+| ch_ldps.md | 48 | 0 |
+| ch_adps.md | 60 | 0 |
+| ch_adps2.md | 82 | 2 |
+| ch_adps3.md | 87 | 13 |
+| ch_approx_learning.md | 93 | 16 |
+| ch_transforms.md | 108 | 27 |
+| ch_egs.md | 226 | 34 |
+| common_symbols.md | 153 | **138** ← hand-edited |
+| preface.md | 109 | **84** ← hand-edited |
 
-These are objectively improvements. The committed `book-dp2/mystmd/`
-predates them. Suggestion: run our tool against dp2 once, commit the
-result with a clear "regenerate from claude-latex-to-myst" message, and
-make claude-latex-to-myst the canonical source going forward.
+`common_symbols.md` and `preface.md` carry hand-edits (table reformatted,
+title changes, `# Preface` heading manually added) that a blind regen
+would wipe. Recommendation:
+
+1. **Regenerate the chapters with 0 semantic diffs** (`ch_adps`,
+   `ch_apps`, `ch_ldps`, `ch_math_foundations`, `ch_rdps`) — pure
+   blank-line additions, safe.
+2. **Inspect-then-regenerate the small-semantic chapters** (`ch_adps2`,
+   `ch_adps3`) — diffs are clear improvements (algorithm bullets,
+   `§ Section` dedupe).
+3. **Larger-diff chapters with new algorithm bodies** (`ch_egs`,
+   `ch_approx_learning`, `ch_transforms`) — biggest *quality* wins;
+   verify the algorithm-body bullet structure looks right then regen.
+4. **Skip** `common_symbols.md` and `preface.md` — preserve the
+   hand-edits; a future hand-merge can pull in our § dedupe later.
+
+Sandbox the regen output in `fixtures/book-dp2/regen/` first (see
+`scripts/setup_fixtures.sh`), eyeball the diffs, and only then commit
+into the dp2 repo with a "regenerate from claude-latex-to-myst" message.
 
 See [reports/book-dp2-parity.md](reports/book-dp2-parity.md) for the
-detailed numbers.
+older single-fix numbers (now superseded).
 
 ---
 
-### 🟢 2. Promote `examples/book-dp1/` config
-
-**Effort:** ~30 minutes
-**Impact:** Low. Anyone wanting to convert dp1 in the future re-derives the
-config from scratch otherwise.
-
-The dp1 test config (committed only inside the parity-test worktree, now
-gone) covered:
-
-- 10 dp1 chapters + `common_symbols` with titles
-- `source_dir: ../book`, `bibliography: qe_bib.bib`, `figures_dir: ../figures`
-- 11 strip rules (5 are pageref variants — dp1 has many `\pageref{...}`
-  patterns that need stripping for HTML)
-- 7 rewrite rules (`\navy`, scalebox, tikz, xfig `.pdf_t`, minted, algorithm)
-- `tikz_overrides: null` (not populated for the test)
-
-Add it as `examples/book-dp1/config.yaml` and a stub `tikz_overrides.py`
-for the figures dp1 actually uses. Then someone re-running can do
-`cp examples/book-dp1/* mystmd/` and pick up where the test left off.
-
-See [reports/book-dp1-parity.md](reports/book-dp1-parity.md) for the
-config that worked.
-
----
-
-### 🟢 3. `frontmatter_style` config flag
-
-**Effort:** ~1 hour
-**Impact:** Low (stylistic) — but unblocks dp1 adoption if dp1 wants to
-keep its current `(label)=\n# Title` style.
-
-Two valid MyST conventions:
-
-- `absorbed` (dp2, our current default): `---\ntitle: "..."\nlabel: ...\n---`
-- `standalone` (dp1): `(label)=\n# Title\n`
-
-Both work. Adding a config flag is small. Default to `absorbed` (current
-behaviour). dp1 sets `frontmatter_style: standalone` in its config.
-
-Touches: `postprocess.py::add_frontmatter`, `config.example.yaml`.
-
----
-
-### 🟢 4. (Optional) `whitespace_compression` config flag
+### 🟢 2. (Optional) Tighten `whitespace_compression: compact`
 
 **Effort:** ~2 hours
-**Impact:** Low.
-
-dp1 strips blank lines aggressively (after `:label:`, before `$$`, between
-adjacent directives). dp2 and our tool keep them for source readability.
-
-Could become a config flag (`whitespace: readable | compact`) with the
-compact path implementing dp1's stripping. Or we declare "readable" as the
-canonical style and let dp1 either adopt it or maintain its own override.
-
-Deferred until someone actually asks. Lower priority than the algorithm
-and listing gaps.
+**Impact:** Low. The flag exists and works for projects that want denser
+source than the default. Matching dp1's hand-tuned spacing
+byte-for-byte would additionally require preserving the original LaTeX
+source-spacing through `convert_environment_divs`, which would be a
+bigger refactor. Defer unless someone asks for it.
 
 ---
 
@@ -110,10 +112,11 @@ and listing gaps.
 
 [PR #336](https://github.com/QuantEcon/book-dp1/pull/336) is the dp1
 mystmd conversion. It currently uses a fork of dp2's pipeline. With #014
-and #015 both closed, only the optional `frontmatter_style` flag remains
-before dp1 could
-switch its `mystmd/scripts/` to be a thin wrapper that calls into
-`claude-latex-to-myst`:
+and #015 closed, `frontmatter_style` and `whitespace_compression` added
+as config flags, and the dp1 reference config promoted to
+`examples/book-dp1/`, nothing in this tool's roadmap is blocking
+adoption. dp1 could switch its `mystmd/scripts/` to a thin wrapper that
+calls into `claude-latex-to-myst`:
 
 ```bash
 # In book-dp1/mystmd/scripts/convert.sh

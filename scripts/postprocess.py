@@ -958,6 +958,35 @@ def strip_doubled_noun_refs(text: str) -> str:
     return text
 
 
+# Label-prefix families for which qe-v5 auto-renders "Section X.Y" /
+# "Paragraph X.Y" before the ref. Authors typically prefix the ref with
+# a literal ``§`` (LaTeX's ``\S``); the combination renders as "§ Section
+# X.Y" which double-counts the noun. See lesson 016.
+_DOUBLED_SECTION_SYMBOL_PREFIXES = ('s-', 'ss-', 'sss-', 'sec-')
+
+
+def strip_doubled_section_symbol(text: str) -> str:
+    """Drop a literal ``§`` before a ``{ref}`` to a section-style label.
+
+    Under qe-v5 book-mode (``injectBookSectionDefaults`` enables
+    ``numbering.heading_2.enabled``..``heading_6.enabled``), refs to
+    headings render as "Section X.Y" / "Paragraph X.Y". LaTeX writers
+    ubiquitously prefix ``\\S`` (or ``§``) before ``\\ref{ss:foo}`` to
+    provide the noun manually, which then double-counts.
+
+    Parallel to ``strip_doubled_noun_refs`` for theorem-style nouns
+    (lesson 011); applies after ``convert_cross_references`` so the
+    target syntax is already in MyST form.
+    """
+    pattern = re.compile(
+        r'(?<!\w)§[ \xa0]*'
+        r'(\{ref\}`(?:'
+        + '|'.join(re.escape(p) for p in _DOUBLED_SECTION_SYMBOL_PREFIXES)
+        + r')[^`]+`)'
+    )
+    return pattern.sub(r'\1', text)
+
+
 def strip_footnote_refs(text: str) -> str:
     """Remove ``{ref}`fn-...``` cross-references that MyST cannot resolve.
 
@@ -1356,15 +1385,73 @@ def resolve_algorithms(text: str) -> str:
     return pattern.sub(repl, text)
 
 
-def add_frontmatter(text: str, title: str) -> str:
-    """Add YAML frontmatter to the file, removing any existing frontmatter
-    and absorbing the (label)= / # Title heading into the frontmatter.
+def compress_directive_whitespace(text: str) -> str:
+    """Trim blank lines between adjacent fenced directives.
 
-    Idempotent: when a previously-processed file is re-processed, the
-    ``label:`` from the existing frontmatter is preserved so chapter
-    cross-references like ``{prf:ref}`c-egs``` keep resolving.
+    A no-op when ``whitespace_compression: readable`` is configured (the
+    default). When ``compact`` is selected, runs of blank lines between
+    one ``` fence and the next ``` ``` ``{...} `` ` fence are collapsed
+    to nothing — adjacent directives sit flush, matching dp1's denser
+    source style.
+
+    Deliberately conservative: doesn't touch blank lines after ``:label:``
+    (dp1 itself is inconsistent there — sometimes keeps a blank, sometimes
+    not — so stripping uniformly would be wrong as often as right) or
+    around ``(label)=`` anchors. Compact mode is an approximation, not a
+    byte-identical reproduction of dp1's hand-tuned output.
     """
-    # Strip any existing YAML frontmatter blocks, capturing label: if present
+    if _WHITESPACE_STYLE != 'compact':
+        return text
+
+    lines = text.split('\n')
+    out: list[str] = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        out.append(line)
+        # Collapse blank runs between an adjacent pair of fenced directives.
+        if line.strip() == '```' and i + 1 < n:
+            j = i + 1
+            while j < n and lines[j].strip() == '':
+                j += 1
+            if j > i + 1 and j < n and lines[j].lstrip().startswith('```{'):
+                i = j
+                continue
+        i += 1
+    return '\n'.join(out)
+
+
+def add_frontmatter(text: str, title: str) -> str:
+    """Emit frontmatter / chapter heading in the configured style.
+
+    Two valid MyST conventions, both round-trip:
+
+    - ``absorbed`` (default, dp2 style): pull the ``(label)= / # Title``
+      heading into a YAML block at the top of the file.
+
+      .. code-block:: yaml
+
+          ---
+          title: "Foo"
+          label: c-foo
+          ---
+
+    - ``standalone`` (dp1 style): leave the heading in the body and emit
+      no YAML.
+
+      .. code-block:: markdown
+
+          (c-foo)=
+          # Foo
+
+    Idempotent: re-processing a file already in either style is a no-op
+    (modulo title updates from config). Existing YAML ``label:`` values
+    are preserved so chapter cross-references like ``{prf:ref}`c-egs```
+    keep resolving even if the LaTeX source no longer carries the label.
+    """
+    # Strip any existing YAML frontmatter, capturing label: if present so
+    # we don't lose it across re-runs.
     existing_label = None
     while text.startswith('---\n'):
         end = text.find('\n---\n', 4)
@@ -1376,12 +1463,27 @@ def add_frontmatter(text: str, title: str) -> str:
             if lm:
                 existing_label = lm.group(1)
         text = text[end + 5:].lstrip('\n')
-    # Extract (label)= target and remove the # Title heading if it matches
+
     label = existing_label
-    m = re.match(r'\(([^)]+)\)=\s*\n# .+\n', text)
-    if m:
-        label = m.group(1)
-        text = text[m.end():]
+    heading_m = re.match(r'\(([^)]+)\)=\s*\n# (.+)\n', text)
+    if heading_m:
+        label = label or heading_m.group(1)
+
+    if _FRONTMATTER_STYLE == 'standalone':
+        # Body keeps its ``(label)=\n# Title`` heading; just ensure one
+        # exists (synthesise from config if the body lost it during a
+        # round-trip through an absorbed-style YAML block).
+        if heading_m:
+            return text
+        header = ''
+        if label:
+            header += f'({label})=\n'
+        header += f'# {title}\n\n'
+        return header + text
+
+    # absorbed (default): strip the heading from the body and emit YAML.
+    if heading_m:
+        text = text[heading_m.end():]
     frontmatter = f'---\ntitle: "{title}"\n'
     if label:
         frontmatter += f'label: {label}\n'
@@ -1391,6 +1493,16 @@ def add_frontmatter(text: str, title: str) -> str:
 
 # Chapter titles mapping — populated from config.yaml at runtime.
 CHAPTER_TITLES: dict = {}
+
+# Frontmatter style: 'absorbed' (YAML block, dp2 style — the default) or
+# 'standalone' ((label)= + # heading, dp1 style). Populated by apply_config.
+_FRONTMATTER_STYLE: str = 'absorbed'
+
+# Whitespace compression: 'readable' (default; keep blank lines around
+# directives for source readability) or 'compact' (dp1 style; strip blank
+# lines after :label: and between adjacent directives). Populated by
+# apply_config.
+_WHITESPACE_STYLE: str = 'readable'
 
 
 # ── Config loading ───────────────────────────────────────────────────────────
@@ -1429,11 +1541,25 @@ def apply_config(config: dict, base_dir: Path | None = None) -> None:
     Tests that call ``apply_config`` without a base_dir won't get listing
     resolution, which is fine — listings are an opt-in feature.
     """
-    global CHAPTER_TITLES, _LISTING_SOURCE_BASE
+    global CHAPTER_TITLES, _LISTING_SOURCE_BASE, _FRONTMATTER_STYLE, _WHITESPACE_STYLE
     CHAPTER_TITLES = {
         entry['stem']: entry.get('title', entry['stem'])
         for entry in (config.get('chapters') or []) + (config.get('extra_files') or [])
     }
+
+    style = config.get('frontmatter_style', 'absorbed')
+    if style not in ('absorbed', 'standalone'):
+        raise SystemExit(
+            f"config.frontmatter_style must be 'absorbed' or 'standalone', got {style!r}"
+        )
+    _FRONTMATTER_STYLE = style
+
+    ws = config.get('whitespace_compression', 'readable')
+    if ws not in ('readable', 'compact'):
+        raise SystemExit(
+            f"config.whitespace_compression must be 'readable' or 'compact', got {ws!r}"
+        )
+    _WHITESPACE_STYLE = ws
 
     if base_dir is not None:
         # source_code_base anchors paths inside \inputminted{lang}{path}.
@@ -1467,6 +1593,7 @@ def process_file(input_path: Path, output_path: Path = None):
     text = convert_equations(text)
     text = convert_cross_references(text)
     text = strip_doubled_noun_refs(text)           # needs MyST refs in place
+    text = strip_doubled_section_symbol(text)      # qe-v5 § Section dedupe
     text = convert_figures(text)
     text = convert_html_figures(text)
     text = resolve_tikz_figures(text, stem)
@@ -1482,6 +1609,7 @@ def process_file(input_path: Path, output_path: Path = None):
     text = ensure_blank_after_display_math(text)   # adds blank lines
     text = cleanup_typography(text)                # caps blank-line runs
     text = strip_footnote_refs(text)               # operates on cleaned text
+    text = compress_directive_whitespace(text)     # opt-in (compact mode)
 
     title = CHAPTER_TITLES.get(stem, stem)
     text = add_frontmatter(text, title)

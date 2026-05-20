@@ -48,6 +48,43 @@ extra_files:
   - stem: common_symbols
     title: "Notation"
 
+# --- Frontmatter style ------------------------------------------------------
+
+# Two valid MyST conventions for the chapter heading + label:
+#
+#   absorbed (default):                   standalone:
+#     ---                                   (c-foo)=
+#     title: "Foo"                          # Foo
+#     label: c-foo
+#     ---
+#
+# Both work for MyST cross-references; pick whichever your project uses.
+# Default is ``absorbed``. Existing books that use the standalone form (e.g.,
+# book-dp1) should set this to ``standalone``.
+#
+# frontmatter_style: absorbed
+
+# --- Whitespace compression -------------------------------------------------
+
+# Whether to keep or strip blank lines between adjacent fenced directives:
+#
+#   readable (default):                    compact:
+#     ```                                    ```
+#                                            ```{exercise}
+#     ```{exercise}                          :label: ex-foo
+#     :label: ex-foo                         ...
+#     ...                                    ```
+#     ```
+#
+# MyST renders both identically. ``compact`` is opt-in for projects that
+# want denser source. Note: this only strips blanks between adjacent
+# ``` fences — it does not touch blanks after ``:label:`` or around
+# ``(label)=`` anchors, since matching dp1's hand-tuned spacing exactly
+# would require preserving the original LaTeX source-spacing through
+# pandoc, which is out of scope for this tool.
+#
+# whitespace_compression: readable
+
 # --- Source code (minted listings) ------------------------------------------
 
 # Base directory for resolving paths inside ``\inputminted{lang}{path}``.
