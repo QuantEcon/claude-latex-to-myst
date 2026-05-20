@@ -637,13 +637,20 @@ def convert_figures(text: str) -> str:
 
 def convert_section_labels(text: str) -> str:
     """Convert pandoc section header IDs to MyST label syntax.
-    
+
     # Title {#sec:label} → (sec-label)=\\n# Title
+
+    Pandoc may append class/property tokens after the slug for unnumbered
+    or unlisted headings (``{#slug .unnumbered .unlisted}``); these are
+    HTML class attributes and must be stripped before forming the MyST
+    label. Only the first whitespace-delimited token (the ``#slug``) is
+    treated as the identifier.
     """
     def replace_header(m):
         hashes = m.group(1)
         title = m.group(2).strip()
-        label = convert_label_colons(m.group(3))
+        slug = m.group(3).split()[0]
+        label = convert_label_colons(slug)
         return f'({label})=\n{hashes} {title}'
     
     text = re.sub(
@@ -1493,16 +1500,48 @@ def add_frontmatter(text: str, title: str) -> str:
                 existing_label = lm.group(1)
         text = text[end + 5:].lstrip('\n')
 
-    label = existing_label
     heading_m = re.match(r'\(([^)]+)\)=\s*\n# (.+)\n', text)
+    # When the source has both a heading auto-id AND an explicit
+    # \label{...} on the chapter (e.g. ``\chapter*{Foo}\n\label{c:foo}``,
+    # which pandoc cannot fold into the heading's ``{#id}`` and emits
+    # separately as ``[]{#c:foo}``), the explicit body anchor lands on
+    # the line(s) following the heading. Prefer the explicit label as
+    # the canonical cross-ref target — that's the identifier the author
+    # chose for ``\ref{}``.
+    #
+    # Only treat the body anchor as the chapter's if it is followed by
+    # ordinary content. A ``(slug)=`` followed by another markdown
+    # heading (``## Section``, ``### Subsection``) is that section's
+    # label, not the chapter's, and must not be promoted to the
+    # chapter's frontmatter (would steal e.g. the first section's label).
+    following_anchor_label = None
     if heading_m:
-        label = label or heading_m.group(1)
+        rest = text[heading_m.end():].lstrip('\n')
+        follow_m = re.match(r'\(([^)]+)\)=\s*\n(.*?)(?:\n|$)', rest)
+        if follow_m and not re.match(r'#{1,6}\s', follow_m.group(2)):
+            following_anchor_label = follow_m.group(1)
+
+    if existing_label is not None:
+        label = existing_label
+    elif heading_m:
+        label = following_anchor_label or heading_m.group(1)
+    else:
+        label = None
 
     if _FRONTMATTER_STYLE == 'standalone':
         # Body keeps its ``(label)=\n# Title`` heading; just ensure one
         # exists (synthesise from config if the body lost it during a
         # round-trip through an absorbed-style YAML block).
         if heading_m:
+            if following_anchor_label is not None:
+                # Replace the heading auto-id with the explicit label
+                # and drop the duplicate body anchor.
+                title_text = heading_m.group(2)
+                rest_after = text[heading_m.end():].lstrip('\n')
+                rest_after = re.sub(
+                    r'^\([^)]+\)=\s*\n+', '', rest_after, count=1
+                )
+                return f'({label})=\n# {title_text}\n\n' + rest_after
             return text
         header = ''
         if label:
@@ -1515,6 +1554,8 @@ def add_frontmatter(text: str, title: str) -> str:
     # YAML-strip path above lstrips already; this matches it).
     if heading_m:
         text = text[heading_m.end():].lstrip('\n')
+        if following_anchor_label is not None:
+            text = re.sub(r'^\([^)]+\)=\s*\n+', '', text, count=1)
     frontmatter = f'---\ntitle: "{title}"\n'
     if label:
         frontmatter += f'label: {label}\n'

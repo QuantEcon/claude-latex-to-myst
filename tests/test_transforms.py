@@ -276,6 +276,122 @@ def test_frontmatter_standalone_synthesises_when_missing():
     assert out.startswith("(c-foo)=\n# Foo\n")
 
 
+# ── Heading auto-id class strip + explicit-label preference (FIX Issue 2) ────
+
+
+def test_section_label_strips_unnumbered_class():
+    """Pandoc emits ``# Title {#slug .unnumbered}`` for \\chapter*{}; the
+    ``.unnumbered`` class must not leak into the MyST label."""
+    body = "# Common Symbols {#common-symbols .unnumbered}\n\nBody.\n"
+    out = postprocess.convert_section_labels(body)
+    assert "(common-symbols)=" in out
+    assert ".unnumbered" not in out
+
+
+def test_section_label_strips_multiple_classes():
+    body = "# Title {#slug .unnumbered .unlisted}\n"
+    out = postprocess.convert_section_labels(body)
+    assert "(slug)=" in out
+    assert "# Title" in out
+    assert ".unnumbered" not in out
+    assert ".unlisted" not in out
+
+
+def test_frontmatter_prefers_explicit_label_over_heading_autoid():
+    """When ``\\chapter*{Title}`` + separate ``\\label{c:cs}`` produces
+    a heading auto-id slug AND a body anchor, the explicit body anchor
+    must win in the YAML label, and the body anchor must be removed."""
+    postprocess._FRONTMATTER_STYLE = "absorbed"
+    body = (
+        "(common-symbols-and-terminology)=\n"
+        "# Common Symbols and Terminology\n"
+        "\n"
+        "(c-cs)=\n"
+        "Body text.\n"
+    )
+    out = postprocess.add_frontmatter(body, "Notation")
+    assert "label: c-cs" in out
+    assert "common-symbols-and-terminology" not in out
+    assert "(c-cs)=" not in out
+    assert "Body text." in out
+
+
+def test_frontmatter_uses_autoid_when_no_explicit_label():
+    """Plain ``\\chapter*{Foo}`` (no explicit \\label) still gets the
+    auto-id slug as its label — there's no better candidate."""
+    postprocess._FRONTMATTER_STYLE = "absorbed"
+    body = "(some-chapter)=\n# Some Chapter\n\nBody.\n"
+    out = postprocess.add_frontmatter(body, "Some Chapter")
+    assert "label: some-chapter" in out
+
+
+def test_frontmatter_no_label_when_heading_unanchored():
+    """``\\chapter{Preface}`` (no \\label, numbered or otherwise) emits
+    no anchor; frontmatter should likewise carry no label."""
+    postprocess._FRONTMATTER_STYLE = "absorbed"
+    body = "Body text without heading.\n"
+    out = postprocess.add_frontmatter(body, "Preface")
+    assert 'title: "Preface"' in out
+    assert "label:" not in out
+
+
+def test_frontmatter_explicit_label_idempotent_absorbed():
+    """Re-running the pipeline on its own output must be a no-op once the
+    explicit label has been absorbed into YAML."""
+    postprocess._FRONTMATTER_STYLE = "absorbed"
+    body = (
+        "(common-symbols-and-terminology)=\n"
+        "# Common Symbols and Terminology\n"
+        "\n"
+        "(c-cs)=\n"
+        "Body.\n"
+    )
+    once = postprocess.add_frontmatter(body, "Notation")
+    twice = postprocess.add_frontmatter(once, "Notation")
+    assert once == twice
+
+
+def test_frontmatter_does_not_steal_first_section_label():
+    """Regression: when the chapter has its own explicit label folded into
+    the heading auto-id (``\\chapter{Foo}\\label{c:foo}`` →
+    ``(c-foo)=\\n# Foo``) and is immediately followed by a *section*
+    anchor (``(s-bar)=\\n## Bar``), the section's anchor must NOT be
+    promoted to the chapter's frontmatter label."""
+    postprocess._FRONTMATTER_STYLE = "absorbed"
+    body = (
+        "(c-apps)=\n"
+        "# Additional Applications\n"
+        "\n"
+        "(s-optstop)=\n"
+        "## Job Search\n"
+        "\n"
+        "Body.\n"
+    )
+    out = postprocess.add_frontmatter(body, "Additional Applications")
+    assert "label: c-apps" in out
+    assert "s-optstop" not in out.split("---\n\n", 1)[0]  # not in frontmatter
+    assert "(s-optstop)=" in out  # section anchor preserved in body
+    assert "## Job Search" in out
+
+
+def test_frontmatter_explicit_label_standalone():
+    """Standalone style: explicit body anchor wins, heading uses it as
+    the (label)= prefix, duplicate body anchor is dropped."""
+    postprocess._FRONTMATTER_STYLE = "standalone"
+    body = (
+        "(common-symbols-and-terminology)=\n"
+        "# Common Symbols and Terminology\n"
+        "\n"
+        "(c-cs)=\n"
+        "Body.\n"
+    )
+    out = postprocess.add_frontmatter(body, "Notation")
+    assert out.startswith("(c-cs)=\n# Common Symbols and Terminology\n")
+    assert "common-symbols-and-terminology" not in out
+    # Only one (c-cs)= anchor survives
+    assert out.count("(c-cs)=") == 1
+
+
 # ── Config-driven ENV_MAP extension ──────────────────────────────────────────
 
 
