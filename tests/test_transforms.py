@@ -351,6 +351,101 @@ def test_frontmatter_explicit_label_idempotent_absorbed():
     assert once == twice
 
 
+# ── natbib citation variant decoding (FIX Issue 3) ───────────────────────────
+
+
+def test_citation_natbib_marker_citep():
+    """Marker emitted by preprocess for \\citep — single key."""
+    body = "See \\[\\[CITEP:smith2020\\]\\] for details."
+    out = postprocess.decode_natbib_markers(body)
+    assert out == "See {cite:p}`smith2020` for details."
+
+
+def test_citation_natbib_marker_citep_multi():
+    """Marker for \\citep with multiple keys — strip spaces around commas."""
+    body = "See \\[\\[CITEP:a, b, c\\]\\] end."
+    out = postprocess.decode_natbib_markers(body)
+    assert out == "See {cite:p}`a,b,c` end."
+
+
+def test_citation_natbib_marker_citealp():
+    """\\citealp renders as 'Author Year' (no parens) → cite:t."""
+    body = "Following \\[\\[CITEALP:stokey1989recursive\\]\\] we have"
+    out = postprocess.decode_natbib_markers(body)
+    assert "{cite:t}`stokey1989recursive`" in out
+
+
+def test_citation_natbib_marker_citealp_multi():
+    body = "e.g. \\[\\[CITEALP:stokey1989recursive,puterman2005markov\\]\\]."
+    out = postprocess.decode_natbib_markers(body)
+    assert "{cite:t}`stokey1989recursive,puterman2005markov`" in out
+
+
+def test_citation_natbib_marker_citeauthor_and_citeyear():
+    body = "\\[\\[CITEAUTHOR:bellman1957\\]\\] in \\[\\[CITEYEAR:bellman1957\\]\\]."
+    out = postprocess.decode_natbib_markers(body)
+    assert "{cite:author}`bellman1957`" in out
+    assert "{cite:year}`bellman1957`" in out
+
+
+def test_citation_natbib_marker_citeyearpar_adds_parens():
+    """\\citeyearpar renders 'year' with parens; output should wrap the
+    cite role with literal parens so the rendered form is e.g. '(1957)'."""
+    body = "Bellman's \\[\\[CITEYEARPAR:bellman1957\\]\\] monograph"
+    out = postprocess.decode_natbib_markers(body)
+    assert "({cite:year}`bellman1957`)" in out
+
+
+def test_citation_marker_decode_protects_against_cross_ref_greed():
+    """Regression for lesson 020 / lesson 002: when a natbib marker
+    appears in the same paragraph as a pandoc cross-ref, decoding must
+    run BEFORE convert_cross_references — otherwise the cross-ref regex
+    matches greedily from the marker's [ to the ref's ](#x){...},
+    swallowing the marker entirely."""
+    pandoc_out = (
+        r"preferences \[\[CITEP:epstein1989risk, weil1990nonexpected\]\] "
+        r'play. Bellman equation [\[eq:osbell\]](#eq:osbell)'
+        r'{reference-type="eqref" reference="eq:osbell"} becomes'
+    )
+    # Correct order: decode first, then cross-refs.
+    fixed = postprocess.decode_natbib_markers(pandoc_out)
+    fixed = postprocess.convert_cross_references(fixed)
+    assert "{cite:p}`epstein1989risk,weil1990nonexpected`" in fixed
+    assert "{eq}`eq-osbell`" in fixed
+    # Demonstrate the failure mode: reversed order eats the marker.
+    bad = postprocess.convert_cross_references(pandoc_out)
+    assert "epstein1989risk" not in bad
+
+
+def test_citation_pandoc_suppress_author_decoded():
+    """Pandoc emits [-@key] for \\citeyear when the preprocess rewrite
+    is bypassed (or for natbib variants we haven't yet mapped). The
+    bracketed form must decode to {cite:year} cleanly, not leave junk."""
+    body = "Bellman's [-@bellman1957dynamic] monograph"
+    out = postprocess.convert_citations(body)
+    assert "{cite:year}`bellman1957dynamic`" in out
+    # Stray brackets / dash must not survive
+    assert "[-" not in out
+    assert "[-@" not in out
+
+
+def test_citation_pandoc_native_unchanged():
+    """Pandoc's native [@key] and @key forms still map to {cite} and
+    {cite:t} respectively — marker decoding doesn't disturb them."""
+    body = "[@smith2020] and @jones2019 in a paragraph."
+    out = postprocess.convert_citations(body)
+    assert "{cite}`smith2020`" in out
+    assert "{cite:t}`jones2019`" in out
+
+
+def test_citation_idempotent():
+    """Re-running on already-converted output is a no-op."""
+    body = "See \\[\\[CITEP:smith2020\\]\\] and [@jones2019]."
+    once = postprocess.convert_citations(body)
+    twice = postprocess.convert_citations(once)
+    assert once == twice
+
+
 # ── simple_table → list-table (FIX Issue 1) ──────────────────────────────────
 
 

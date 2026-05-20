@@ -26,10 +26,11 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 017 | [Pandoc class attributes leak into MyST labels — capture only the first whitespace-delimited token](lessons/017-pandoc-class-attrs-leak-into-labels.md) | regex-safety | 🔴 | codified |
 | 018 | [Promoting a body anchor to chapter label needs a non-heading guard — or it steals the first section's id](lessons/018-greedy-explicit-label-promotion.md) | post-processing | 🔴 | codified |
 | 019 | [Pandoc simple_tables vs multiline_tables — blank-line presence flips row-parsing logic](lessons/019-simple-vs-multiline-tables.md) | post-processing | 🔴 | codified |
+| 020 | [Natbib variants pandoc can't distinguish need bracket-marker sentinels — and the decode pass must run before cross-refs](lessons/020-natbib-bracket-markers-precede-cross-refs.md) | post-processing | 🔴 | codified |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020
 - **regex-safety:** 002, 017
 - **katex:** 003, 006
 - **myst:** 013
