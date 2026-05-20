@@ -1,0 +1,121 @@
+# =============================================================================
+# claude-latex-to-myst — per-project configuration
+# =============================================================================
+#
+# Copy this file to your book repo (e.g. as mystmd/config.yaml) and edit.
+# All paths are resolved relative to the directory containing this config file.
+#
+# The config drives:
+#   - which chapters get converted
+#   - frontmatter titles for each chapter
+#   - what bib file to copy
+#   - which custom LaTeX macros to rewrite before pandoc
+#   - which figures live where
+#   - the TikZ-resolution map (optional; loaded from a .py file)
+# =============================================================================
+
+# --- Source layout ----------------------------------------------------------
+
+# Directory containing the .tex source files, relative to this config file.
+source_dir: ".."
+
+# Directory where MyST output is written. Usually the directory containing
+# this config.
+output_dir: "."
+
+# Working directory for preprocessed .tex + raw pandoc output. Gitignore this.
+tmp_dir: "./tmp"
+
+# --- Chapters ---------------------------------------------------------------
+
+# List of chapter stems (without .tex extension), in book order. Each entry
+# becomes a {stem}.tex → {stem}.md conversion.
+#
+# `title` is used as the chapter heading and YAML frontmatter title in the
+# generated .md file.
+chapters:
+  - stem: ch01_intro
+    title: "Introduction"
+  - stem: ch02_foundations
+    title: "Foundations"
+  # ... add one entry per chapter
+
+# Front- and back-matter files that should also be converted but live outside
+# the numbered chapter sequence. These do not appear in TOC numbering.
+extra_files:
+  - stem: preface
+    title: "Preface"
+  - stem: common_symbols
+    title: "Notation"
+
+# --- Bibliography -----------------------------------------------------------
+
+# Source .bib file (relative to source_dir). Copied to {output_dir}/references.bib.
+bibliography: "references.bib"
+
+# --- Figures ----------------------------------------------------------------
+
+# Directory of pre-rendered figures (relative to source_dir). Copied to
+# {output_dir}/figures/. Set to null to skip copying.
+figures_dir: "figures"
+
+# --- LaTeX pre-processing ---------------------------------------------------
+#
+# Each entry is a sed-style substitution applied to a *copy* of the .tex
+# source before pandoc sees it. The originals are never modified.
+#
+# Use this for custom macros pandoc can't handle. Common patterns:
+#   - `\navy{...}` → `\textbf{...}` (preserve content via a known macro)
+#   - Strip presentational commands (\index, \vspace, \clearpage)
+#
+# Two forms:
+#   - simple: a sed substitution string passed to `sed -E`
+#   - perl:   a Perl one-liner for multi-line or multi-char-lookahead patterns
+
+preprocess:
+  # Strip these commands (they have no MyST equivalent)
+  strip:
+    - "\\\\index\\{[^}]*\\}"
+    - "\\\\clearpage"
+    - "\\\\newpage"
+    - "\\\\noindent"
+    - "\\\\vspace\\{[^}]*\\}"
+
+  # Custom macro rewrites (sed substitutions, BSD-compatible)
+  # Each entry: { from: pattern, to: replacement }
+  rewrites:
+    # Example from book-dp2: \navy{text} → \textbf{text}
+    # - { from: "\\\\navy\\{", to: "\\\\textbf{" }
+
+  # Perl one-liners for transforms that sed can't express
+  # Each entry is a Perl script that operates on the file in place
+  perl_scripts:
+    # Unwrap \scalebox{N}{\includegraphics{...}}
+    - "s/\\\\scalebox\\{[0-9.]+\\}\\s*\\{\\s*(\\\\includegraphics[^}]*\\{[^}]*\\})\\s*\\}/$1/g"
+    # Hoist \label out of algorithm \caption{} so pandoc preserves it
+    - "s/\\\\caption\\{\\\\label\\{(algo:[^}]+)\\}\\s*([^}]*)\\}/\\\\label{$1}\\\\caption{$2}/g"
+
+# --- TikZ handling ----------------------------------------------------------
+
+# `\input{tikz/...}` references are replaced with placeholder admonitions
+# during preprocessing. The post-processor then resolves them to figure
+# directives using a Python overrides file.
+#
+# Path is relative to this config file. The file should define:
+#   TIKZ_FIGURE_MAP = { "label": ("path/to/image.svg", "optional caption") }
+#   TIKZCD_INLINE_MAP = { "chapter_stem": [ ... regex entries ... ] }
+#
+# Set to null if your book has no TikZ.
+tikz_overrides: "tikz_overrides.py"
+
+# --- Validation -------------------------------------------------------------
+
+# Structural checks to run after conversion (see scripts/validate.py).
+# Each check counts the construct in the LaTeX source and the MyST output
+# and reports any mismatch.
+validate:
+  equations: true
+  cross_references: true
+  theorems: true
+  figures: true
+  citations: true

@@ -1,0 +1,53 @@
+# book-dp2: Dynamic Programming Vol II — LaTeX → MyST config
+
+source_dir: ".."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: ch_egs,              title: "Prelude: Examples of Dynamic Programs" }
+  - { stem: ch_adps,             title: "Abstract Decision Processes" }
+  - { stem: ch_adps2,            title: "ADPs on Pospace" }
+  - { stem: ch_adps3,            title: "ADPs on Banach Space" }
+  - { stem: ch_transforms,       title: "ADP Transformations" }
+  - { stem: ch_ldps,             title: "Linear Decision Processes" }
+  - { stem: ch_rdps,             title: "Recursive Decision Processes" }
+  - { stem: ch_apps,             title: "Additional Applications" }
+  - { stem: ch_approx_learning,  title: "Approximation and Learning" }
+  - { stem: ch_math_foundations, title: "Mathematical Background" }
+
+extra_files:
+  - { stem: preface,             title: "Preface" }
+  - { stem: common_symbols,      title: "Notation" }
+
+bibliography: "qe_bib.bib"
+figures_dir: "figures"
+
+preprocess:
+  strip:
+    - "\\\\index\\{[^}]*\\}"
+    - "\\\\clearpage"
+    - "\\\\newpage"
+    - "\\\\noindent"
+    - "\\\\vspace\\{[^}]*\\}"
+
+  rewrites:
+    # \navy{text} → \textbf{text} (preserve content via known macro)
+    - { from: "\\\\navy\\{", to: "\\\\textbf{" }
+
+  perl_scripts:
+    # Unwrap \scalebox{N}{\includegraphics{...}}
+    - "s/\\\\scalebox\\{[0-9.]+\\}\\s*\\{\\s*(\\\\includegraphics[^}]*\\{[^}]*\\})\\s*\\}/$1/g"
+    # Hoist \label out of algorithm \caption{}
+    - "s/\\\\caption\\{\\\\label\\{(algo:[^}]+)\\}\\s*([^}]*)\\}/\\\\label{$1}\\\\caption{$2}/g"
+    # \input{tikz/foo} → placeholder
+    - "s/\\\\input\\{tikz\\/([^}]+)\\}/% TIKZ: $1 (needs manual conversion)/g"
+
+tikz_overrides: "tikz_overrides.py"
+
+validate:
+  equations: true
+  cross_references: true
+  theorems: true
+  figures: true
+  citations: true
