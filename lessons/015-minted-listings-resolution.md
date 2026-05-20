@@ -2,10 +2,10 @@
 id: 015
 title: "Minted source listings need preprocessor + source-file inlining"
 category: post-processing
-tags: [listings, minted, source-code, gap]
+tags: [listings, minted, source-code]
 source_project: book-dp1 (parity test, gap identified)
-status: open
-codified_in: TODO — see book-dp1/mystmd/scripts/postprocess.py::resolve_listings for reference
+status: codified
+codified_in: scripts/_apply_listing_markers.py + postprocess.py::resolve_listings
 severity: medium
 date: 2026-05-20
 ---
@@ -65,30 +65,59 @@ dp1's approach has two parts:
 
    The directive supports `{numref}`list-s_approx`` for cross-references.
 
-## Why this is "open" not "codified"
+## Codified implementation
 
-- The Perl preprocessor (~44 lines) would need to be rewritten in Python
-  per lesson #009.
-- The postprocessor needs filesystem access to read source files — adds
-  the `source_code_dir` concept to the tool.
-- Many books don't use minted — when present, it's a clear failure that
-  the user can diagnose immediately (placeholder text in output where code
-  should be).
+Ported from dp1 in two pieces, both Python (no Perl, per lesson #009):
 
-Estimated 1–2 hours of work. Lower priority than algorithms (#014) because
-the placeholder is more obviously broken (users will notice and ask) and
-the workaround (manually paste the code into a `code-block` directive) is
-simple.
+1. **`scripts/_apply_listing_markers.py`** — replaces the dp1 Perl
+   preprocessor. Run inside `preprocess.sh` after `_apply_rewrites.py`,
+   before pandoc. Walks the `.tex` source, parses
+   `\inputminted[opts]{lang}{path}` (extracting `firstline=`/`lastline=`
+   from the opts) and the trailing `\caption{\label{...} ...}`, then
+   emits a `<!--LISTING-START name=... lang=... path=... first=... last=... -->
+   caption\n<!--LISTING-END-->` block per listing.
 
-## Reference implementation
+2. **`postprocess.py::resolve_listings`** — finds the markers (tolerating
+   pandoc's `\<...\>` escaping), reads the referenced source file relative
+   to `_LISTING_SOURCE_BASE`, slices `first..last`, and emits a MyST
+   `code-block` directive with `:name:`, `:caption:`, `:linenos:`. Missing
+   source files produce a TODO comment in the body rather than failing
+   the build. Wired into `process_file` AFTER `convert_citations` and
+   `convert_standalone_labels` — running it later avoids letting
+   transforms like the inline-citation regex eat Julia-style `@views`
+   macros inside the inlined source.
 
-- `book-dp1/mystmd/scripts/_rewrite_listings.pl` (44 lines, Perl)
-- `book-dp1/mystmd/scripts/postprocess.py::resolve_listings` (~80 lines)
+## New config option: `source_code_base`
 
-## How to detect
+Defaults to `source_dir`. Override when the source code lives outside the
+LaTeX source tree (uncommon). For dp1-style layouts where
+`\inputminted{julia}{../source_code_jl/foo.jl}` appears in a tex file
+inside `book/`, the default resolves correctly.
+
+## Pipeline-ordering bug surfaced
+
+The first verification run had `@views` (a Julia macro) being converted
+into `{cite:t}`views`` by `convert_citations` because `resolve_listings`
+was running before `convert_citations`. Fix: move both `resolve_listings`
+and `resolve_algorithms` to LATE in the pipeline (after citations and
+standalone labels) so source-code bodies are inlined into the document
+only after all prose transforms have already run. Matches dp1's order.
+
+Verified byte-identical to dp1's committed output across all five
+chapters with `\begin{listing}` blocks (ch_intro × 6, ch_mcs × 5,
+ch_mdps × 7, ch_val × 2, ch_ctime × 1; 21 listings total).
+
+## How to detect a regression
 
 ```bash
-grep -E 'Listing: see \\texttt' mystmd/ch_*.md | head -5
+grep -E 'Listing: see \\texttt|source not found' mystmd/ch_*.md
 ```
 
-Any matches indicate listings that fell through to the placeholder.
+Any matches indicate listings that fell through to a placeholder. The
+first pattern catches the legacy bare-`\inputminted` rewrite; the second
+catches listings whose source file we couldn't read.
+
+## Reference implementation (historical)
+
+- `book-dp1/mystmd/scripts/_rewrite_listings.pl` (44 lines, Perl) — replaced
+- `book-dp1/mystmd/scripts/postprocess.py::resolve_listings` (~80 lines) — ported

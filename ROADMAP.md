@@ -5,6 +5,15 @@ expected impact, and pointers to the relevant lesson(s) or report(s).
 
 ## Recently closed
 
+- **#015 — minted listings** (closed 2026-05-20). Ported as
+  `scripts/_apply_listing_markers.py` + `postprocess.py::resolve_listings`.
+  Adds `source_code_base` config option (defaults to `source_dir`). All
+  21 `\begin{listing}` blocks across 5 dp1 chapters (ch_intro, ch_mcs,
+  ch_mdps, ch_val, ch_ctime) produce byte-identical `{code-block}`
+  directives. Surfaced a pipeline-ordering issue: resolve_listings/
+  resolve_algorithms must run AFTER convert_citations so inlined source
+  code isn't mangled (Julia `@views` → `{cite:t}`views``).
+
 - **#014 — algorithm2e support** (closed 2026-05-20). Ported as
   `scripts/_apply_algorithm_markers.py` + `postprocess.py::resolve_algorithms`.
   Algorithm directives on all five dp1 chapters with algorithm2e blocks
@@ -14,30 +23,7 @@ expected impact, and pointers to the relevant lesson(s) or report(s).
 
 ## Open issues (prioritised)
 
-### 🟡 1. Close gap #015 — minted listings
-
-**Effort:** ~1–2 hours
-**Impact:** Medium. Affects any book embedding code listings via minted
-(`\begin{listing}` + `\inputminted`). Common in QuantEcon books; absent
-from purely theoretical texts.
-
-**What it requires:**
-
-- Port `_rewrite_listings.pl` (~44 lines Perl) to Python.
-- Port `resolve_listings` (~80 lines). Adds a new responsibility: reading
-  source files at postprocess time and inlining line ranges into the
-  output as `code-block` directives.
-- Introduces a new config concept: `source_code_dirs` (where to look for
-  the referenced source files; absolute paths or relative to `source_dir`).
-
-Reference implementation: see [lesson 015](lessons/015-minted-listings-resolution.md).
-
-**Test:** Re-run dp1 parity; listings should now appear as `code-block`
-directives with `:name:` for `{numref}` cross-references.
-
----
-
-### 🟡 2. Regenerate `book-dp2/mystmd/` to absorb pipeline improvements
+### 🟡 1. Regenerate `book-dp2/mystmd/` to absorb pipeline improvements
 
 **Effort:** ~30 minutes
 **Impact:** Low (cosmetic) but ongoing — every future maintenance run
@@ -58,7 +44,7 @@ detailed numbers.
 
 ---
 
-### 🟢 3. Promote `examples/book-dp1/` config
+### 🟢 2. Promote `examples/book-dp1/` config
 
 **Effort:** ~30 minutes
 **Impact:** Low. Anyone wanting to convert dp1 in the future re-derives the
@@ -83,7 +69,7 @@ config that worked.
 
 ---
 
-### 🟢 4. `frontmatter_style` config flag
+### 🟢 3. `frontmatter_style` config flag
 
 **Effort:** ~1 hour
 **Impact:** Low (stylistic) — but unblocks dp1 adoption if dp1 wants to
@@ -101,7 +87,7 @@ Touches: `postprocess.py::add_frontmatter`, `config.example.yaml`.
 
 ---
 
-### 🟢 5. (Optional) `whitespace_compression` config flag
+### 🟢 4. (Optional) `whitespace_compression` config flag
 
 **Effort:** ~2 hours
 **Impact:** Low.
@@ -124,8 +110,8 @@ and listing gaps.
 
 [PR #336](https://github.com/QuantEcon/book-dp1/pull/336) is the dp1
 mystmd conversion. It currently uses a fork of dp2's pipeline. With #014
-closed, only #015 (minted listings) and the optional `frontmatter_style`
-flag remain before dp1 could
+and #015 both closed, only the optional `frontmatter_style` flag remains
+before dp1 could
 switch its `mystmd/scripts/` to be a thin wrapper that calls into
 `claude-latex-to-myst`:
 

@@ -88,6 +88,12 @@ for ch in "${CHAPTER_STEMS[@]}"; do
   # No-op for sources that contain no algorithm blocks.
   python3 "$SCRIPT_DIR/_apply_algorithm_markers.py" "$dst"
 
+  # Replace \begin{listing}...\end{listing} (minted) with marker comments.
+  # The postprocess step reads the referenced source file and emits a MyST
+  # code-block directive with :name: and :caption:. No-op for sources
+  # that contain no listing blocks.
+  python3 "$SCRIPT_DIR/_apply_listing_markers.py" "$dst"
+
   echo "  Preprocessed: ${ch}.tex"
 done
 

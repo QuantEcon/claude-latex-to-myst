@@ -74,6 +74,12 @@ setup_dp1() {
   if [[ -d "$BOOK_DP1_SRC/tikz" ]]; then
     cp -R "$BOOK_DP1_SRC/tikz" "$dst/tikz"
   fi
+  # Source-code directories — \inputminted in the .tex files points at
+  # these; without them, the listing resolver emits "source not found"
+  # placeholders. Sibling of book/ in dp1's layout.
+  for d in "$BOOK_DP1_SRC"/source_code_*; do
+    [[ -d "$d" ]] && cp -R "$d" "$dst/$(basename "$d")"
+  done
   echo "fixtures/book-dp1 ready ($(find "$dst/book" -name '*.tex' | wc -l | tr -d ' ') .tex files)"
 }
 

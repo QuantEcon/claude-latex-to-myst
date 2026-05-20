@@ -21,11 +21,11 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 012 | [Insert blank line after closing $$ for readability](lessons/012-blank-after-display-math.md) | post-processing | 🟢 | codified |
 | 013 | [MyST cannot resolve {ref}`fn-name` to footnote anchors](lessons/013-footnote-refs-unresolvable.md) | myst | 🟢 | codified |
 | 014 | [algorithm2e bodies need a custom parser — pandoc destroys their structure](lessons/014-algorithm2e-resolution.md) | post-processing | 🔴 | codified |
-| 015 | [Minted source listings need preprocessor + source-file inlining](lessons/015-minted-listings-resolution.md) | post-processing | 🟡 | **open** |
+| 015 | [Minted source listings need preprocessor + source-file inlining](lessons/015-minted-listings-resolution.md) | post-processing | 🟡 | codified |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008, 011, 012, **014**, **015**
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015
 - **regex-safety:** 002
 - **katex:** 003, 006
 - **myst:** 013
@@ -33,4 +33,5 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 
 ## Open (gaps to close on the next book)
 
-- **015** — minted listings resolver (medium impact, ~1–2 hours)
+_None — both gaps from the dp1 parity test are now codified. New lessons
+will appear here as they're captured._

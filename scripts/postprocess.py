@@ -1055,6 +1055,98 @@ def cleanup_typography(text: str) -> str:
     return text
 
 
+# ── minted listings → {code-block} ───────────────────────────────────────────
+#
+# Listing bodies are intercepted before pandoc by
+# scripts/_apply_listing_markers.py, which emits an HTML-comment marker
+# carrying the language, source path, line range, label, and caption.
+# Here we decode the marker, read the referenced source file, slice the
+# requested line range, and emit a MyST ``code-block`` directive whose
+# ``:name:`` enables ``{numref}`list-foo``` cross-references.
+#
+# Reference: book-dp1/mystmd/scripts/postprocess.py::resolve_listings.
+
+# Base directory for resolving ``\inputminted`` paths. Populated by
+# apply_config() from config.yaml's ``source_code_base`` (default: source_dir).
+_LISTING_SOURCE_BASE: Path | None = None
+
+
+def resolve_listings(text: str) -> str:
+    """Replace LISTING-START..LISTING-END markers with ``{code-block}`` directives.
+
+    Marker format (emitted by _apply_listing_markers.py):
+
+        <!--LISTING-START name=NAME lang=LANG path=PATH first=N last=M-->
+        Caption text (possibly multi-line)
+        <!--LISTING-END-->
+
+    Pandoc may escape ``<`` to ``\\<`` and ``>`` to ``\\>``; the regex
+    tolerates both forms. When the referenced source file is missing the
+    directive is still emitted with a TODO comment in the body so the
+    build does not fail.
+    """
+    pattern = re.compile(
+        r'\\?<!--LISTING-START\s+'
+        r'name=(?P<name>\S+)\s+'
+        r'lang=(?P<lang>\S+)\s+'
+        r'path=(?P<path>\S+)\s+'
+        r'first=(?P<first>\d*)\s+'
+        r'last=(?P<last>\d*)--\\?>'
+        r'\s*(?P<caption>.*?)\s*'
+        r'\\?<!--LISTING-END--\\?>',
+        re.DOTALL,
+    )
+
+    base = _LISTING_SOURCE_BASE
+
+    def repl(m: re.Match) -> str:
+        name = m.group('name')
+        lang = m.group('lang') or 'text'
+        path_raw = m.group('path')
+        first = m.group('first')
+        last = m.group('last')
+        caption = re.sub(r'\s+', ' ', (m.group('caption') or '').strip())
+
+        header = [f'```{{code-block}} {lang}']
+        if name:
+            header.append(f':name: {name}')
+        if caption:
+            header.append(f':caption: {caption}')
+        header.append(':linenos:')
+        header.append('')
+
+        if base is None:
+            # No source_code_base configured: emit the directive but mark the
+            # body as needing manual insertion. Better than swallowing the
+            # listing — users see the placeholder and can wire up the path.
+            header.append(f'# TODO: source_code_base not configured; inline {path_raw}')
+            header.append('```')
+            return '\n'.join(header)
+
+        src_path = (base / path_raw).resolve()
+        if not src_path.is_file():
+            header.append(f'# TODO: source not found: {path_raw}')
+            header.append('```')
+            return '\n'.join(header)
+
+        try:
+            lines = src_path.read_text(encoding='utf-8').splitlines()
+        except UnicodeDecodeError:
+            lines = src_path.read_text(encoding='latin-1').splitlines()
+
+        f = int(first) if first else 1
+        l = int(last) if last else len(lines)
+        f = max(1, f)
+        l = min(len(lines), l)
+        snippet = '\n'.join(lines[f - 1 : l])
+
+        header.append(snippet)
+        header.append('```')
+        return '\n'.join(header)
+
+    return pattern.sub(repl, text)
+
+
 # ── algorithm2e → {prf:algorithm} ────────────────────────────────────────────
 #
 # Algorithm bodies are intercepted before pandoc by
@@ -1329,13 +1421,27 @@ def load_overrides(overrides_path: Path) -> None:
     TIKZCD_INLINE_MAP = getattr(mod, 'TIKZCD_INLINE_MAP', {})
 
 
-def apply_config(config: dict) -> None:
-    """Populate module-level dicts from a loaded config dict."""
-    global CHAPTER_TITLES
+def apply_config(config: dict, base_dir: Path | None = None) -> None:
+    """Populate module-level state from a loaded config dict.
+
+    ``base_dir`` is the directory containing config.yaml; relative paths in
+    config (``source_dir``, ``source_code_base``) are resolved against it.
+    Tests that call ``apply_config`` without a base_dir won't get listing
+    resolution, which is fine — listings are an opt-in feature.
+    """
+    global CHAPTER_TITLES, _LISTING_SOURCE_BASE
     CHAPTER_TITLES = {
         entry['stem']: entry.get('title', entry['stem'])
         for entry in (config.get('chapters') or []) + (config.get('extra_files') or [])
     }
+
+    if base_dir is not None:
+        # source_code_base anchors paths inside \inputminted{lang}{path}.
+        # Defaults to source_dir so dp1-style layouts (``\inputminted{julia}
+        # {../source_code_jl/foo.jl}`` from a tex file in ``book/``) work
+        # without extra config.
+        src_base = config.get('source_code_base') or config.get('source_dir', '.')
+        _LISTING_SOURCE_BASE = (base_dir / src_base).resolve()
 
 
 def process_file(input_path: Path, output_path: Path = None):
@@ -1358,7 +1464,6 @@ def process_file(input_path: Path, output_path: Path = None):
     text = fix_text_dollar(text)
     text = convert_epigraphs(text)
     text = convert_environment_divs(text)
-    text = resolve_algorithms(text)                # decode algorithm2e markers
     text = convert_equations(text)
     text = convert_cross_references(text)
     text = strip_doubled_noun_refs(text)           # needs MyST refs in place
@@ -1368,6 +1473,11 @@ def process_file(input_path: Path, output_path: Path = None):
     text = convert_section_labels(text)
     text = convert_citations(text)
     text = convert_standalone_labels(text)
+    # Listings and algorithms run LATE so source-code bodies don't get
+    # touched by the citation / cross-ref / typography transforms above
+    # (Julia ``@views`` etc. would otherwise be eaten by convert_citations).
+    text = resolve_listings(text)                  # decode minted markers
+    text = resolve_algorithms(text)                # decode algorithm2e markers
     text = join_split_inline_math(text)
     text = ensure_blank_after_display_math(text)   # adds blank lines
     text = cleanup_typography(text)                # caps blank-line runs
@@ -1391,9 +1501,8 @@ def main():
 
     config_path = args.config.resolve()
     config = load_config(config_path)
-    apply_config(config)
-
     base_dir = config_path.parent
+    apply_config(config, base_dir)
     output_dir = (base_dir / config.get('output_dir', '.')).resolve()
 
     # Load TikZ overrides if configured

@@ -48,6 +48,24 @@ extra_files:
   - stem: common_symbols
     title: "Notation"
 
+# --- Source code (minted listings) ------------------------------------------
+
+# Base directory for resolving paths inside ``\inputminted{lang}{path}``.
+# Defaults to ``source_dir``. Override if your source code lives outside
+# the LaTeX source tree.
+#
+# Example dp1 layout:
+#   book/
+#     ch_intro.tex    contains \inputminted{julia}{../source_code_jl/s_approx.jl}
+#   source_code_jl/
+#     s_approx.jl
+#
+# With ``source_dir: book`` and the default, ``source_code_base`` resolves
+# to ``book/``, and ``../source_code_jl/s_approx.jl`` correctly points to
+# the file. Set explicitly if you want listings to be anchored elsewhere.
+#
+# source_code_base: "."
+
 # --- Bibliography -----------------------------------------------------------
 
 # Source .bib file (relative to source_dir). Copied to {output_dir}/references.bib.
