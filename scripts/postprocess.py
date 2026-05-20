@@ -61,6 +61,23 @@ _chapter_prefix = ''
 # Environments to skip (remove the div wrapper, keep content)
 ENV_SKIP = {'multicols', 'minipage', 'center'}
 
+# Prose nouns that get doubled by writers in front of a {prf:ref}. Sphinx-proof
+# auto-renders the noun (e.g. "Theorem 1.2"), so leaving the prose noun produces
+# "Theorem Theorem 1.2" in the output. The second column is the label prefix
+# that confirms the ref points to that kind of object — guards against stripping
+# "Theorem ..." in front of a ref to something unrelated.
+_DOUBLED_NOUN_REFS = [
+    ('Algorithm',   'algo-'),
+    ('Assumption',  'a-'),
+    ('Chapter',     'c-'),
+    ('Corollary',   'c-'),
+    ('Exercise',    'ex-'),
+    ('Lemma',       'l-'),
+    ('Proposition', 'p-'),
+    ('Remark',      'r-'),
+    ('Theorem',     't-'),
+]
+
 
 def convert_label_colons(label: str) -> str:
     """Convert colons to hyphens in a label: 'thm:main' → 'thm-main'."""
@@ -911,6 +928,92 @@ def join_split_inline_math(text: str) -> str:
     return '\n'.join(out)
 
 
+def strip_doubled_noun_refs(text: str) -> str:
+    """Drop the prose noun before a {prf:ref} that auto-expands to that noun.
+
+    Sphinx-proof renders ``{prf:ref}`t-foo``` as "Theorem 1.2", so prose like
+    "Theorem {prf:ref}`t-foo`" renders as "Theorem Theorem 1.2". LaTeX writers
+    ubiquitously prefix the noun before ``\\cref{...}`` because LaTeX's cref
+    doesn't always auto-name; in MyST it always does, so the noun must go.
+
+    Matches either a regular space or a non-breaking space (U+00A0) between
+    the noun and the ref, since pandoc emits NBSP for LaTeX ``~`` ties.
+    Uses the prefix in ``_DOUBLED_NOUN_REFS`` to guard against stripping
+    "Theorem ..." before a ref to a non-theorem object.
+    """
+    for noun, prefix in _DOUBLED_NOUN_REFS:
+        # Negative lookbehind on a word char so we don't strip inside a longer
+        # word (e.g. avoid touching a hypothetical "Subtheorem").
+        text = re.sub(
+            rf'(?<!\w){re.escape(noun)}[ \xa0]+(\{{prf:ref\}}`{re.escape(prefix)}[^`]+`)',
+            r'\1',
+            text,
+        )
+    return text
+
+
+def strip_footnote_refs(text: str) -> str:
+    """Remove ``{ref}`fn-...``` cross-references that MyST cannot resolve.
+
+    MyST footnote anchors (``[^1]: ...``) live in a separate identifier
+    namespace from the cross-reference system, so ``{ref}`fn-NAME``` always
+    fails to resolve. Drop the unresolvable role and replace the phrase with
+    "the previous footnote", preserving the original LaTeX target in an HTML
+    comment for round-trip inspection.
+    """
+    pattern = re.compile(r'\bfootnote\s+\{ref\}`fn-([A-Za-z0-9_-]+)`')
+
+    def repl(m: re.Match) -> str:
+        name = m.group(1)
+        original = name.replace('-', ':')
+        return f'the previous footnote <!-- LaTeX-source: \\ref{{fn:{original}}} -->'
+
+    return pattern.sub(repl, text)
+
+
+def ensure_blank_after_display_math(text: str) -> str:
+    """Ensure a blank line follows the closing ``$$`` of every display-math block.
+
+    Pandoc emits display math followed immediately by the next prose paragraph.
+    MyST renders this fine but the source is harder to read, and some renderers
+    attach the next paragraph too tightly. Inserting a blank line keeps output
+    identical while improving source readability.
+
+    Skips fenced code blocks. Tracks display-math state so the rule fires only
+    on the closing delimiter, not the opening one.
+    """
+    lines = text.split('\n')
+    out: list[str] = []
+    in_fence = False
+    in_math_block = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_fence = not in_fence
+            out.append(line)
+            continue
+        if in_fence:
+            out.append(line)
+            continue
+        # Display-math delimiter: first non-whitespace token is `$$`, optionally
+        # followed by ` (label)` on the closing line.
+        is_dm_delim = (
+            stripped == '$$'
+            or stripped.startswith('$$ ')
+            or stripped.startswith('$$(')
+        )
+        if is_dm_delim:
+            was_open = in_math_block
+            in_math_block = not in_math_block
+            out.append(line)
+            # If this was the closing delimiter, ensure next line is blank.
+            if was_open and i + 1 < len(lines) and lines[i + 1].strip() != '':
+                out.append('')
+            continue
+        out.append(line)
+    return '\n'.join(out)
+
+
 def cleanup_typography(text: str) -> str:
     """Clean up remaining TeX artifacts."""
     # Remove standalone % comment lines (LaTeX comments that KaTeX can't handle)
@@ -1042,6 +1145,7 @@ def process_file(input_path: Path, output_path: Path = None):
     text = convert_environment_divs(text)
     text = convert_equations(text)
     text = convert_cross_references(text)
+    text = strip_doubled_noun_refs(text)           # needs MyST refs in place
     text = convert_figures(text)
     text = convert_html_figures(text)
     text = resolve_tikz_figures(text, stem)
@@ -1049,7 +1153,9 @@ def process_file(input_path: Path, output_path: Path = None):
     text = convert_citations(text)
     text = convert_standalone_labels(text)
     text = join_split_inline_math(text)
-    text = cleanup_typography(text)
+    text = ensure_blank_after_display_math(text)   # adds blank lines
+    text = cleanup_typography(text)                # caps blank-line runs
+    text = strip_footnote_refs(text)               # operates on cleaned text
 
     title = CHAPTER_TITLES.get(stem, stem)
     text = add_frontmatter(text, title)

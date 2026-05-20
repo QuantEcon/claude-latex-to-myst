@@ -17,10 +17,21 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 008 | [Post-processing transform order is critical and fragile](lessons/008-pipeline-ordering.md) | post-processing | 🔴 | codified |
 | 009 | [BSD sed and bash 3.2 break the preprocess pipeline on macOS](lessons/009-bsd-sed-mapfile-portability.md) | tooling | 🟡 | codified |
 | 010 | [Don't rely on system Python — adopt uv so the pipeline manages its own interpreter](lessons/010-pep-668-system-python.md) | tooling | 🟢 | codified |
+| 011 | [Strip prose noun before {prf:ref} — sphinx-proof auto-renders it](lessons/011-doubled-noun-refs.md) | post-processing | 🟡 | codified |
+| 012 | [Insert blank line after closing $$ for readability](lessons/012-blank-after-display-math.md) | post-processing | 🟢 | codified |
+| 013 | [MyST cannot resolve {ref}`fn-name` to footnote anchors](lessons/013-footnote-refs-unresolvable.md) | myst | 🟢 | codified |
+| 014 | [algorithm2e bodies need a custom parser — pandoc destroys their structure](lessons/014-algorithm2e-resolution.md) | post-processing | 🔴 | **open** |
+| 015 | [Minted source listings need preprocessor + source-file inlining](lessons/015-minted-listings-resolution.md) | post-processing | 🟡 | **open** |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, **014**, **015**
 - **regex-safety:** 002
 - **katex:** 003, 006
+- **myst:** 013
 - **tooling:** 009, 010
+
+## Open (gaps to close on the next book)
+
+- **014** — algorithm2e parser (high impact, ~3–4 hours)
+- **015** — minted listings resolver (medium impact, ~1–2 hours)
