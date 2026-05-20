@@ -20,7 +20,7 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 011 | [Strip prose noun before {prf:ref} — sphinx-proof auto-renders it](lessons/011-doubled-noun-refs.md) | post-processing | 🟡 | codified |
 | 012 | [Insert blank line after closing $$ for readability](lessons/012-blank-after-display-math.md) | post-processing | 🟢 | codified |
 | 013 | [MyST cannot resolve {ref}`fn-name` to footnote anchors](lessons/013-footnote-refs-unresolvable.md) | myst | 🟢 | codified |
-| 014 | [algorithm2e bodies need a custom parser — pandoc destroys their structure](lessons/014-algorithm2e-resolution.md) | post-processing | 🔴 | **open** |
+| 014 | [algorithm2e bodies need a custom parser — pandoc destroys their structure](lessons/014-algorithm2e-resolution.md) | post-processing | 🔴 | codified |
 | 015 | [Minted source listings need preprocessor + source-file inlining](lessons/015-minted-listings-resolution.md) | post-processing | 🟡 | **open** |
 
 ## By category
@@ -33,5 +33,4 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 
 ## Open (gaps to close on the next book)
 
-- **014** — algorithm2e parser (high impact, ~3–4 hours)
 - **015** — minted listings resolver (medium impact, ~1–2 hours)

@@ -87,33 +87,81 @@ Not yet pushed to GitHub. The intended remote is
 ```bash
 cd ~/work/quantecon/claude-latex-to-myst
 git status                                          # should be clean
-git log --oneline                                   # should show the 4 commits above
+git log --oneline                                   # should show recent commits
 .venv/bin/python -c "import sys; sys.path.insert(0,'scripts'); import postprocess; print('OK')"
 bash scripts/convert.sh --help                      # auto-runs uv sync; prints usage
 ```
 
-If any of those fail, something has drifted since 2026-05-20.
+## Verification workflow (fixture-based, isolated from upstream)
 
-## How to verify the dp2 parity test still passes
+The parity tests run against `fixtures/book-dp1/` and `fixtures/book-dp2/` —
+local copies of the upstream book repos so the conversion pipeline never
+touches an in-progress branch in `../book-dp1` or `../book-dp2`. The
+`fixtures/` directory is gitignored and must be populated before testing:
 
 ```bash
-cd ~/work/quantecon/book-dp2
-git worktree add --detach ../book-dp2-pipeline-test mystmd-conversion
-mkdir -p ../book-dp2-pipeline-test/mystmd-test
-cp ~/work/quantecon/claude-latex-to-myst/examples/book-dp2/{config.yaml,tikz_overrides.py} \
-   ../book-dp2-pipeline-test/mystmd-test/
-bash ~/work/quantecon/claude-latex-to-myst/scripts/convert.sh \
-  --config ../book-dp2-pipeline-test/mystmd-test/config.yaml
+bash scripts/setup_fixtures.sh                 # bootstrap dp1 + dp2
+bash scripts/setup_fixtures.sh --refresh dp1   # re-sync just dp1
+```
 
-# Expected drift: ~440 cosmetic blank-line additions + 1 ch_adps2.md
+Override the upstream locations with `BOOK_DP1_SRC=/path BOOK_DP2_SRC=/path`
+if the sibling repos live elsewhere.
+
+### dp2 parity smoke test
+
+```bash
+mkdir -p fixtures/book-dp2/mystmd-test
+cp examples/book-dp2/{config.yaml,tikz_overrides.py} fixtures/book-dp2/mystmd-test/
+bash scripts/convert.sh --config fixtures/book-dp2/mystmd-test/config.yaml
+
+# Expected drift: ~440 cosmetic blank-line additions plus 1 ch_adps2.md
 # semantic change (Theorem~\ref → just the ref). See
 # reports/book-dp2-parity.md for the precise numbers.
-diff -r ../book-dp2-pipeline-test/mystmd/ \
-       ../book-dp2-pipeline-test/mystmd-test/ | head -20
+diff -r fixtures/book-dp2/mystmd/ fixtures/book-dp2/mystmd-test/ | head -20
+rm -rf fixtures/book-dp2/mystmd-test
+```
 
-# Cleanup
-cd ~/work/quantecon/book-dp2
-git worktree remove --force ../book-dp2-pipeline-test
+### dp1 algorithm-block parity (gap #014 regression test)
+
+```bash
+mkdir -p fixtures/book-dp1/mystmd-test
+cat > fixtures/book-dp1/mystmd-test/config.yaml <<'EOF'
+source_dir: "../book"
+output_dir: "."
+tmp_dir: "./tmp"
+chapters:
+  - { stem: ch_intro,     title: "Introduction" }
+  - { stem: ch_mdps,      title: "MDPs" }
+  - { stem: ch_rdps,      title: "RDPs" }
+  - { stem: ch_state_dep, title: "State-Dependent Dynamics" }
+  - { stem: ch_ctime,     title: "Continuous Time" }
+extra_files: []
+bibliography: null
+figures_dir: null
+preprocess:
+  strip: ['\\index\{[^}]*\}', '\\clearpage', '\\newpage', '\\noindent', '\\vspace\{[^}]*\}']
+  rewrites:
+    - { from: '\\navy\{', to: '\\textbf{' }
+tikz_overrides: null
+validate:
+  equations: false
+  cross_references: false
+  theorems: false
+  figures: false
+  citations: false
+EOF
+bash scripts/convert.sh --config fixtures/book-dp1/mystmd-test/config.yaml
+
+# All five chapters should produce byte-identical {prf:algorithm} directives
+# to the upstream dp1 mystmd output.
+for ch in ch_intro ch_mdps ch_rdps ch_state_dep ch_ctime; do
+  awk '/^```{prf:algorithm}/{flag=1} flag{print} /^```$/ && flag{flag=0; print "==="}' \
+    fixtures/book-dp1/mystmd/$ch.md > /tmp/dp1.txt
+  awk '/^```{prf:algorithm}/{flag=1} flag{print} /^```$/ && flag{flag=0; print "==="}' \
+    fixtures/book-dp1/mystmd-test/$ch.md > /tmp/ours.txt
+  if diff -q /tmp/dp1.txt /tmp/ours.txt >/dev/null; then echo "$ch: ✓"; else echo "$ch: ✗"; fi
+done
+rm -rf fixtures/book-dp1/mystmd-test
 ```
 
 ## What's outstanding

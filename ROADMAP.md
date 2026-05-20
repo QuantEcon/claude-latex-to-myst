@@ -3,43 +3,18 @@
 What to work on next, in priority order. Each item lists rough effort,
 expected impact, and pointers to the relevant lesson(s) or report(s).
 
+## Recently closed
+
+- **#014 — algorithm2e support** (closed 2026-05-20). Ported as
+  `scripts/_apply_algorithm_markers.py` + `postprocess.py::resolve_algorithms`.
+  Algorithm directives on all five dp1 chapters with algorithm2e blocks
+  (ch_intro, ch_mdps, ch_rdps, ch_state_dep, ch_ctime) are byte-identical
+  to dp1's committed output. Surfaced and fixed an unrelated regex bug
+  in `convert_equations` (see lesson 014's "Side bug fixed during port").
+
 ## Open issues (prioritised)
 
-### 🔴 1. Close gap #014 — algorithm2e support
-
-**Effort:** ~3–4 hours
-**Impact:** High. Any book using `algorithm2e` (most theoretical CS / OR /
-dynamic-programming texts) is unusable without this — pandoc destroys the
-algorithm body structure and our pipeline currently produces a flat
-run-on paragraph instead of the structured `\KwIn` / `\While` / `\Repeat`
-bullet list.
-
-**What it requires:**
-
-- Port `_rewrite_algorithms.pl` (~70 lines Perl) to Python. Per lesson
-  [009](lessons/009-bsd-sed-mapfile-portability.md), the tool should be
-  Python-only — no Perl dependency.
-- Port `_algo_convert_body` (~130 lines) from `book-dp1/mystmd/scripts/postprocess.py`.
-  Recursive parser for algorithm2e control commands; uses balanced-brace
-  matching.
-- Port `resolve_algorithms` (~40 lines) — the marker-finding wrapper.
-- Wire into `process_file` after `convert_environment_divs`, before
-  `convert_cross_references` (algorithms can contain refs that need to be
-  converted).
-- Add the preprocessor invocation to `_apply_rewrites.py` or a new
-  `_apply_algorithm_markers.py` step (it has to run on the .tex source
-  *before* pandoc, and emit base64-encoded markers).
-
-Reference implementation: `book-dp1/mystmd/scripts/` files cited in
-[lesson 014](lessons/014-algorithm2e-resolution.md).
-
-**Test:** Re-run dp1 parity after porting; expect algorithm bodies to
-match dp1's bullet-list output. Verify dp2 unaffected (dp2 has no
-`algorithm2e` blocks).
-
----
-
-### 🟡 2. Close gap #015 — minted listings
+### 🟡 1. Close gap #015 — minted listings
 
 **Effort:** ~1–2 hours
 **Impact:** Medium. Affects any book embedding code listings via minted
@@ -62,7 +37,7 @@ directives with `:name:` for `{numref}` cross-references.
 
 ---
 
-### 🟡 3. Regenerate `book-dp2/mystmd/` to absorb pipeline improvements
+### 🟡 2. Regenerate `book-dp2/mystmd/` to absorb pipeline improvements
 
 **Effort:** ~30 minutes
 **Impact:** Low (cosmetic) but ongoing — every future maintenance run
@@ -83,7 +58,7 @@ detailed numbers.
 
 ---
 
-### 🟢 4. Promote `examples/book-dp1/` config
+### 🟢 3. Promote `examples/book-dp1/` config
 
 **Effort:** ~30 minutes
 **Impact:** Low. Anyone wanting to convert dp1 in the future re-derives the
@@ -108,7 +83,7 @@ config that worked.
 
 ---
 
-### 🟢 5. `frontmatter_style` config flag
+### 🟢 4. `frontmatter_style` config flag
 
 **Effort:** ~1 hour
 **Impact:** Low (stylistic) — but unblocks dp1 adoption if dp1 wants to
@@ -126,7 +101,7 @@ Touches: `postprocess.py::add_frontmatter`, `config.example.yaml`.
 
 ---
 
-### 🟢 6. (Optional) `whitespace_compression` config flag
+### 🟢 5. (Optional) `whitespace_compression` config flag
 
 **Effort:** ~2 hours
 **Impact:** Low.
@@ -148,8 +123,9 @@ and listing gaps.
 ### Adopt this tool inside `book-dp1` PR #336
 
 [PR #336](https://github.com/QuantEcon/book-dp1/pull/336) is the dp1
-mystmd conversion. It currently uses a fork of dp2's pipeline. Once
-gaps #014 and #015 are closed (and the optional flag #5 is in), dp1 could
+mystmd conversion. It currently uses a fork of dp2's pipeline. With #014
+closed, only #015 (minted listings) and the optional `frontmatter_style`
+flag remain before dp1 could
 switch its `mystmd/scripts/` to be a thin wrapper that calls into
 `claude-latex-to-myst`:
 

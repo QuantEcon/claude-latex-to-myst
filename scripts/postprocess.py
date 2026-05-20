@@ -21,6 +21,7 @@ chapter listed in the config is processed.
 """
 
 import argparse
+import base64
 import importlib.util
 import re
 import sys
@@ -441,9 +442,14 @@ def convert_equations(text: str) -> str:
     )
     
     # Ensure opening $$ of equation blocks is separated from preceding text.
-    # Match: non-$ char, whitespace, then $$ followed by newline.
+    # Match: any non-newline char, horizontal whitespace, then $$ followed by
+    # newline. Allows the preceding char to be ``$`` — pandoc routinely emits
+    # ``$\Xsf$ $$`` when an inline-math closer abuts a display-math opener;
+    # without this, the opener sticks to the prose line and MyST treats the
+    # whole thing as inline math, throwing the block state-machine downstream
+    # into the wrong mode and stripping blank lines for the rest of the file.
     text = re.sub(
-        r'([^\n$])\s+\$\$\n',
+        r'([^\n])[ \t]+\$\$\n',
         r'\1\n\n$$\n',
         text
     )
@@ -1049,6 +1055,215 @@ def cleanup_typography(text: str) -> str:
     return text
 
 
+# ── algorithm2e → {prf:algorithm} ────────────────────────────────────────────
+#
+# Algorithm bodies are intercepted before pandoc by
+# scripts/_apply_algorithm_markers.py, which base64-encodes them inside an
+# HTML comment marker. Here we decode the markers, parse the algorithm2e
+# control commands (``\While``, ``\For``, ``\KwIn`` etc.) into nested bullet
+# lists, and emit a {prf:algorithm} directive.
+#
+# Reference: book-dp1/mystmd/scripts/postprocess.py.
+
+def _algo_find_balanced(s: str, start: int) -> int:
+    """Given ``s[start] == '{'``, return the index of the matching ``}``
+    (inclusive). Returns -1 if unbalanced.
+    """
+    if start >= len(s) or s[start] != '{':
+        return -1
+    depth = 0
+    i = start
+    while i < len(s):
+        c = s[i]
+        if c == '{':
+            depth += 1
+        elif c == '}':
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+def _algo_convert_body(body: str) -> str:
+    """Convert an algorithm2e body to a Markdown bullet list.
+
+    Recognises:
+      - ``\\DontPrintSemicolon``, ``\\SetAlgoLined``, ``\\vspace{..}``,
+        ``\\index{..}`` : dropped
+      - ``\\;`` : statement terminator (bullet boundary)
+      - ``\\While{C}{B}``, ``\\For{C}{B}``, ``\\ForEach{C}{B}`` : control block
+      - ``\\If{C}{B}``, ``\\uIf{C}{B}``, ``\\ElseIf{C}{B}`` : conditional block
+      - ``\\lIf{C}{B}`` : single-line conditional (no nested bullets)
+      - ``\\Repeat{B}`` : one-arg control block (header "repeat:")
+      - ``\\Return{X}``, ``\\KwResult{X}``, ``\\KwIn{X}``, ``\\KwOut{X}`` :
+        one-arg statement
+      - ``\\navy{x}``, ``\\textbf{x}`` : bold
+
+    Statements are emitted as bullet items; nested blocks are indented under
+    their header. The parser is recursive so deeply-nested ``\\While``/``\\If``
+    structures expand correctly.
+    """
+    s = body
+
+    # Source-LaTeX indentation is incidental; only the structural indentation
+    # produced by recursive expansion below should survive into the output.
+    s = '\n'.join(line.lstrip(' \t') for line in s.split('\n'))
+
+    # Drop noise commands.
+    s = re.sub(r'\\DontPrintSemicolon', '', s)
+    s = re.sub(r'\\SetAlgoLined', '', s)
+    s = re.sub(r'\\vspace\{[^}]*\}', '', s)
+    s = re.sub(r'\\index\{[^}]*\}', '', s)
+    s = re.sub(r'\\navy\{([^}]*)\}', r'**\1**', s)
+    s = re.sub(r'\\textbf\{([^}]*)\}', r'**\1**', s)
+
+    # Repeatedly expand control blocks (innermost first via simple loop).
+    def expand_one(text: str) -> tuple[str, bool]:
+        # Two-arg control blocks.
+        for cmd, header_fmt in (
+            ('While',   'while {}:'),
+            ('For',     'for {}:'),
+            ('ForEach', 'for each {}:'),
+            ('If',      'if {}:'),
+            ('uIf',     'if {}:'),
+            ('ElseIf',  'else if {}:'),
+            ('lIf',     'if {}: {}'),
+        ):
+            pat = re.compile(r'\\' + cmd + r'\s*\{')
+            m = pat.search(text)
+            if not m:
+                continue
+            i = m.end() - 1  # position of '{'
+            j = _algo_find_balanced(text, i)
+            if j < 0:
+                continue
+            cond = text[i + 1 : j]
+            # Find next '{' for body.
+            k = j + 1
+            while k < len(text) and text[k] in ' \t\n':
+                k += 1
+            if k >= len(text) or text[k] != '{':
+                continue
+            l = _algo_find_balanced(text, k)
+            if l < 0:
+                continue
+            body_inner = text[k + 1 : l]
+            cond = cond.strip()
+            body_inner = _algo_convert_body(body_inner).strip()
+            if cmd == 'lIf':
+                # Single-line if: "if cond: body" (no nested bullets).
+                inner_flat = re.sub(r'\s+', ' ', body_inner.lstrip('-').strip())
+                replacement = f'\\NEWLINE\\if {cond}: {inner_flat}\\NEWLINE\\'
+            else:
+                indented = '\n'.join('  ' + ln for ln in body_inner.split('\n'))
+                replacement = (
+                    f'\\NEWLINE\\{header_fmt.format(cond)}\\NEWLINE\\'
+                    f'{indented}\\NEWLINE\\'
+                )
+            return text[: m.start()] + replacement + text[l + 1 :], True
+
+        # \Repeat{body}: one-arg control block.
+        m = re.search(r'\\Repeat\s*\{', text)
+        if m:
+            i = m.end() - 1
+            j = _algo_find_balanced(text, i)
+            if j > 0:
+                body_inner = text[i + 1 : j]
+                body_inner = _algo_convert_body(body_inner).strip()
+                indented = '\n'.join('  ' + ln for ln in body_inner.split('\n'))
+                replacement = (
+                    f'\\NEWLINE\\repeat:\\NEWLINE\\{indented}\\NEWLINE\\'
+                )
+                return text[: m.start()] + replacement + text[j + 1 :], True
+
+        # One-arg statement commands.
+        for cmd, fmt in (
+            ('Return',   'return {}'),
+            ('KwResult', 'result: {}'),
+            ('KwIn',     'input: {}'),
+            ('KwOut',    'output: {}'),
+        ):
+            pat = re.compile(r'\\' + cmd + r'\s*\{')
+            m = pat.search(text)
+            if not m:
+                continue
+            i = m.end() - 1
+            j = _algo_find_balanced(text, i)
+            if j < 0:
+                continue
+            arg = text[i + 1 : j].strip()
+            replacement = fmt.format(arg)
+            return text[: m.start()] + replacement + text[j + 1 :], True
+
+        return text, False
+
+    changed = True
+    while changed:
+        s, changed = expand_one(s)
+
+    # Split on statement terminators (``\;``) and ``\NEWLINE\`` placeholders
+    # to produce bullet items. Indent from recursive expansion is preserved.
+    s = s.replace('\\;', '\\NEWLINE\\')
+    parts = re.split(r'\\NEWLINE\\', s)
+    out_lines: list[str] = []
+    for p in parts:
+        for line in p.split('\n'):
+            stripped = line.lstrip(' ')
+            indent = len(line) - len(stripped)
+            content = re.sub(r'\s+', ' ', stripped).strip()
+            if not content:
+                continue
+            pad = ' ' * indent
+            if content.startswith('- '):
+                out_lines.append(f'{pad}{content}')
+            else:
+                out_lines.append(f'{pad}- {content}')
+
+    return '\n'.join(out_lines).strip()
+
+
+def resolve_algorithms(text: str) -> str:
+    """Replace ALGORITHM markers with ``{prf:algorithm}`` directives.
+
+    Marker format (emitted by _apply_algorithm_markers.py):
+        <!--ALGORITHM name=NAME title=TITLE TEXT body=BASE64-->
+
+    The body is base64-encoded so pandoc passes it through verbatim
+    (otherwise pandoc would strip ``\\;`` and reformat ``\\While`` etc.).
+    Pandoc may escape ``<`` to ``\\<``; the regex tolerates both forms.
+    """
+    pattern = re.compile(
+        r'\\?<!--ALGORITHM\s+'
+        r'name=(?P<name>\S+)\s+'
+        r'title=(?P<title>.*?)\s+'
+        r'body=(?P<body>[A-Za-z0-9+/=]+)--\\?>',
+        re.DOTALL,
+    )
+
+    def repl(m: re.Match) -> str:
+        name = m.group('name').strip()
+        title = (m.group('title') or '').strip()
+        body_b64 = m.group('body').strip()
+        try:
+            body = base64.b64decode(body_b64).decode('utf-8')
+        except Exception:
+            body = ''
+        converted = _algo_convert_body(body)
+        out = []
+        if title:
+            out.append(f'```{{prf:algorithm}} {title}')
+        else:
+            out.append('```{prf:algorithm}')
+        out.append(f':label: {name}')
+        out.append('')
+        out.append(converted)
+        out.append('```')
+        return '\n'.join(out)
+
+    return pattern.sub(repl, text)
+
+
 def add_frontmatter(text: str, title: str) -> str:
     """Add YAML frontmatter to the file, removing any existing frontmatter
     and absorbing the (label)= / # Title heading into the frontmatter.
@@ -1143,6 +1358,7 @@ def process_file(input_path: Path, output_path: Path = None):
     text = fix_text_dollar(text)
     text = convert_epigraphs(text)
     text = convert_environment_divs(text)
+    text = resolve_algorithms(text)                # decode algorithm2e markers
     text = convert_equations(text)
     text = convert_cross_references(text)
     text = strip_doubled_noun_refs(text)           # needs MyST refs in place

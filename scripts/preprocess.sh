@@ -82,6 +82,12 @@ for ch in "${CHAPTER_STEMS[@]}"; do
   # BSD vs GNU sed portability traps and shell quoting hell.
   python3 "$SCRIPT_DIR/_apply_rewrites.py" "$CONFIG" "$dst"
 
+  # Replace \begin{algorithm}...\end{algorithm} (algorithm2e) with marker
+  # comments. Pandoc would otherwise destroy the body structure. The
+  # postprocess step decodes the markers into {prf:algorithm} directives.
+  # No-op for sources that contain no algorithm blocks.
+  python3 "$SCRIPT_DIR/_apply_algorithm_markers.py" "$dst"
+
   echo "  Preprocessed: ${ch}.tex"
 done
 

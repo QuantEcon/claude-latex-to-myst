@@ -2,10 +2,10 @@
 id: 014
 title: "algorithm2e bodies need a custom parser — pandoc destroys their structure"
 category: post-processing
-tags: [algorithms, algorithm2e, pandoc, gap]
+tags: [algorithms, algorithm2e, pandoc]
 source_project: book-dp1 (parity test, gap identified)
-status: open
-codified_in: TODO — see book-dp1/mystmd/scripts/postprocess.py for reference implementation
+status: codified
+codified_in: scripts/_apply_algorithm_markers.py + postprocess.py::resolve_algorithms
 severity: high
 date: 2026-05-20
 ---
@@ -80,23 +80,46 @@ The dp1 implementation is the reference. It works in three steps:
    The parser is ~130 lines (`_algo_convert_body`) and uses balanced-brace
    matching (`_algo_find_balanced`).
 
-## Why this is "open" not "codified"
+## Codified implementation
 
-Porting requires either:
-- Rewriting the Perl preprocessor in Python (per lesson #009 — keep all
-  regex work in Python), OR
-- Adding a Perl dependency to the tool (regression on lesson #009)
+Ported from dp1 in three pieces, all Python (no Perl, per lesson #009):
 
-Plus the 130-line algorithm-body parser. Estimated 3–4 hours of careful
-work. Not yet done because:
-- algorithm2e is common but not universal (dp2 doesn't use it)
-- The current behavior is a clear, easy-to-diagnose failure rather than a
-  silent corruption — users can see immediately that algorithm blocks need
-  manual fixing
-- Better to ship the simpler transforms first and add this when the next
-  book actually needs it
+1. **`scripts/_apply_algorithm_markers.py`** — replaces the dp1 Perl
+   preprocessor. Run inside `preprocess.sh` after `_apply_rewrites.py`,
+   before pandoc. Walks the `.tex` source, extracts `\caption{\label{...} ...}`,
+   base64-encodes the body, and emits one `<!--ALGORITHM name=... title=...
+   body=BASE64-->` marker per algorithm. Blocks without a caption get an
+   auto-generated label `algo-{chapter}-auto-{N}` so cross-refs still work.
 
-## How to detect
+2. **`postprocess.py::_algo_convert_body`** — ~130-line recursive parser
+   for algorithm2e control commands (`\While`, `\For`, `\If`, `\uIf`,
+   `\ElseIf`, `\lIf`, `\Repeat`, `\Return`, `\KwIn`, `\KwOut`, `\KwResult`).
+   Uses balanced-brace matching (`_algo_find_balanced`) and a `\NEWLINE\`
+   placeholder to track statement boundaries.
+
+3. **`postprocess.py::resolve_algorithms`** — finds the markers in the
+   post-pandoc text (tolerating pandoc's `\<...\>` escaping) and emits
+   `{prf:algorithm}` directives. Wired into `process_file` between
+   `convert_environment_divs` and `convert_equations`.
+
+Verified byte-identical to dp1's committed output for ch_intro, ch_mdps,
+ch_rdps, ch_state_dep, ch_ctime (the five chapters with algorithm2e blocks).
+
+## Side bug fixed during port
+
+The verification surfaced a regex bug in `convert_equations` independent
+of algorithm2e support. Pandoc emits `$\Xsf$ $$` when an inline-math
+closer abuts a display-math opener (LaTeX source: `$\Xsf$\n%\n\begin{equation*}`).
+The "Ensure opening `$$` separated from preceding text" regex previously
+used `([^\n$])\s+\$\$\n`, excluding `$` from the character class. This
+caused the opener to stick to the prose line, MyST parsed it as inline
+math, and the downstream blank-line state-machine got stuck `in_math`
+for the rest of the file — stripping every subsequent blank line.
+
+Fix: change to `([^\n])[ \t]+\$\$\n` (matches dp1; allows `$` before
+whitespace, restricts to horizontal whitespace only).
+
+## How to detect a regression
 
 ```bash
 grep -A 5 '```{prf:algorithm}' mystmd/ch_*.md | grep -v '^--$' | head -30
@@ -105,8 +128,8 @@ grep -A 5 '```{prf:algorithm}' mystmd/ch_*.md | grep -v '^--$' | head -30
 If the body is one flat paragraph instead of a bullet list, the algorithm
 body wasn't reconstructed.
 
-## Reference implementation
+## Reference implementation (historical)
 
-- `book-dp1/mystmd/scripts/_rewrite_algorithms.pl` (70 lines, Perl)
-- `book-dp1/mystmd/scripts/postprocess.py::_algo_convert_body` (~130 lines)
-- `book-dp1/mystmd/scripts/postprocess.py::resolve_algorithms` (~40 lines)
+- `book-dp1/mystmd/scripts/_rewrite_algorithms.pl` (70 lines, Perl) — replaced
+- `book-dp1/mystmd/scripts/postprocess.py::_algo_convert_body` (~130 lines) — ported
+- `book-dp1/mystmd/scripts/postprocess.py::resolve_algorithms` (~40 lines) — ported
