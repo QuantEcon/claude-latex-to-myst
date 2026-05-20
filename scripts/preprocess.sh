@@ -57,9 +57,6 @@ while IFS= read -r line; do
   [[ -n "$line" ]] && CHAPTER_STEMS+=("$line")
 done < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" extra_files.stem)
 
-# Read strip patterns, simple rewrites, and perl scripts from config
-mapfile -t STRIP_PATTERNS < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" preprocess.strip)
-
 for ch in "${CHAPTER_STEMS[@]}"; do
   src="$SOURCE_DIR/${ch}.tex"
   dst="$TMP_DIR/${ch}.tex"
@@ -71,13 +68,8 @@ for ch in "${CHAPTER_STEMS[@]}"; do
 
   cp "$src" "$dst"
 
-  # 1. Strip patterns (each becomes `s/PATTERN//g`)
-  for pat in "${STRIP_PATTERNS[@]}"; do
-    [[ -z "$pat" ]] && continue
-    sedi "s/${pat}//g" "$dst"
-  done
-
-  # 2. Custom rewrites (handled via a small Python helper for safety)
+  # All sed-style transforms (strip + rewrites + perl) run in Python — avoids
+  # BSD vs GNU sed portability traps and shell quoting hell.
   python3 "$SCRIPT_DIR/_apply_rewrites.py" "$CONFIG" "$dst"
 
   echo "  Preprocessed: ${ch}.tex"

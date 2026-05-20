@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Apply preprocess.rewrites and preprocess.perl_scripts to a single .tex file.
+"""Apply preprocess.strip and preprocess.rewrites to a single .tex file.
 
-Reads the config, finds the rewrite rules, applies them in place.
+Reads the config, finds the rules, applies them in place. All transforms are
+Python re.sub — no sed (BSD/GNU portability traps) and no perl (extra dep).
 
 Usage:
     _apply_rewrites.py CONFIG_PATH TEX_FILE
 """
 
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -22,20 +22,21 @@ def main():
     tex_file = Path(sys.argv[2])
 
     pre = config.get('preprocess') or {}
-
-    # Simple rewrites: { from: pattern, to: replacement }
     text = tex_file.read_text(encoding='utf-8')
+
+    # 1. Strip patterns: regexes to delete (replace with empty)
+    for pat in pre.get('strip') or []:
+        if not pat:
+            continue
+        text = re.sub(pat, '', text)
+
+    # 2. Search-and-replace: { from: regex, to: replacement }
     for rule in pre.get('rewrites') or []:
         if not rule:
             continue
         text = re.sub(rule['from'], rule['to'], text)
-    tex_file.write_text(text, encoding='utf-8')
 
-    # Perl one-liners (some patterns need lookahead / multi-line)
-    for script in pre.get('perl_scripts') or []:
-        if not script:
-            continue
-        subprocess.run(['perl', '-i', '-0pe', script, str(tex_file)], check=True)
+    tex_file.write_text(text, encoding='utf-8')
 
 
 if __name__ == '__main__':

@@ -21,18 +21,25 @@ for the catalogue.
 ## Quick start
 
 ```bash
-# 1. Clone this template into your book repo, or copy scripts/ into it
+# 1. Clone this template alongside your book repo
 git clone https://github.com/QuantEcon/claude-latex-to-myst.git
-cd your-book/
+cd claude-latex-to-myst
 
-# 2. Copy config and edit for your project
-cp claude-latex-to-myst/config.example.yaml mystmd/config.yaml
+# 2. Set up a venv with PyYAML (system Python is usually PEP 668-locked)
+uv venv .venv --python 3.12        # or: python3 -m venv .venv
+uv pip install --python .venv/bin/python -r requirements.txt
+
+# 3. In your book repo, copy config and edit for your project
+cd ../your-book/
+mkdir -p mystmd
+cp ../claude-latex-to-myst/config.example.yaml mystmd/config.yaml
 $EDITOR mystmd/config.yaml          # set chapter list, bib filename, etc.
 
-# 3. Run the pipeline
-bash claude-latex-to-myst/scripts/convert.sh --config mystmd/config.yaml
+# 4. Run the pipeline (point PATH at the venv so python3 finds pyyaml)
+PATH="../claude-latex-to-myst/.venv/bin:$PATH" \
+  bash ../claude-latex-to-myst/scripts/convert.sh --config mystmd/config.yaml
 
-# 4. Build and preview
+# 5. Build and preview
 cd mystmd && myst build --html && myst start
 ```
 

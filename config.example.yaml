@@ -61,39 +61,41 @@ figures_dir: "figures"
 
 # --- LaTeX pre-processing ---------------------------------------------------
 #
-# Each entry is a sed-style substitution applied to a *copy* of the .tex
-# source before pandoc sees it. The originals are never modified.
+# Patterns are Python regexes (re module syntax), applied via re.sub to a copy
+# of each .tex file in tmp_dir. The originals are never modified.
 #
-# Use this for custom macros pandoc can't handle. Common patterns:
-#   - `\navy{...}` → `\textbf{...}` (preserve content via a known macro)
-#   - Strip presentational commands (\index, \vspace, \clearpage)
+# YAML quoting: use single-quoted strings so backslashes don't need to be
+# doubled (`'\\index\{...\}'` produces the regex `\\index\{...\}` — a literal
+# backslash + `index`). Double-quoted YAML strings would require `"\\\\..."`.
 #
-# Two forms:
-#   - simple: a sed substitution string passed to `sed -E`
-#   - perl:   a Perl one-liner for multi-line or multi-char-lookahead patterns
+# Use this for:
+#   - Custom macros pandoc can't handle (e.g., `\navy{...}` → `\textbf{...}`)
+#   - Stripping presentational commands (\index, \vspace, \clearpage)
+#   - Unwrapping wrapping commands (\scalebox)
+#   - Replacing \input{tikz/...} with a placeholder
 
 preprocess:
-  # Strip these commands (they have no MyST equivalent)
+  # Patterns to delete (replaced with empty string)
   strip:
-    - "\\\\index\\{[^}]*\\}"
-    - "\\\\clearpage"
-    - "\\\\newpage"
-    - "\\\\noindent"
-    - "\\\\vspace\\{[^}]*\\}"
+    - '\\index\{[^}]*\}'
+    - '\\clearpage'
+    - '\\newpage'
+    - '\\noindent'
+    - '\\vspace\{[^}]*\}'
 
-  # Custom macro rewrites (sed substitutions, BSD-compatible)
-  # Each entry: { from: pattern, to: replacement }
+  # Search-and-replace rules. Use \1, \2 for capture group backreferences.
+  # Each entry: { from: regex, to: replacement }
   rewrites:
     # Example from book-dp2: \navy{text} → \textbf{text}
-    # - { from: "\\\\navy\\{", to: "\\\\textbf{" }
+    # - { from: '\\navy\{', to: '\\textbf{' }
 
-  # Perl one-liners for transforms that sed can't express
-  # Each entry is a Perl script that operates on the file in place
-  perl_scripts:
     # Unwrap \scalebox{N}{\includegraphics{...}}
-    - "s/\\\\scalebox\\{[0-9.]+\\}\\s*\\{\\s*(\\\\includegraphics[^}]*\\{[^}]*\\})\\s*\\}/$1/g"
+    # - { from: '\\scalebox\{[0-9.]+\}\s*\{\s*(\\includegraphics[^}]*\{[^}]*\})\s*\}',
+    #     to: '\1' }
+
     # Hoist \label out of algorithm \caption{} so pandoc preserves it
-    - "s/\\\\caption\\{\\\\label\\{(algo:[^}]+)\\}\\s*([^}]*)\\}/\\\\label{$1}\\\\caption{$2}/g"
+    # - { from: '\\caption\{\\label\{(algo:[^}]+)\}\s*([^}]*)\}',
+    #     to: '\\label{\1}\\caption{\2}' }
 
 # --- TikZ handling ----------------------------------------------------------
 

@@ -24,24 +24,28 @@ bibliography: "qe_bib.bib"
 figures_dir: "figures"
 
 preprocess:
+  # Patterns are Python regexes (re module syntax). YAML strings need
+  # double-backslash to produce a single literal backslash in the regex.
+
   strip:
-    - "\\\\index\\{[^}]*\\}"
-    - "\\\\clearpage"
-    - "\\\\newpage"
-    - "\\\\noindent"
-    - "\\\\vspace\\{[^}]*\\}"
+    - '\\index\{[^}]*\}'
+    - '\\clearpage'
+    - '\\newpage'
+    - '\\noindent'
+    - '\\vspace\{[^}]*\}'
 
   rewrites:
     # \navy{text} → \textbf{text} (preserve content via known macro)
-    - { from: "\\\\navy\\{", to: "\\\\textbf{" }
-
-  perl_scripts:
+    - { from: '\\navy\{', to: '\\textbf{' }
     # Unwrap \scalebox{N}{\includegraphics{...}}
-    - "s/\\\\scalebox\\{[0-9.]+\\}\\s*\\{\\s*(\\\\includegraphics[^}]*\\{[^}]*\\})\\s*\\}/$1/g"
+    - { from: '\\scalebox\{[0-9.]+\}\s*\{\s*(\\includegraphics[^}]*\{[^}]*\})\s*\}',
+        to: '\1' }
     # Hoist \label out of algorithm \caption{}
-    - "s/\\\\caption\\{\\\\label\\{(algo:[^}]+)\\}\\s*([^}]*)\\}/\\\\label{$1}\\\\caption{$2}/g"
-    # \input{tikz/foo} → placeholder
-    - "s/\\\\input\\{tikz\\/([^}]+)\\}/% TIKZ: $1 (needs manual conversion)/g"
+    - { from: '\\caption\{\\label\{(algo:[^}]+)\}\s*([^}]*)\}',
+        to: '\\label{\1}\\caption{\2}' }
+    # \input{tikz/foo} → placeholder comment
+    - { from: '\\input\{tikz/([^}]+)\}',
+        to: '% TIKZ: \1 (needs manual conversion)' }
 
 tikz_overrides: "tikz_overrides.py"
 
