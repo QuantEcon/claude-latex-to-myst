@@ -266,6 +266,62 @@ def test_frontmatter_idempotent_absorbed():
     assert once == twice
 
 
+def test_frontmatter_per_call_style_override_to_standalone():
+    """add_frontmatter's `style` arg lets a single call use standalone
+    even when the module default is absorbed — needed for books with
+    mixed conventions (numbered chapters absorbed, front-matter
+    standalone, or vice versa)."""
+    postprocess._FRONTMATTER_STYLE = "absorbed"
+    body = "(c-foo)=\n# Foo\n\nBody.\n"
+    out = postprocess.add_frontmatter(body, "Foo", style="standalone")
+    assert not out.startswith("---\n")
+    assert out.startswith("(c-foo)=\n# Foo")
+
+
+def test_frontmatter_per_call_style_override_to_absorbed():
+    postprocess._FRONTMATTER_STYLE = "standalone"
+    body = "(c-foo)=\n# Foo\n\nBody.\n"
+    out = postprocess.add_frontmatter(body, "Foo", style="absorbed")
+    assert out.startswith("---\n")
+    assert "label: c-foo" in out
+
+
+def test_chapter_styles_populated_from_config():
+    """apply_config should pick up per-stem `frontmatter_style` from
+    chapters[] and extra_files[] entries, and leave unspecified stems
+    out of the override map (so they inherit the global default)."""
+    cfg = {
+        "source_dir": ".",
+        "frontmatter_style": "standalone",
+        "chapters": [
+            {"stem": "ch_intro", "title": "Intro"},
+            {"stem": "ch_other", "title": "Other", "frontmatter_style": "absorbed"},
+        ],
+        "extra_files": [
+            {"stem": "preface", "title": "Preface", "frontmatter_style": "absorbed"},
+        ],
+    }
+    postprocess.apply_config(cfg)
+    assert postprocess.CHAPTER_STYLES == {
+        "ch_other": "absorbed",
+        "preface": "absorbed",
+    }
+    # Restore default for other tests.
+    postprocess._FRONTMATTER_STYLE = "absorbed"
+
+
+def test_chapter_styles_rejects_invalid_value():
+    cfg = {
+        "source_dir": ".",
+        "chapters": [
+            {"stem": "ch_x", "title": "X", "frontmatter_style": "weird"},
+        ],
+    }
+    with pytest.raises(SystemExit) as exc:
+        postprocess.apply_config(cfg)
+    assert "frontmatter_style" in str(exc.value)
+
+
 def test_frontmatter_standalone_synthesises_when_missing():
     """If a body has been processed once in absorbed mode and then re-run
     in standalone mode, the (label)= heading should be reconstructed

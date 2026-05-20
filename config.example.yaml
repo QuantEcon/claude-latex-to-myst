@@ -39,6 +39,13 @@ chapters:
   - stem: ch02_foundations
     title: "Foundations"
   # ... add one entry per chapter
+  #
+  # Per-chapter overrides (optional):
+  #   frontmatter_style: absorbed   # or 'standalone' — overrides the
+  #                                 # global default for this stem only.
+  #                                 # Useful for books that mix conventions
+  #                                 # (e.g. numbered chapters standalone,
+  #                                 # front-matter absorbed).
 
 # Front- and back-matter files that should also be converted but live outside
 # the numbered chapter sequence. These do not appear in TOC numbering.
@@ -47,6 +54,8 @@ extra_files:
     title: "Preface"
   - stem: common_symbols
     title: "Notation"
+  # extra_files entries accept the same `frontmatter_style:` override as
+  # `chapters:` entries.
 
 # --- Environments (extend the defaults) -------------------------------------
 

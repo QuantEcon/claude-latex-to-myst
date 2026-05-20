@@ -1647,7 +1647,7 @@ def compress_directive_whitespace(text: str) -> str:
     return '\n'.join(out)
 
 
-def add_frontmatter(text: str, title: str) -> str:
+def add_frontmatter(text: str, title: str, style: str | None = None) -> str:
     """Emit frontmatter / chapter heading in the configured style.
 
     Two valid MyST conventions, both round-trip:
@@ -1670,11 +1670,17 @@ def add_frontmatter(text: str, title: str) -> str:
           (c-foo)=
           # Foo
 
+    ``style`` overrides the module-level ``_FRONTMATTER_STYLE`` for this
+    one call — used by ``process_file`` to honour per-chapter overrides
+    declared in ``config.chapters[].frontmatter_style`` or
+    ``config.extra_files[].frontmatter_style``.
+
     Idempotent: re-processing a file already in either style is a no-op
     (modulo title updates from config). Existing YAML ``label:`` values
     are preserved so chapter cross-references like ``{prf:ref}`c-egs```
     keep resolving even if the LaTeX source no longer carries the label.
     """
+    effective_style = style if style is not None else _FRONTMATTER_STYLE
     # Strip any existing YAML frontmatter, capturing label: if present so
     # we don't lose it across re-runs.
     existing_label = None
@@ -1717,7 +1723,7 @@ def add_frontmatter(text: str, title: str) -> str:
     else:
         label = None
 
-    if _FRONTMATTER_STYLE == 'standalone':
+    if effective_style == 'standalone':
         # Body keeps its ``(label)=\n# Title`` heading; just ensure one
         # exists (synthesise from config if the body lost it during a
         # round-trip through an absorbed-style YAML block).
@@ -1754,6 +1760,13 @@ def add_frontmatter(text: str, title: str) -> str:
 
 # Chapter titles mapping — populated from config.yaml at runtime.
 CHAPTER_TITLES: dict = {}
+
+# Per-stem frontmatter_style override. A book with mixed conventions (e.g.
+# dp1: numbered chapters in ``standalone``, front-matter in ``absorbed``)
+# can opt individual stems out of the global default. Populated from
+# ``chapters[].frontmatter_style`` / ``extra_files[].frontmatter_style``
+# in config.yaml. Stems not present here inherit ``_FRONTMATTER_STYLE``.
+CHAPTER_STYLES: dict = {}
 
 # Frontmatter style: 'absorbed' (YAML block, dp2 style — the default) or
 # 'standalone' ((label)= + # heading, dp1 style). Populated by apply_config.
@@ -1857,12 +1870,20 @@ def validate_config(config: dict) -> None:
             )
 
     # Nested validation for chapters / extra_files: each entry needs at
-    # minimum a ``stem``.
+    # minimum a ``stem``. ``frontmatter_style`` is optional but, when
+    # present, must be one of the two recognised styles — same vocabulary
+    # as the top-level ``frontmatter_style`` key.
     for list_key in ('chapters', 'extra_files'):
         for i, entry in enumerate(config.get(list_key) or []):
             if not isinstance(entry, dict) or 'stem' not in entry:
                 raise SystemExit(
                     f"config.{list_key}[{i}] must be a mapping with a 'stem' key"
+                )
+            style = entry.get('frontmatter_style')
+            if style is not None and style not in ('absorbed', 'standalone'):
+                raise SystemExit(
+                    f"config.{list_key}[{i}].frontmatter_style must be "
+                    f"'absorbed' or 'standalone', got {style!r}"
                 )
 
 
@@ -1874,12 +1895,18 @@ def apply_config(config: dict, base_dir: Path | None = None) -> None:
     Tests that call ``apply_config`` without a base_dir won't get listing
     resolution, which is fine — listings are an opt-in feature.
     """
-    global CHAPTER_TITLES, _LISTING_SOURCE_BASE, _FRONTMATTER_STYLE, _WHITESPACE_STYLE
+    global CHAPTER_TITLES, CHAPTER_STYLES
+    global _LISTING_SOURCE_BASE, _FRONTMATTER_STYLE, _WHITESPACE_STYLE
     global ENV_MAP, ENV_SKIP
     validate_config(config)
     CHAPTER_TITLES = {
         entry['stem']: entry.get('title', entry['stem'])
         for entry in (config.get('chapters') or []) + (config.get('extra_files') or [])
+    }
+    CHAPTER_STYLES = {
+        entry['stem']: entry['frontmatter_style']
+        for entry in (config.get('chapters') or []) + (config.get('extra_files') or [])
+        if 'frontmatter_style' in entry
     }
 
     # Extend the env→directive map with project-specific environments. Use
@@ -1970,7 +1997,7 @@ def process_file(input_path: Path, output_path: Path = None):
     text = compress_directive_whitespace(text)     # opt-in (compact mode)
 
     title = CHAPTER_TITLES.get(stem, stem)
-    text = add_frontmatter(text, title)
+    text = add_frontmatter(text, title, style=CHAPTER_STYLES.get(stem))
 
     out = output_path or input_path
     out.write_text(text, encoding='utf-8')
