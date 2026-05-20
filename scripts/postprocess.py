@@ -1492,8 +1492,10 @@ def add_frontmatter(text: str, title: str) -> str:
         return header + text
 
     # absorbed (default): strip the heading from the body and emit YAML.
+    # lstrip newlines so the result is byte-identical across re-runs (the
+    # YAML-strip path above lstrips already; this matches it).
     if heading_m:
-        text = text[heading_m.end():]
+        text = text[heading_m.end():].lstrip('\n')
     frontmatter = f'---\ntitle: "{title}"\n'
     if label:
         frontmatter += f'label: {label}\n'
@@ -1543,6 +1545,78 @@ def load_overrides(overrides_path: Path) -> None:
     TIKZCD_INLINE_MAP = getattr(mod, 'TIKZCD_INLINE_MAP', {})
 
 
+# Top-level config schema. Keys map to ``(allowed_types, required?)``. A
+# tuple of types means "one of these"; ``type(None)`` is allowed for keys
+# that may be nullable. The validator's main value is catching typos
+# (e.g. ``whitespace_comression``) — easy mistake, silent today.
+_CONFIG_SCHEMA: dict = {
+    'source_dir':             ((str,),               True),
+    'output_dir':             ((str,),               False),
+    'tmp_dir':                ((str,),               False),
+    'chapters':               ((list, type(None)),   False),
+    'extra_files':            ((list, type(None)),   False),
+    'bibliography':           ((str, type(None)),    False),
+    'figures_dir':            ((str, type(None)),    False),
+    'source_code_base':       ((str, type(None)),    False),
+    'frontmatter_style':      ((str,),               False),
+    'whitespace_compression': ((str,),               False),
+    'extra_environments':     ((dict, type(None)),   False),
+    'skip_environments':      ((list, type(None)),   False),
+    'preprocess':             ((dict, type(None)),   False),
+    'tikz_overrides':         ((str, type(None)),    False),
+    'validate':               ((dict, type(None)),   False),
+}
+
+
+def validate_config(config: dict) -> None:
+    """Reject unknown keys and bad types. Surfaces config typos that
+    would otherwise be silently ignored (``whitespace_comression``,
+    ``front_matter_style``, etc.).
+    """
+    if not isinstance(config, dict):
+        raise SystemExit(
+            f"config root must be a mapping, got {type(config).__name__}"
+        )
+
+    unknown = sorted(set(config) - set(_CONFIG_SCHEMA))
+    if unknown:
+        # Suggest the closest known key for each unknown one, à la cargo.
+        from difflib import get_close_matches
+        hints = []
+        for k in unknown:
+            suggestions = get_close_matches(k, _CONFIG_SCHEMA.keys(), n=1)
+            if suggestions:
+                hints.append(f"  {k!r}  (did you mean {suggestions[0]!r}?)")
+            else:
+                hints.append(f"  {k!r}")
+        raise SystemExit(
+            "config has unknown top-level keys:\n" + "\n".join(hints)
+        )
+
+    for key, (types, required) in _CONFIG_SCHEMA.items():
+        if key not in config:
+            if required:
+                raise SystemExit(f"config is missing required key: {key!r}")
+            continue
+        value = config[key]
+        if not isinstance(value, types):
+            type_names = " or ".join(
+                'null' if t is type(None) else t.__name__ for t in types
+            )
+            raise SystemExit(
+                f"config.{key} must be {type_names}, got {type(value).__name__}"
+            )
+
+    # Nested validation for chapters / extra_files: each entry needs at
+    # minimum a ``stem``.
+    for list_key in ('chapters', 'extra_files'):
+        for i, entry in enumerate(config.get(list_key) or []):
+            if not isinstance(entry, dict) or 'stem' not in entry:
+                raise SystemExit(
+                    f"config.{list_key}[{i}] must be a mapping with a 'stem' key"
+                )
+
+
 def apply_config(config: dict, base_dir: Path | None = None) -> None:
     """Populate module-level state from a loaded config dict.
 
@@ -1553,6 +1627,7 @@ def apply_config(config: dict, base_dir: Path | None = None) -> None:
     """
     global CHAPTER_TITLES, _LISTING_SOURCE_BASE, _FRONTMATTER_STYLE, _WHITESPACE_STYLE
     global ENV_MAP, ENV_SKIP
+    validate_config(config)
     CHAPTER_TITLES = {
         entry['stem']: entry.get('title', entry['stem'])
         for entry in (config.get('chapters') or []) + (config.get('extra_files') or [])

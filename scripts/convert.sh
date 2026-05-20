@@ -37,12 +37,23 @@ export PATH="$PROJECT_DIR/.venv/bin:$PATH"
 
 CONFIG=""
 SINGLE_CHAPTERS=()
+RUN_BUILD=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --config) CONFIG="$2"; shift 2 ;;
+    --build)  RUN_BUILD=1; shift ;;
     --help|-h)
-      echo "Usage: convert.sh --config CONFIG [CHAPTER_STEM...]"
+      cat <<'USAGE'
+Usage: convert.sh --config CONFIG [--build] [CHAPTER_STEM...]
+
+  --config CONFIG    Required. Path to the per-project config.yaml.
+  --build            Optionally run `myst build --html` after the pipeline
+                     and summarize errors/warnings. Skipped by default to
+                     keep the iteration loop fast.
+
+If CHAPTER_STEM args are given, only those chapters are processed.
+USAGE
       exit 0
       ;;
     *) SINGLE_CHAPTERS+=("$1"); shift ;;
@@ -176,8 +187,37 @@ echo "Stage 6: Validating..."
 python3 "$SCRIPT_DIR/validate.py" --config "$CONFIG" || true
 echo ""
 
+# ---------------------------------------------------------------------------
+# Stage 7 (opt-in): myst build smoke check
+# ---------------------------------------------------------------------------
+if [[ "$RUN_BUILD" -eq 1 ]]; then
+  echo "Stage 7: myst build --html..."
+  if ! command -v myst &>/dev/null; then
+    echo "  WARN: 'myst' not on PATH; skipping. Install: npm install -g mystmd" >&2
+  else
+    BUILD_LOG="$OUTPUT_DIR/_build.log"
+    (cd "$OUTPUT_DIR" && myst build --html 2>&1) > "$BUILD_LOG" || true
+    # Guard each grep with || true so set -e doesn't fire on "no matches".
+    BUILD_ERRORS=$(grep -cE '⛔' "$BUILD_LOG" 2>/dev/null || true)
+    BUILD_WARNS=$(grep -cE '⚠'  "$BUILD_LOG" 2>/dev/null || true)
+    BUILD_ERRORS=${BUILD_ERRORS:-0}
+    BUILD_WARNS=${BUILD_WARNS:-0}
+    echo "  Totals: errors=$BUILD_ERRORS  warnings=$BUILD_WARNS"
+    if [[ "$BUILD_ERRORS" -gt 0 || "$BUILD_WARNS" -gt 0 ]]; then
+      echo "  First 5 issues:"
+      grep -E '⛔|⚠' "$BUILD_LOG" | head -5 | sed 's/^/    /' || true
+      echo "  To categorize all of them:"
+      echo "    grep -oE 'Unhandled[^\"]*\"[a-z_]+\"|xref_not_found|duplicate_id|math_parse' $BUILD_LOG | sort | uniq -c | sort -rn"
+    fi
+    echo "  Full log: $BUILD_LOG"
+  fi
+  echo ""
+fi
+
 echo "=============================================="
 echo " Done."
 echo "=============================================="
-echo "  Build site:    cd $OUTPUT_DIR && myst build --html"
+if [[ "$RUN_BUILD" -ne 1 ]]; then
+  echo "  Build site:    cd $OUTPUT_DIR && myst build --html"
+fi
 echo "  Preview:       cd $OUTPUT_DIR && myst start"

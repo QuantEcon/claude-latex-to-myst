@@ -14,3 +14,12 @@ Repository = "https://github.com/QuantEcon/claude-latex-to-myst"
 
 [tool.uv]
 package = false   # this is a tool repo, not a distributable library
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]

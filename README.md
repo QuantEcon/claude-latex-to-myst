@@ -108,12 +108,22 @@ After cloning or after pulling new changes:
 
 ```bash
 git status                                       # should be clean
-.venv/bin/python -c "import sys; sys.path.insert(0,'scripts'); import postprocess; print('OK')"
+bash scripts/test.sh                             # runs the pytest suite
 bash scripts/convert.sh --help                   # auto-runs uv sync; prints usage
 ```
 
 For full parity tests against `book-dp1` / `book-dp2`, see
 [`reports/README.md`](reports/README.md).
+
+To run an end-to-end conversion AND build the resulting MyST site in
+one go, pass `--build` to `convert.sh` — it runs `myst build --html`
+in `output_dir` and summarizes errors/warnings:
+
+```bash
+bash scripts/convert.sh --config mystmd/config.yaml --build
+```
+
+Skipped by default to keep the conversion loop fast for iteration.
 
 ## License
 
