@@ -110,11 +110,16 @@ rather than the author's `§`. Rejected because:
 ## Scoping decisions resolved at codification
 
 - **Prefix-matched, not unconditional.** Strips only when the ref label
-  starts with `s-`, `ss-`, `sss-`, or `sec-` — avoids over-stripping `§`
-  before non-section refs.
+  starts with one of `_DOUBLED_SECTION_SYMBOL_PREFIXES` — avoids
+  over-stripping `§` before non-target refs.
+- **Current prefix list.** `s-`, `ss-`, `sss-`, `sec-` (sections), plus
+  `eg-` (examples). `eg-` was added after the dp2 application surfaced
+  one `\S\ref{eg:foo}` — an author-side semantic mismatch (`\S` before
+  an example label) that produced "§ Example X.Y" under qe-v5. New
+  prefixes added on demand; not preemptively (YAGNI).
 - **"Paragraph" variant.** Not separately handled; if it surfaces with a
-  label-prefix not in the current list, extend `_DOUBLED_SECTION_SYMBOL_PREFIXES`
-  rather than adding another function.
+  label-prefix not in the current list, extend the same constant rather
+  than adding another function.
 - **dp1 adoption.** dp1 predates qe-v5; transform is a no-op there until
   dp1 adopts qe-v5 book-mode, at which point it activates automatically.
 

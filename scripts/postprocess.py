@@ -958,11 +958,16 @@ def strip_doubled_noun_refs(text: str) -> str:
     return text
 
 
-# Label-prefix families for which qe-v5 auto-renders "Section X.Y" /
-# "Paragraph X.Y" before the ref. Authors typically prefix the ref with
-# a literal ``§`` (LaTeX's ``\S``); the combination renders as "§ Section
-# X.Y" which double-counts the noun. See lesson 016.
-_DOUBLED_SECTION_SYMBOL_PREFIXES = ('s-', 'ss-', 'sss-', 'sec-')
+# Label-prefix families for which qe-v5 auto-renders a noun ("Section
+# X.Y" / "Paragraph X.Y" / "Example X.Y") before the ref. Authors
+# sometimes prefix the ref with a literal ``§`` (LaTeX's ``\S``); the
+# combination renders as "§ Section X.Y" / "§ Example X.Y" which
+# double-counts the noun.
+#
+# Mostly section-style prefixes, plus ``eg-`` after a dp2 instance of
+# the author writing ``\S\ref{eg:foo}`` (semantic mismatch — `\S` is the
+# section symbol, but they pointed it at an example). See lesson 016.
+_DOUBLED_SECTION_SYMBOL_PREFIXES = ('s-', 'ss-', 'sss-', 'sec-', 'eg-')
 
 
 def strip_doubled_section_symbol(text: str) -> str:
