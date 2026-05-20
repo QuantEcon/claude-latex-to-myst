@@ -56,3 +56,50 @@ overrides file, not in `postprocess.py`.
 - Don't commit `mystmd/tmp/` or `_build/` from any consuming book repo.
 - Don't promote a lesson from `open` to `codified` without actually adding the
   fix to the pipeline and verifying.
+
+## Settled architectural decisions
+
+Don't re-litigate these without checking. Each was resolved deliberately:
+
+- **Per-project config + generic transforms.** Chapter list, custom-macro
+  rewrites, TikZ overrides live in `config.yaml` / `tikz_overrides.py`.
+  Transforms live in `postprocess.py`. If something feels "too dp1-specific"
+  or "too dp2-specific" inside `postprocess.py`, it probably belongs in
+  config.
+- **`uv` is the project manager.** Not pip, not conda, not raw venv. Per
+  lesson [010](lessons/010-pep-668-system-python.md).
+- **No Perl in the pipeline.** Per lesson [009](lessons/009-bsd-sed-mapfile-portability.md).
+  Both algorithm and listing preprocessors are Python ports of dp1's Perl
+  originals (`scripts/_apply_algorithm_markers.py`,
+  `scripts/_apply_listing_markers.py`).
+- **No LLM calls inside the pipeline.** It must be deterministic and
+  re-runnable. LLM-driven cleanup happens in the user's editor session,
+  not in `convert.sh`.
+- **Lessons catalogue: one .md per lesson with frontmatter.** New lessons
+  via `/capture-lesson`. Lifecycle: `open` → `codified` once the fix is in
+  the pipeline. Lessons are never deleted.
+- **Reports format.** New parity tests get a report in `reports/`
+  documenting what worked, what didn't, and what was learned. They
+  motivate any pipeline changes that follow.
+- **Fixture-based verification.** Parity tests run against local copies of
+  sibling book repos under `fixtures/` (gitignored, populated by
+  `scripts/setup_fixtures.sh`). Never run the pipeline directly inside
+  `../book-dp1` or `../book-dp2` — those may have in-progress branches
+  you'd disturb.
+
+## Working-style conventions
+
+- **Verify before committing.** Run the relevant parity check from
+  `reports/README.md`. If the diff doesn't match documented drift,
+  something has changed unexpectedly.
+- **Capture lessons with `/capture-lesson`.** The point of the catalogue
+  is cumulative learning across many books; please feed it.
+- **When closing an open lesson**, flip its status from `open` to
+  `codified`, fill in `codified_in:`, and update the index entry in
+  `LESSONS.md`. Don't delete the lesson.
+- **The user prefers terse responses** with concrete file paths, line
+  numbers, and clear scope estimates. Don't over-explain; do tell them
+  honestly when something is bigger than initially scoped.
+- **Git user is `Matt McKay <mamckay@gmail.com>`.** Commits in this repo
+  use `-c user.name=... -c user.email=...` flags rather than config;
+  continue that pattern.

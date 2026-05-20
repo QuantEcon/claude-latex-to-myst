@@ -98,6 +98,19 @@ the format. See [`lessons/README.md`](lessons/README.md) for the schema.
 Python itself is managed by `uv` — no system Python required, no virtualenv
 juggling, no PEP 668 dance.
 
+## Sanity check
+
+After cloning or after pulling new changes:
+
+```bash
+git status                                       # should be clean
+.venv/bin/python -c "import sys; sys.path.insert(0,'scripts'); import postprocess; print('OK')"
+bash scripts/convert.sh --help                   # auto-runs uv sync; prints usage
+```
+
+For full parity tests against `book-dp1` / `book-dp2`, see
+[`reports/README.md`](reports/README.md).
+
 ## License
 
 MIT. Use freely, fork freely, add lessons freely.
