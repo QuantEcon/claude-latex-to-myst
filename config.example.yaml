@@ -187,6 +187,37 @@ preprocess:
     # - { from: '\\caption\{\\label\{(algo:[^}]+)\}\s*([^}]*)\}',
     #     to: '\\label{\1}\\caption{\2}' }
 
+# --- Post-pandoc Markdown rewrites (book-specific editorial fixes) ----------
+#
+# `preprocess.rewrites` (above) operates on .tex source BEFORE pandoc.
+# `postprocess.rewrites` operates on the final .md AFTER all generic
+# transforms (including frontmatter emission). Use this for editorial
+# decisions the tool can't infer from LaTeX — e.g. promoting a book's
+# `**Bold heading**` pseudo-section to a real `## H2`, only in the
+# specific chapters where the pattern is known to be a heading.
+#
+# Each entry: { from: regex, to: replacement, stems?: [stem1, stem2] }
+#   - `from`/`to`: same shape as preprocess.rewrites; backrefs allowed.
+#   - Patterns compile with `re.MULTILINE` so `^...$` matches lines.
+#   - `stems:` optional. When present, the rewrite is scoped to those
+#     stems (must match a `stem:` declared in `chapters:` or
+#     `extra_files:`). Omit for a global rewrite.
+#   - Order in the list = order of application; a later rewrite sees
+#     the output of earlier ones.
+#
+# No block-aware exclusion: rewrites apply to the whole Markdown
+# (including inside fenced code blocks and `$$` display math). Rely on
+# pattern specificity and `stems:` to keep matches targeted.
+
+# postprocess:
+#   rewrites:
+#     # Targeted promotion (only fires in common_symbols.md)
+#     - { stems: [common_symbols],
+#         from:  '^\*\*Mathematical Notation\*\*$',
+#         to:    '## Mathematical Notation' }
+#     # Global Markdown fix (every chapter)
+#     - { from: '\bSI\b', to: 'System I' }
+
 # --- TikZ handling ----------------------------------------------------------
 
 # `\input{tikz/...}` references are replaced with placeholder admonitions

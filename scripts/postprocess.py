@@ -1647,6 +1647,29 @@ def compress_directive_whitespace(text: str) -> str:
     return '\n'.join(out)
 
 
+def apply_postprocess_rewrites(text: str, stem: str) -> str:
+    """Apply book-specific Markdown rewrites declared in
+    ``config.postprocess.rewrites``.
+
+    Runs after all generic transforms and ``add_frontmatter`` — the
+    last thing before the file is written. The use case is editorial
+    decisions the tool can't infer from LaTeX (e.g. promoting a
+    book's ``**Bold heading**`` pseudo-section to a real ``## H2``
+    only in specific chapters where that pattern is known to be a
+    heading rather than emphasis).
+
+    Each rewrite scoped via ``stems:`` runs only on the matching
+    chapter; unscoped rewrites run everywhere. Patterns are Python
+    regexes with ``re.MULTILINE`` so ``^...$`` matches line
+    boundaries — the common shape for editorial-heading patterns.
+    """
+    for pattern, replacement, stems in POSTPROCESS_REWRITES:
+        if stems is not None and stem not in stems:
+            continue
+        text = pattern.sub(replacement, text)
+    return text
+
+
 def add_frontmatter(text: str, title: str, style: str | None = None) -> str:
     """Emit frontmatter / chapter heading in the configured style.
 
@@ -1758,6 +1781,14 @@ def add_frontmatter(text: str, title: str, style: str | None = None) -> str:
     return frontmatter + text
 
 
+# Book-specific Markdown rewrites applied after the generic transforms.
+# Each entry is ``(compiled_regex, replacement, stems_or_None)``.
+# - ``stems_or_None=None``: rewrite applies to every chapter (global).
+# - ``stems_or_None={'a', 'b'}``: rewrite applies only to those stems.
+# Populated from ``config.postprocess.rewrites`` at runtime.
+POSTPROCESS_REWRITES: list = []
+
+
 # Chapter titles mapping — populated from config.yaml at runtime.
 CHAPTER_TITLES: dict = {}
 
@@ -1825,6 +1856,7 @@ _CONFIG_SCHEMA: dict = {
     'extra_environments':     ((dict, type(None)),   False),
     'skip_environments':      ((list, type(None)),   False),
     'preprocess':             ((dict, type(None)),   False),
+    'postprocess':            ((dict, type(None)),   False),
     'tikz_overrides':         ((str, type(None)),    False),
     'validate':               ((dict, type(None)),   False),
 }
@@ -1895,7 +1927,7 @@ def apply_config(config: dict, base_dir: Path | None = None) -> None:
     Tests that call ``apply_config`` without a base_dir won't get listing
     resolution, which is fine — listings are an opt-in feature.
     """
-    global CHAPTER_TITLES, CHAPTER_STYLES
+    global CHAPTER_TITLES, CHAPTER_STYLES, POSTPROCESS_REWRITES
     global _LISTING_SOURCE_BASE, _FRONTMATTER_STYLE, _WHITESPACE_STYLE
     global ENV_MAP, ENV_SKIP
     validate_config(config)
@@ -1943,6 +1975,50 @@ def apply_config(config: dict, base_dir: Path | None = None) -> None:
             f"config.whitespace_compression must be 'readable' or 'compact', got {ws!r}"
         )
     _WHITESPACE_STYLE = ws
+
+    # Book-specific Markdown rewrites. Each entry: { from: regex, to: repl,
+    # stems?: [stem1, stem2] }. Compile patterns once at config load.
+    post_section = config.get('postprocess') or {}
+    if not isinstance(post_section, dict):
+        raise SystemExit(
+            f"config.postprocess must be a mapping, got {type(post_section).__name__}"
+        )
+    raw_rewrites = post_section.get('rewrites') or []
+    if not isinstance(raw_rewrites, list):
+        raise SystemExit(
+            f"config.postprocess.rewrites must be a list, got {type(raw_rewrites).__name__}"
+        )
+    POSTPROCESS_REWRITES = []
+    for i, rule in enumerate(raw_rewrites):
+        if not isinstance(rule, dict):
+            raise SystemExit(
+                f"config.postprocess.rewrites[{i}] must be a mapping"
+            )
+        if 'from' not in rule or 'to' not in rule:
+            raise SystemExit(
+                f"config.postprocess.rewrites[{i}] requires 'from' and 'to' keys"
+            )
+        if not isinstance(rule['from'], str) or not isinstance(rule['to'], str):
+            raise SystemExit(
+                f"config.postprocess.rewrites[{i}]: 'from' and 'to' must be strings"
+            )
+        stems_field = rule.get('stems')
+        if stems_field is not None:
+            if (not isinstance(stems_field, list)
+                    or not all(isinstance(s, str) for s in stems_field)):
+                raise SystemExit(
+                    f"config.postprocess.rewrites[{i}].stems must be a list of strings"
+                )
+            stems_set = frozenset(stems_field)
+        else:
+            stems_set = None
+        try:
+            compiled = re.compile(rule['from'], re.MULTILINE)
+        except re.error as exc:
+            raise SystemExit(
+                f"config.postprocess.rewrites[{i}]: bad regex {rule['from']!r}: {exc}"
+            )
+        POSTPROCESS_REWRITES.append((compiled, rule['to'], stems_set))
 
     if base_dir is not None:
         # source_code_base anchors paths inside \inputminted{lang}{path}.
@@ -1998,6 +2074,7 @@ def process_file(input_path: Path, output_path: Path = None):
 
     title = CHAPTER_TITLES.get(stem, stem)
     text = add_frontmatter(text, title, style=CHAPTER_STYLES.get(stem))
+    text = apply_postprocess_rewrites(text, stem)
 
     out = output_path or input_path
     out.write_text(text, encoding='utf-8')

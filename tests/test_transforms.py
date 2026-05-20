@@ -358,6 +358,91 @@ def test_broken_math_clean_paragraph_returns_empty():
     assert validate.find_broken_inline_math(text, "f.md") == []
 
 
+# ── postprocess.rewrites (book-specific Markdown rewrites) ──────────────────
+
+
+def _set_postprocess_rewrites(rules):
+    """Helper: apply just the postprocess.rewrites portion of a config so
+    individual tests don't need to feed the full apply_config."""
+    cfg = {"source_dir": ".", "postprocess": {"rewrites": rules}}
+    postprocess.apply_config(cfg)
+
+
+def test_postprocess_rewrites_global_applies_to_every_stem():
+    _set_postprocess_rewrites([
+        {"from": r"\bSI\b", "to": "System I"},
+    ])
+    a = postprocess.apply_postprocess_rewrites("Discuss SI here.", "ch_intro")
+    b = postprocess.apply_postprocess_rewrites("Other SI ref.",    "ch_other")
+    assert "System I" in a
+    assert "System I" in b
+
+
+def test_postprocess_rewrites_stem_scoped_skips_other_chapters():
+    _set_postprocess_rewrites([
+        {"from": r"^\*\*Mathematical Notation\*\*$",
+         "to":   "## Mathematical Notation",
+         "stems": ["common_symbols"]},
+    ])
+    target  = "**Mathematical Notation**"
+    in_scope = postprocess.apply_postprocess_rewrites(target, "common_symbols")
+    out_of_scope = postprocess.apply_postprocess_rewrites(target, "ch_intro")
+    assert in_scope == "## Mathematical Notation"
+    assert out_of_scope == target
+
+
+def test_postprocess_rewrites_multiline_anchors_work():
+    """Rewrites are compiled with re.MULTILINE — `^...$` should match a
+    line within a larger body, not just the whole string."""
+    _set_postprocess_rewrites([
+        {"from": r"^\*\*Heading\*\*$", "to": "## Heading"},
+    ])
+    text = "Prelude.\n\n**Heading**\n\nFollow.\n"
+    out = postprocess.apply_postprocess_rewrites(text, "ch_x")
+    assert "## Heading" in out
+    assert "**Heading**" not in out
+    # Surrounding content preserved
+    assert "Prelude." in out
+    assert "Follow." in out
+
+
+def test_postprocess_rewrites_order_matters():
+    """List order = application order. A later rewrite sees the output
+    of earlier ones."""
+    _set_postprocess_rewrites([
+        {"from": r"A", "to": "B"},
+        {"from": r"B", "to": "C"},
+    ])
+    assert postprocess.apply_postprocess_rewrites("A", "ch_x") == "C"
+
+
+def test_postprocess_rewrites_validation_rejects_missing_keys():
+    with pytest.raises(SystemExit) as exc:
+        _set_postprocess_rewrites([{"from": "x"}])
+    assert "'from' and 'to'" in str(exc.value)
+
+
+def test_postprocess_rewrites_validation_rejects_bad_regex():
+    with pytest.raises(SystemExit) as exc:
+        _set_postprocess_rewrites([{"from": "(unclosed", "to": "x"}])
+    assert "bad regex" in str(exc.value)
+
+
+def test_postprocess_rewrites_validation_rejects_bad_stems_type():
+    with pytest.raises(SystemExit) as exc:
+        _set_postprocess_rewrites([
+            {"from": "x", "to": "y", "stems": "not-a-list"},
+        ])
+    assert "stems" in str(exc.value)
+
+
+def test_postprocess_rewrites_empty_config_is_noop():
+    # No postprocess.rewrites declared → POSTPROCESS_REWRITES stays empty.
+    postprocess.apply_config({"source_dir": "."})
+    assert postprocess.POSTPROCESS_REWRITES == []
+    assert postprocess.apply_postprocess_rewrites("Hello.", "ch_x") == "Hello."
+
+
 def test_chapter_styles_rejects_invalid_value():
     cfg = {
         "source_dir": ".",
