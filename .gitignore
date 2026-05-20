@@ -4,3 +4,5 @@ __pycache__/
 _build/
 tmp/
 .DS_Store
+
+# uv.lock IS committed (reproducible installs); only the venv is ignored.

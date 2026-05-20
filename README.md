@@ -20,30 +20,32 @@ for the catalogue.
 
 ## Quick start
 
+Requires [`uv`](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+and `pandoc` ≥ 3.0.
+
 ```bash
-# 1. Clone this template alongside your book repo
+# 1. Clone alongside your book repo
 git clone https://github.com/QuantEcon/claude-latex-to-myst.git
-cd claude-latex-to-myst
 
-# 2. Set up a venv with PyYAML (system Python is usually PEP 668-locked)
-uv venv .venv --python 3.12        # or: python3 -m venv .venv
-uv pip install --python .venv/bin/python -r requirements.txt
-
-# 3. In your book repo, copy config and edit for your project
-cd ../your-book/
+# 2. In your book repo, set up the MyST output directory + config
+cd your-book/
 mkdir -p mystmd
 cp ../claude-latex-to-myst/config.example.yaml mystmd/config.yaml
 $EDITOR mystmd/config.yaml          # set chapter list, bib filename, etc.
 
-# 4. Run the pipeline (point PATH at the venv so python3 finds pyyaml)
-PATH="../claude-latex-to-myst/.venv/bin:$PATH" \
-  bash ../claude-latex-to-myst/scripts/convert.sh --config mystmd/config.yaml
+# 3. Run the pipeline. scripts/convert.sh auto-runs `uv sync` on first call,
+#    so the venv is created and pyyaml installed transparently.
+bash ../claude-latex-to-myst/scripts/convert.sh --config mystmd/config.yaml
 
-# 5. Build and preview
+# 4. Build and preview
 cd mystmd && myst build --html && myst start
 ```
 
 Output lands in `mystmd/ch_*.md`, `mystmd/figures/`, and `mystmd/references.bib`.
+
+No venv activation, no `pip install`, no `PATH=…` prefix — the shell script
+bootstraps everything via `uv sync`. The lockfile (`uv.lock`) is committed
+so installs are reproducible across machines.
 
 ## What's in here
 
@@ -88,10 +90,13 @@ the format. See [`lessons/README.md`](lessons/README.md) for the schema.
 
 ## Requirements
 
+- [`uv`](https://docs.astral.sh/uv/) — manages the Python interpreter and `pyyaml`
 - `pandoc` ≥ 3.0
-- Python 3.10+ (no third-party deps for the core pipeline)
 - `mystmd` for building the output: `npm install -g mystmd`
 - Optional, for TikZ: `xelatex` + `pdf2svg`
+
+Python itself is managed by `uv` — no system Python required, no virtualenv
+juggling, no PEP 668 dance.
 
 ## License
 

@@ -23,6 +23,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Bootstrap: ensure uv-managed venv exists and is on PATH. uv sync is
+# idempotent and fast (no-op if already in sync), so this is safe to call
+# on every invocation.
+if ! command -v uv &>/dev/null; then
+  echo "ERROR: 'uv' required. Install: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+  exit 1
+fi
+(cd "$PROJECT_DIR" && uv sync --quiet)
+export PATH="$PROJECT_DIR/.venv/bin:$PATH"
+
 CONFIG=""
 SINGLE_CHAPTERS=()
 

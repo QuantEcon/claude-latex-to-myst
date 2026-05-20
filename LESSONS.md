@@ -16,7 +16,7 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 007 | [\\cref{a,b,c} becomes a single broken pandoc link](lessons/007-cref-comma-split.md) | post-processing | 🟡 | codified |
 | 008 | [Post-processing transform order is critical and fragile](lessons/008-pipeline-ordering.md) | post-processing | 🔴 | codified |
 | 009 | [BSD sed and bash 3.2 break the preprocess pipeline on macOS](lessons/009-bsd-sed-mapfile-portability.md) | tooling | 🟡 | codified |
-| 010 | [PEP 668 blocks pip install on modern system Python — always document a venv](lessons/010-pep-668-system-python.md) | tooling | 🟢 | codified |
+| 010 | [Don't rely on system Python — adopt uv so the pipeline manages its own interpreter](lessons/010-pep-668-system-python.md) | tooling | 🟢 | codified |
 
 ## By category
 

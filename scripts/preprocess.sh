@@ -22,6 +22,16 @@ sedi() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Bootstrap: ensure uv-managed venv is on PATH (no-op if already set up).
+if ! command -v uv &>/dev/null; then
+  echo "ERROR: 'uv' required. Install: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+  exit 1
+fi
+(cd "$PROJECT_DIR" && uv sync --quiet)
+export PATH="$PROJECT_DIR/.venv/bin:$PATH"
+
 CONFIG=""
 
 while [[ $# -gt 0 ]]; do

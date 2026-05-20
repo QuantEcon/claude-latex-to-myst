@@ -1,11 +1,11 @@
 ---
 id: 010
-title: "PEP 668 blocks pip install on modern system Python — always document a venv"
+title: "Don't rely on system Python — adopt uv so the pipeline manages its own interpreter"
 category: tooling
-tags: [python, pip, pep-668, setup]
+tags: [python, uv, pep-668, setup]
 source_project: claude-latex-to-myst (parity test against book-dp2)
 status: codified
-codified_in: README.md (quick start), requirements.txt
+codified_in: pyproject.toml, scripts/convert.sh::bootstrap, scripts/preprocess.sh::bootstrap
 severity: low
 date: 2026-05-20
 ---
@@ -28,37 +28,59 @@ error: externally-managed-environment
 
 PEP 668 (adopted by Homebrew Python, Debian/Ubuntu, and most distro-packaged
 Pythons from 2023 onward) blocks `pip install` against the system interpreter
-by default. The goal is to prevent users from accidentally breaking OS-managed
-Python.
+by default. The goal is to prevent users from breaking OS-managed Python by
+co-mingling dependencies.
 
-The script `from _config import load` relies on `yaml`, which isn't a stdlib
-module — so without a managed venv the pipeline can't start.
+The pipeline needs `pyyaml` (for config parsing). Without a managed venv,
+the pipeline can't start — and asking users to set one up manually is
+friction every new project will hit.
 
 ## Fix
 
-Document a venv-based setup as the *recommended* path in the README, not an
-afterthought. Ship a `requirements.txt`. Don't suggest `pip install --user`
-or `--break-system-packages` — both will fail or leak.
+Make `uv` the single source of truth. `pyproject.toml` declares
+`requires-python = ">=3.10"` and `dependencies = ["pyyaml>=6.0"]`. The
+lockfile (`uv.lock`) is committed for reproducible installs.
+
+The shell scripts auto-bootstrap on every invocation:
 
 ```bash
-uv venv .venv --python 3.12
-uv pip install --python .venv/bin/python -r requirements.txt
-PATH="claude-latex-to-myst/.venv/bin:$PATH" bash scripts/convert.sh ...
+if ! command -v uv &>/dev/null; then
+  echo "ERROR: 'uv' required..." >&2
+  exit 1
+fi
+(cd "$PROJECT_DIR" && uv sync --quiet)
+export PATH="$PROJECT_DIR/.venv/bin:$PATH"
 ```
 
-The `PATH=...` prefix is the simplest way to make `python3` inside the
-shell scripts resolve to the venv interpreter without forcing every shell
-script to know about virtualenv activation.
+`uv sync` is a no-op when already in sync, so this costs ~50ms on warm
+runs and ~3s on the first call. Users don't need to:
+- Install Python (uv downloads the interpreter)
+- Create a venv
+- Activate anything
+- Run `pip install`
+- Set `PATH=...` themselves
+
+The pipeline becomes truly one-command for new users.
 
 ## How to detect
 
-Smoke test the README quick-start on a fresh macOS or Ubuntu install. If
-step 1 (install pyyaml) requires `--break-system-packages`, your
-instructions are out of date.
+The smoke test: delete `.venv/`, then run `bash scripts/convert.sh
+--config example.yaml`. The script must:
+1. Notice the venv is missing
+2. Run `uv sync` to create it
+3. Complete successfully
 
-## Alternative considered
+If any of those fails, the bootstrap is broken.
 
-A stdlib-only YAML parser would eliminate the dependency entirely. Rejected
-because (a) writing a robust YAML subset parser is more code than the rest
-of `_config.py` combined, and (b) PyYAML is so universally available that
-a one-line venv setup is the lesser evil.
+## Why uv over alternatives
+
+- **`venv` + `requirements.txt`:** User has to install Python first
+  (PEP 668 makes this gnarly on macOS/Ubuntu), create the venv, install
+  deps, prefix `PATH`. Five steps where uv is one.
+- **PEP 723 inline script metadata (`# /// script`):** Works for single
+  scripts but our pipeline has shell scripts that call `python3` and
+  helpers that `import` each other. Doesn't fit.
+- **conda:** Heavier; many users don't have it; less idiomatic for tool
+  repos.
+- **Stdlib-only YAML parser:** ~50 lines of code we'd have to maintain
+  to save one ~150KB dependency. Not worth it.
