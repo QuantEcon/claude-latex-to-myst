@@ -351,6 +351,127 @@ def test_frontmatter_explicit_label_idempotent_absorbed():
     assert once == twice
 
 
+# ── simple_table → list-table (FIX Issue 1) ──────────────────────────────────
+
+
+def _table(*rows: str, leading: str = "  ", col1_width: int = 10,
+           gap: int = 2, col2_width: int = 20) -> str:
+    """Build a pandoc-shaped 2-col simple_table. ``col1_width`` dashes,
+    ``gap`` spaces, ``col2_width`` dashes — col-2 content must start at
+    position ``len(leading) + col1_width + gap``."""
+    rule = leading + ("-" * col1_width) + (" " * gap) + ("-" * col2_width)
+    col2_start = len(leading) + col1_width + gap
+    out_lines = [rule]
+    for a, b in (r.split("|", 1) for r in rows):
+        a = a.strip()
+        b = b.strip()
+        line = leading + a + (" " * (col1_width + gap - len(a))) + b
+        # Pad/trim so col2 content lands at col2_start
+        assert line[col2_start] == b[0], (line, col2_start, b)
+        out_lines.append(line)
+    out_lines.append(rule)
+    return "\n".join(out_lines) + "\n"
+
+
+def test_simple_table_two_column_basic():
+    body = (
+        "Intro.\n\n"
+        + _table(r"$\alpha$ | the first letter",
+                 r"$\beta$  | the second letter")
+        + "\nAfter.\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert ":header-rows: 0" in out
+    assert "* - $\\alpha$" in out
+    assert "  - the first letter" in out
+    assert "* - $\\beta$" in out
+    assert "  - the second letter" in out
+    # The dash rules should be gone.
+    assert "----------" not in out
+    # Surrounding prose preserved.
+    assert "Intro." in out
+    assert "After." in out
+
+
+def test_simple_table_preserves_math_and_refs_in_cells():
+    body = _table(r"$x$ | see {ref}`eg-foo`")
+    out = postprocess.convert_simple_tables(body)
+    assert "* - $x$" in out
+    assert "  - see {ref}`eg-foo`" in out
+
+
+def test_simple_table_with_caption():
+    body = _table("A | B") + "\n  : My caption\n"
+    out = postprocess.convert_simple_tables(body)
+    assert ":caption: My caption" in out
+    # Caption line should be consumed, not left behind.
+    assert "  : My caption" not in out
+
+
+def test_simple_table_three_column_left_alone():
+    """3+ column tables stay as raw simple_tables. Out of scope per FIX
+    Issue 1's "first cut" — wider tables have more layout nuance."""
+    body = (
+        "  ----  ----  ----\n"
+        "  A     B     C\n"
+        "  D     E     F\n"
+        "  ----  ----  ----\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # Untouched.
+    assert "```{list-table}" not in out
+    assert "----  ----  ----" in out
+
+
+def test_simple_table_skipped_inside_code_fence():
+    body = "```\n" + _table("A | B") + "```\n"
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" not in out
+    # The original content is preserved verbatim.
+    assert "----------" in out
+
+
+def test_simple_table_unclosed_rule_passes_through():
+    """Defensive: a lone dash-rule with no closing match shouldn't
+    silently swallow the rest of the file."""
+    body = (
+        "  ----------  --------------------\n"
+        "  A           B\n"
+        "(no closing rule)\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" not in out
+    assert "(no closing rule)" in out
+
+
+def test_simple_table_idempotent():
+    body = _table("A | B")
+    once = postprocess.convert_simple_tables(body)
+    twice = postprocess.convert_simple_tables(once)
+    assert once == twice
+
+
+def test_multiline_table_blank_lines_separate_rows():
+    """When pandoc emits multiline_tables (blank lines between rows),
+    each blank line is a row separator. Non-blank lines within the
+    same row join into a single cell."""
+    body = (
+        "  ----------  --------------------\n"
+        "  A           short one\n"
+        "\n"
+        "  B           a longer\n"
+        "              wrapped value\n"
+        "\n"
+        "  ----------  --------------------\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "* - A" in out
+    assert "  - short one" in out
+    assert "* - B" in out
+    assert "  - a longer wrapped value" in out
+
+
 def test_frontmatter_does_not_steal_first_section_label():
     """Regression: when the chapter has its own explicit label folded into
     the heading auto-id (``\\chapter{Foo}\\label{c:foo}`` →

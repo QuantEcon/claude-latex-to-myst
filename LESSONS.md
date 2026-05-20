@@ -25,10 +25,11 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 016 | [§ Section: qe-v5 section labels double the prefix in §\\ref{...} prose](lessons/016-section-symbol-doubled-prefix.md) | post-processing | 🟡 | codified |
 | 017 | [Pandoc class attributes leak into MyST labels — capture only the first whitespace-delimited token](lessons/017-pandoc-class-attrs-leak-into-labels.md) | regex-safety | 🔴 | codified |
 | 018 | [Promoting a body anchor to chapter label needs a non-heading guard — or it steals the first section's id](lessons/018-greedy-explicit-label-promotion.md) | post-processing | 🔴 | codified |
+| 019 | [Pandoc simple_tables vs multiline_tables — blank-line presence flips row-parsing logic](lessons/019-simple-vs-multiline-tables.md) | post-processing | 🔴 | codified |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019
 - **regex-safety:** 002, 017
 - **katex:** 003, 006
 - **myst:** 013
