@@ -17,6 +17,7 @@ import re
 import pytest
 
 import postprocess
+import validate
 
 
 # ── Algorithm2e (gap #014) ───────────────────────────────────────────────────
@@ -308,6 +309,53 @@ def test_chapter_styles_populated_from_config():
     }
     # Restore default for other tests.
     postprocess._FRONTMATTER_STYLE = "absorbed"
+
+
+# ── Broken inline math detector (validate.find_broken_inline_math) ──────────
+
+
+def test_broken_math_detects_blockquote_after_open_dollar():
+    """The classic MyST trap: a line opens inline math with `$`, the
+    closing `$` is on the next line, and that line starts with `>` —
+    MyST then renders the `>` as a blockquote marker instead of math."""
+    text = "Consider the value $f(x)\n> 0$ when applicable.\n"
+    diags = validate.find_broken_inline_math(text, "ch_x.md")
+    assert len(diags) == 1
+    assert "ch_x.md" in diags[0]
+
+
+def test_broken_math_ignores_multiline_math_without_blockquote_marker():
+    """Inline math wrapped across lines where the continuation line is
+    ordinary content (not `>`) renders correctly in MyST and must NOT
+    be flagged — that pattern is common in --wrap=none output and is
+    not a bug. Only the `>`-leading-the-next-line case is broken."""
+    text = "Let $a = b\nc = d$ be defined.\n"
+    assert validate.find_broken_inline_math(text, "f.md") == []
+
+
+def test_broken_math_ignores_fenced_code_block():
+    text = (
+        "```python\n"
+        "x = '$foo\n"
+        "> bar$'\n"
+        "```\n"
+    )
+    assert validate.find_broken_inline_math(text, "f.md") == []
+
+
+def test_broken_math_ignores_display_math_block():
+    text = (
+        "$$\n"
+        "a = b\n"
+        "> 0\n"
+        "$$\n"
+    )
+    assert validate.find_broken_inline_math(text, "f.md") == []
+
+
+def test_broken_math_clean_paragraph_returns_empty():
+    text = "Inline math $a = b$ on one line is fine.\n\nNext paragraph.\n"
+    assert validate.find_broken_inline_math(text, "f.md") == []
 
 
 def test_chapter_styles_rejects_invalid_value():

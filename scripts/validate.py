@@ -38,6 +38,51 @@ def count_myst(text: str) -> dict:
     }
 
 
+def find_broken_inline_math(text: str, filename: str) -> list[str]:
+    """Detect inline math (``$...$``) split across a newline where the
+    next line starts with ``>``. MyST interprets the leading ``>`` as
+    a blockquote marker, silently breaking both the math and the
+    surrounding paragraph.
+
+    Returns a list of human-readable diagnostic lines; empty if clean.
+    Skips inside fenced code blocks and ``$$`` display-math blocks so
+    legitimate multi-line constructs don't trigger the check.
+
+    Multi-line inline math whose continuation line is ordinary content
+    (not a ``>``) renders correctly in MyST and is NOT flagged — that
+    pattern is common when paragraphs wrap at column boundaries and
+    isn't a bug. The narrow ``>`` case is the real trap.
+    """
+    diagnostics: list[str] = []
+    lines = text.splitlines()
+    in_fence = False
+    in_math_block = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if stripped.startswith('$$'):
+            in_math_block = not in_math_block
+            continue
+        if in_math_block:
+            continue
+
+        clean = line.replace('\\$', '').replace('$$', '')
+        if clean.count('$') % 2 == 0 or i + 1 >= len(lines):
+            continue
+
+        next_stripped = lines[i + 1].lstrip()
+        if next_stripped.startswith('>'):
+            diagnostics.append(
+                f"{filename}:{i+1}: ...{line[-80:]}\n"
+                f"{filename}:{i+2}: {lines[i+1][:80]}"
+            )
+    return diagnostics
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--config', type=Path, required=True)
@@ -63,14 +108,17 @@ def main():
     print('-' * (29 + 13 * len(fields)))
 
     any_mismatch = False
+    broken_math_total = 0
+    check_broken_math = checks.get('broken_inline_math', True)
     for entry in chapters:
         stem = entry['stem']
         tex = source_dir / f"{stem}.tex"
         md = output_dir / f"{stem}.md"
         if not tex.exists() or not md.exists():
             continue
+        md_text = md.read_text(encoding='utf-8')
         lcounts = count_latex(tex.read_text(encoding='utf-8'))
-        mcounts = count_myst(md.read_text(encoding='utf-8'))
+        mcounts = count_myst(md_text)
         cells = []
         for f in fields:
             l = lcounts.get(f, 0)
@@ -81,9 +129,18 @@ def main():
             cells.append(f'{l:>5}/{m:<5}{mark}')
         print(f'{stem:<28} ' + ' '.join(cells))
 
+        if check_broken_math:
+            for diag in find_broken_inline_math(md_text, md.name):
+                print(diag)
+                broken_math_total += 1
+
     print()
+    if broken_math_total:
+        print(f'  {broken_math_total} broken inline-math pattern(s) detected.')
+        print('  Fix by joining the split lines so the $...$ stays on one line.')
     if any_mismatch:
         print('  Mismatches detected (marked with `!`). Investigate before shipping.')
+    if any_mismatch or broken_math_total:
         sys.exit(1)
     print('  All counts match.')
 

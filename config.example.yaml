@@ -211,3 +211,7 @@ validate:
   theorems: true
   figures: true
   citations: true
+  # Scan MyST output for inline math (``$...$``) split across a newline
+  # where the next line opens with ``>`` (MyST blockquote marker) or
+  # another stray ``$`` — patterns that silently break rendering.
+  broken_inline_math: true
