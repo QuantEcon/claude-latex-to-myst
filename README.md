@@ -24,19 +24,19 @@ Requires [`uv`](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/in
 and `pandoc` ≥ 3.0.
 
 ```bash
-# 1. Clone alongside your book repo
-git clone https://github.com/QuantEcon/claude-latex-to-myst.git
+# 1. Clone alongside your book repo, just for the bootstrap
+git clone https://github.com/QuantEcon/claude-latex-to-myst.git /tmp/clm
 
 # 2. Scaffold mystmd/ for your book — discovers chapters automatically,
-#    picks sensible defaults from one of the bundled example projects.
+#    drops in a vendored convert.sh wrapper + .tool-version pin file.
 cd your-book/
-bash ../claude-latex-to-myst/scripts/new-book.sh \
-  --source . --dest mystmd --template dp2
+bash /tmp/clm/scripts/new-book.sh --source . --dest mystmd --template dp2
 $EDITOR mystmd/config.yaml          # fill in 'TODO:' titles, bib name, etc.
 
-# 3. Run the pipeline. scripts/convert.sh auto-runs `uv sync` on first call,
-#    so the venv is created and pyyaml installed transparently.
-bash ../claude-latex-to-myst/scripts/convert.sh --config mystmd/config.yaml
+# 3. Run the pipeline. On first call, mystmd/convert.sh clones the tool
+#    into _tools/claude-latex-to-myst/ at the version pinned in
+#    .tool-version. Subsequent calls reuse the local checkout.
+bash mystmd/convert.sh
 
 # 4. Build and preview
 cd mystmd && myst build --html && myst start
@@ -44,6 +44,39 @@ cd mystmd && myst build --html && myst start
 
 `--template` choices: `dp2` (default; full-featured), `dp1` (book/ subdir
 layout, standalone frontmatter), or `minimal` (you fill in everything).
+
+## How a book stays in sync with the tool
+
+After scaffolding, the book repo owns its conversion workflow. The
+clone at `/tmp/clm` from step 1 is throwaway — the book never depends
+on a sibling checkout of this repo.
+
+```
+your-book/
+├── mystmd/
+│   ├── config.yaml
+│   ├── convert.sh        ← vendored wrapper
+│   ├── .tool-version     ← single line: tag, branch, or SHA
+│   └── ch_*.md           ← regenerated output (committed)
+└── _tools/               ← gitignored; managed by convert.sh
+    └── claude-latex-to-myst/
+```
+
+**Day-to-day:** edit `.tex`, rerun `bash mystmd/convert.sh`, review the
+`mystmd/*.md` diff, commit both. The wrapper announces which version of
+the tool it's running on each invocation.
+
+**Update the tool:** edit `.tool-version` (`main` → `v0.2.0`, or pin a
+specific SHA), rerun `bash mystmd/convert.sh`. The wrapper fetches and
+checks out the new ref automatically; the diff in `mystmd/*.md` shows
+exactly what the tool change did to your book.
+
+**Reproduce a past build:** check out the older commit of the book repo
+— `.tool-version` is part of the commit, so the wrapper will fetch the
+correct tool version. No need to remember anything externally.
+
+`.tool-version` accepts any git ref: a tag for stability, a branch like
+`main` for "always latest", or a SHA for fully-reproducible pinning.
 
 Output lands in `mystmd/ch_*.md`, `mystmd/figures/`, and `mystmd/references.bib`.
 

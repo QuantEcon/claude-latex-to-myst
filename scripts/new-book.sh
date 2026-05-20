@@ -143,17 +143,42 @@ config_path.write_text(text, encoding='utf-8')
 print(f"  wrote {len(discovered)} chapter stem(s) to {config_path.name}")
 PYEOF
 
+# Scaffold the vendored wrapper + version pin so the book repo can run
+# the pipeline without knowing where claude-latex-to-myst lives on disk.
+cp "$SCRIPT_DIR/templates/book-convert.sh" "$DEST/convert.sh"
+chmod +x "$DEST/convert.sh"
+echo "main" > "$DEST/.tool-version"
+
+# Add ``_tools/`` to the book repo's .gitignore if it's a git repo and
+# the entry isn't already there. The wrapper clones the tool into
+# ``../_tools/`` relative to mystmd/, which sits at the book repo root.
+BOOK_ROOT="$(cd "$DEST/.." && pwd)"
+if [[ -d "$BOOK_ROOT/.git" || -f "$BOOK_ROOT/.git" ]]; then
+  GITIGNORE="$BOOK_ROOT/.gitignore"
+  if ! grep -qxF "_tools/" "$GITIGNORE" 2>/dev/null; then
+    {
+      [[ -f "$GITIGNORE" ]] && echo ""
+      echo "# claude-latex-to-myst: vendored tool checkout (managed by mystmd/convert.sh)"
+      echo "_tools/"
+    } >> "$GITIGNORE"
+    echo "  appended _tools/ to $GITIGNORE"
+  fi
+fi
+
 echo ""
 echo "Scaffolded: $DEST"
 echo "  config.yaml         (template: $TEMPLATE)"
 [[ -f "$DEST/tikz_overrides.py" ]] && echo "  tikz_overrides.py   (edit if the book has TikZ diagrams)"
+echo "  convert.sh          (vendored wrapper — fetches the tool into _tools/)"
+echo "  .tool-version       (pinned ref; currently 'main')"
 echo ""
 echo "Next steps:"
 echo "  1. Edit $DEST/config.yaml — fill in 'TODO: …' chapter titles,"
 echo "     adjust bibliography filename, project-specific rewrites, etc."
 echo "  2. Run:"
-echo "       bash $SCRIPT_DIR/convert.sh --config $DEST/config.yaml"
-echo "  3. Build the output:"
-echo "       cd $DEST && myst build --html"
+echo "       bash $DEST/convert.sh"
+echo "     This clones claude-latex-to-myst into _tools/ on first run."
+echo "  3. Review the diff in $DEST/*.md, then commit."
 echo ""
+echo "To pin a specific version, edit $DEST/.tool-version (tag / branch / SHA)."
 echo "See CLAUDE.md ('Iterative error reduction') for the typical first-run workflow."
