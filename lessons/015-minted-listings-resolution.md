@@ -107,6 +107,18 @@ Verified byte-identical to dp1's committed output across all five
 chapters with `\begin{listing}` blocks (ch_intro × 6, ch_mcs × 5,
 ch_mdps × 7, ch_val × 2, ch_ctime × 1; 21 listings total).
 
+### Edge case refined post-codification
+
+Surfaced during the book-dp2 P2b regen (filed as
+`FOLLOWUP-014-algorithm-parser-edge-cases.md`, since deleted):
+
+- **Commented-out listing blocks must be skipped.** A `\begin{listing}`
+  on a line beginning with `%` was being rewritten, with the END marker
+  landing on a fresh uncommented line and leaking a literal
+  `<!--LISTING-END-->` into the output. `_apply_listing_markers.py` now
+  uses `_starts_in_comment()` to bail out cleanly. Same shape of bug
+  + same shape of fix as the algorithm-marker variant (lesson #014).
+
 ## How to detect a regression
 
 ```bash

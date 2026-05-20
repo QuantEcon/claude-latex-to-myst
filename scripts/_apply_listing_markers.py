@@ -61,12 +61,43 @@ def rewrite_listing(body: str) -> str:
     )
 
 
+def _starts_in_comment(text: str, pos: int) -> bool:
+    """Return True if ``text[pos]`` sits in a LaTeX line-comment — i.e.
+    the same physical line has an unescaped ``%`` before ``pos``.
+
+    Without this guard, ``%\\begin{listing}…%\\end{listing}`` (a block
+    the author has commented out) gets rewritten anyway: the ``%`` on
+    the START line survives by accident, but the END marker is on a
+    fresh line of the multi-line replacement string and ends up
+    uncommented, leaking a literal ``<!--LISTING-END-->`` into the
+    output. See FOLLOWUP-014-algorithm-parser-edge-cases.md, Gap A.
+    """
+    line_start = text.rfind('\n', 0, pos) + 1
+    i = line_start
+    while i < pos:
+        if text[i] == '\\':
+            i += 2          # skip escaped char (including ``\%``)
+            continue
+        if text[i] == '%':
+            return True
+        i += 1
+    return False
+
+
 def process_text(text: str) -> str:
     pattern = re.compile(
         r'\\begin\{listing\}(?:\[[^\]]*\])?(.*?)\\end\{listing\}',
         re.DOTALL,
     )
-    return pattern.sub(lambda m: rewrite_listing(m.group(1)), text)
+
+    def replace(m: re.Match) -> str:
+        if _starts_in_comment(text, m.start()):
+            # Whole block is commented out in the source. Pandoc will
+            # strip it; we leave it unchanged.
+            return m.group(0)
+        return rewrite_listing(m.group(1))
+
+    return pattern.sub(replace, text)
 
 
 def main() -> None:

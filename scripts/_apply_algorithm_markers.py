@@ -104,6 +104,26 @@ def rewrite_algorithm(body: str, auto_name_fn) -> str:
     return f'\n\n<!--ALGORITHM name={name_my} title={title} body={b64}-->\n\n'
 
 
+def _starts_in_comment(text: str, pos: int) -> bool:
+    """True iff ``text[pos]`` is inside a LaTeX line-comment.
+
+    Same guard as in ``_apply_listing_markers.py``: a ``\\begin{algorithm}``
+    on a line that's been commented out with ``%`` should be left alone
+    (else the END marker on a fresh line of the replacement loses its
+    ``%`` and leaks into pandoc's output).
+    """
+    line_start = text.rfind('\n', 0, pos) + 1
+    i = line_start
+    while i < pos:
+        if text[i] == '\\':
+            i += 2
+            continue
+        if text[i] == '%':
+            return True
+        i += 1
+    return False
+
+
 def process_text(text: str, auto_prefix: str) -> str:
     """Replace every ``\\begin{algorithm}...\\end{algorithm}`` block with a
     marker. Auto-generates labels (using ``auto_prefix``) for blocks without a
@@ -121,6 +141,8 @@ def process_text(text: str, auto_prefix: str) -> str:
     )
 
     def repl(m: re.Match) -> str:
+        if _starts_in_comment(text, m.start()):
+            return m.group(0)
         return rewrite_algorithm(m.group(1), next_auto_name)
 
     return pattern.sub(repl, text)

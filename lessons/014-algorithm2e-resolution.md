@@ -105,6 +105,33 @@ Ported from dp1 in three pieces, all Python (no Perl, per lesson #009):
 Verified byte-identical to dp1's committed output for ch_intro, ch_mdps,
 ch_rdps, ch_state_dep, ch_ctime (the five chapters with algorithm2e blocks).
 
+### Edge cases refined post-codification
+
+Surfaced during the book-dp2 P2b regen (filed as
+`FOLLOWUP-014-algorithm-parser-edge-cases.md`, since deleted):
+
+- **Commented-out algorithm blocks must be skipped.** A `\begin{algorithm}`
+  on a line beginning with `%` was being rewritten anyway, with the
+  END marker landing on a fresh (uncommented) line in the replacement
+  and leaking into pandoc's output. `_apply_algorithm_markers.py`
+  now bails out via `_starts_in_comment()` for matches whose line
+  has an unescaped `%` before the `\begin`.
+- **`\textnormal{X}` is unwrapped.** Common inside `\While{\textnormal{true}}`
+  conditions — added to the noise-command pass in `_algo_convert_body`
+  so the LaTeX wrapper doesn't survive into the bullet list.
+- **Unbraced `\Return $\theta$` is now recognised.** Authors who skip
+  the braces (`\Return $\theta$` instead of `\Return{$\theta$}`) used
+  to leave the literal `\Return` in the output. A second fallback
+  pass in the one-arg statement handler matches the unbraced form,
+  stopping at `\;` or end of line. Same fallback applies to `\KwIn`,
+  `\KwOut`, `\KwResult`.
+
+What the parser still doesn't handle: a `\begin{equation*}…\end{equation*}`
+block nested inside a `\While` body produces ugly per-line bullets.
+Real escalation in complexity (balanced-environment tracking through
+the algorithm body); workaround is a one-shot hand-edit per occurrence.
+Flagged here for posterity; not on the roadmap.
+
 ## Side bug fixed during port
 
 The verification surfaced a regex bug in `convert_equations` independent

@@ -83,6 +83,43 @@ def test_resolve_algorithms_repeat_with_inner():
     assert "  - $u \\leftarrow Tu$" in out
 
 
+def test_resolve_algorithms_strips_textnormal():
+    """FOLLOWUP #014, Gap B: ``\\textnormal{true}`` (LaTeX's "drop into
+    text mode inside math") should be unwrapped — algorithm conditions
+    aren't math, so the wrapper has no markdown equivalent."""
+    body = "\\While{\\textnormal{true}}\n{\n    do stuff \\;\n}\n"
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    assert "- while true:" in out
+    assert "\\textnormal" not in out
+
+
+def test_resolve_algorithms_unbraced_return():
+    """FOLLOWUP #014, Gap C: ``\\Return $\\theta$`` (no braces) should
+    render as ``- return $\\theta$``. The existing parser only handled
+    ``\\Return{x}``."""
+    body = "$\\theta \\leftarrow 0$ \\;\n\\Return $\\theta$\n"
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    assert "- return $\\theta$" in out
+    # The literal LaTeX shouldn't survive
+    assert "\\Return" not in out
+
+
+def test_resolve_algorithms_unbraced_kwin():
+    """Same unbraced fallback applies to \\KwIn / \\KwOut / \\KwResult."""
+    body = "\\KwIn data $\\Dsf$ and tolerance $\\tau$ \\;\n"
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    assert "- input: data $\\Dsf$ and tolerance $\\tau$" in out
+    assert "\\KwIn" not in out
+
+
+def test_resolve_algorithms_braced_return_still_works():
+    """Regression check: the braced form must keep working alongside
+    the new unbraced fallback."""
+    body = "\\Return{$u_k$}\n"
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    assert "- return $u_k$" in out
+
+
 def test_resolve_algorithms_handles_unescaped_marker():
     """pandoc usually escapes < and > to \\<, \\>, but sometimes doesn't.
     The regex must tolerate both forms."""

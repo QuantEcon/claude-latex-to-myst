@@ -92,6 +92,21 @@ def test_algorithm_marker_idempotent_noop_on_no_match():
     assert alg.process_text(tex, auto_prefix="x") == tex
 
 
+def test_algorithm_marker_skips_commented_out_block():
+    """FOLLOWUP #014, Gap A: a `\\begin{algorithm}` on a line that's
+    already commented out with `%` must NOT be rewritten — otherwise
+    the END marker ends up on a fresh (uncommented) line and leaks
+    into pandoc's output."""
+    tex = (
+        "%\\begin{algorithm}\n"
+        "%    body \\;\n"
+        "%    \\caption{T}\n"
+        "%\\end{algorithm}\n"
+    )
+    # Should be left unchanged (pandoc will strip the comments naturally).
+    assert alg.process_text(tex, auto_prefix="x") == tex
+
+
 # ── Listing markers ──────────────────────────────────────────────────────────
 
 
@@ -128,6 +143,19 @@ def test_listing_marker_missing_inputminted_defaults_lang_text():
     )
     out = lst.process_text(tex)
     assert "lang=text" in out
+
+
+def test_listing_marker_skips_commented_out_block():
+    """FOLLOWUP #014, Gap A (listing variant): same as the algorithm
+    case — commented-out `\\begin{listing}` must not be rewritten or
+    we leak a literal `<!--LISTING-END-->` into the .md output."""
+    tex = (
+        "%\\begin{listing}\n"
+        "%\\inputminted[firstline=1, lastline=5]{python}{src.py}\n"
+        "%\\caption{\\label{list:foo} ignored}\n"
+        "%\\end{listing}\n"
+    )
+    assert lst.process_text(tex) == tex
 
 
 def test_listing_marker_handles_multiline_caption():

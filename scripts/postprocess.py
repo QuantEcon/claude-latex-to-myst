@@ -1248,6 +1248,10 @@ def _algo_convert_body(body: str) -> str:
     s = re.sub(r'\\index\{[^}]*\}', '', s)
     s = re.sub(r'\\navy\{([^}]*)\}', r'**\1**', s)
     s = re.sub(r'\\textbf\{([^}]*)\}', r'**\1**', s)
+    # ``\textnormal{...}`` is LaTeX's way to drop into upright text inside
+    # math mode; in an algorithm condition like ``\While{\textnormal{true}}``
+    # the wrapper has no markdown equivalent — unwrap it. (FOLLOWUP #014, Gap B)
+    s = re.sub(r'\\textnormal\{([^}]*)\}', r'\1', s)
 
     # Repeatedly expand control blocks (innermost first via simple loop).
     def expand_one(text: str) -> tuple[str, bool]:
@@ -1309,12 +1313,13 @@ def _algo_convert_body(body: str) -> str:
                 return text[: m.start()] + replacement + text[j + 1 :], True
 
         # One-arg statement commands.
-        for cmd, fmt in (
+        one_arg_cmds = (
             ('Return',   'return {}'),
             ('KwResult', 'result: {}'),
             ('KwIn',     'input: {}'),
             ('KwOut',    'output: {}'),
-        ):
+        )
+        for cmd, fmt in one_arg_cmds:
             pat = re.compile(r'\\' + cmd + r'\s*\{')
             m = pat.search(text)
             if not m:
@@ -1326,6 +1331,20 @@ def _algo_convert_body(body: str) -> str:
             arg = text[i + 1 : j].strip()
             replacement = fmt.format(arg)
             return text[: m.start()] + replacement + text[j + 1 :], True
+
+        # Unbraced one-arg fallback — covers ``\Return $\theta$`` and
+        # similar where the author skipped the braces. Stops at ``\;`` or
+        # end of line. (FOLLOWUP #014, Gap C.) ``(?![A-Za-z])`` prevents
+        # matching e.g. ``\Returnix`` as ``\Return``.
+        for cmd, fmt in one_arg_cmds:
+            pat = re.compile(
+                r'\\' + cmd + r'(?![A-Za-z])\s+([^\n]+?)\s*(?=\\;|\n|$)'
+            )
+            m = pat.search(text)
+            if not m:
+                continue
+            arg = m.group(1).strip()
+            return text[: m.start()] + fmt.format(arg) + text[m.end() :], True
 
         return text, False
 
