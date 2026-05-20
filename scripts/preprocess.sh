@@ -67,16 +67,25 @@ while IFS= read -r line; do
   [[ -n "$line" ]] && CHAPTER_STEMS+=("$line")
 done < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" extra_files.stem)
 
+# Stage 0: carve any consolidated multi-chapter .tex files (e.g. dp1's
+# appendix.tex) into per-chapter pieces before per-stem preprocessing.
+# Outputs land in TMP_DIR with the stem names listed under
+# `preprocess.split.into`; the chapter loop below picks them up.
+python3 "$SCRIPT_DIR/_apply_chapter_splits.py" "$CONFIG" "$SOURCE_DIR" "$TMP_DIR"
+
 for ch in "${CHAPTER_STEMS[@]}"; do
   src="$SOURCE_DIR/${ch}.tex"
   dst="$TMP_DIR/${ch}.tex"
 
-  if [[ ! -f "$src" ]]; then
-    echo "  WARN: $src not found, skipping" >&2
-    continue
+  # If the stem was produced by a chapter split (above), tmp/{stem}.tex
+  # already exists — keep that content and skip the cp from source_dir.
+  if [[ ! -f "$dst" ]]; then
+    if [[ ! -f "$src" ]]; then
+      echo "  WARN: $src not found, skipping" >&2
+      continue
+    fi
+    cp "$src" "$dst"
   fi
-
-  cp "$src" "$dst"
 
   # All sed-style transforms (strip + rewrites + perl) run in Python — avoids
   # BSD vs GNU sed portability traps and shell quoting hell.

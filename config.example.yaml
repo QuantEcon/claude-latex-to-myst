@@ -165,6 +165,27 @@ figures_dir: "figures"
 #   - Replacing \input{tikz/...} with a placeholder
 
 preprocess:
+  # Split consolidated multi-chapter .tex files (e.g. one ``appendix.tex``
+  # bundling several ``\chapter{}`` blocks) into per-chapter pieces. Each
+  # entry copies ``source_dir/{source}.tex`` to the tmp dir, splits at
+  # ``\chapter{...}`` boundaries, and writes the first N sections to the
+  # stems listed in ``into``.
+  #
+  # The split runs *before* per-chapter rewrites; each output stem is
+  # then processed as a normal chapter (apply rewrites + algorithm /
+  # listing markers). The output stems must appear in ``chapters:`` /
+  # ``extra_files:`` to be picked up by pandoc.
+  #
+  # ``skip_extra: true`` discards trailing ``\chapter`` blocks beyond
+  # ``into``; without it the splitter errors so accidental drops are
+  # surfaced. Use it deliberately (e.g. dp1's third appendix is just
+  # ``\shipoutAnswer`` and has no usable content).
+
+  # split:
+  #   - source: appendix
+  #     into: [appA, appB]
+  #     skip_extra: true
+
   # Patterns to delete (replaced with empty string)
   strip:
     - '\\index\{[^}]*\}'

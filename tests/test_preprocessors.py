@@ -10,7 +10,10 @@ import re
 
 # Module names are dotted because they live alongside other scripts under
 # the `scripts/` directory, which pyproject.toml already adds to sys.path.
+import pytest
+
 import _apply_algorithm_markers as alg
+import _apply_chapter_splits as split
 import _apply_listing_markers as lst
 
 
@@ -170,3 +173,84 @@ def test_listing_marker_handles_multiline_caption():
     )
     out = lst.process_text(tex)
     assert "Multi-line caption that spans" in out
+
+
+# ── Chapter splits (multi-chapter source files) ──────────────────────────────
+
+
+def test_chapter_split_two_chapters(tmp_path):
+    src = tmp_path / "appendix.tex"
+    src.write_text(
+        "\\chapter{Suprema and Infima}\\label{c:areal}\n"
+        "Body of A.\n"
+        "\\chapter{Remaining Proofs}\\label{c:ai}\n"
+        "Body of B.\n",
+        encoding="utf-8",
+    )
+    split.split_one(src, ["appA", "appB"], skip_extra=False, tmp_dir=tmp_path)
+    assert not src.exists()  # source consumed
+    appA = (tmp_path / "appA.tex").read_text(encoding="utf-8")
+    appB = (tmp_path / "appB.tex").read_text(encoding="utf-8")
+    assert appA.startswith("\\chapter{Suprema and Infima}")
+    assert "Body of A." in appA
+    assert "Body of B." not in appA
+    assert appB.startswith("\\chapter{Remaining Proofs}")
+    assert "Body of B." in appB
+
+
+def test_chapter_split_skip_extra_discards_trailing(tmp_path):
+    """dp1's appendix.tex has 3 \\chapter blocks; the 3rd
+    (\\shipoutAnswer) produces no usable content and should be
+    discarded via skip_extra: true."""
+    src = tmp_path / "appendix.tex"
+    src.write_text(
+        "\\chapter{One}\nA\n"
+        "\\chapter{Two}\nB\n"
+        "\\chapter{Three discarded}\nC\n",
+        encoding="utf-8",
+    )
+    split.split_one(src, ["appA", "appB"], skip_extra=True, tmp_dir=tmp_path)
+    assert (tmp_path / "appA.tex").exists()
+    assert (tmp_path / "appB.tex").exists()
+    # No third output:
+    assert not list(tmp_path.glob("*Three*"))
+    assert "Three discarded" not in (tmp_path / "appB.tex").read_text(encoding="utf-8")
+
+
+def test_chapter_split_errors_on_extra_without_skip(tmp_path):
+    src = tmp_path / "appendix.tex"
+    src.write_text(
+        "\\chapter{One}\nA\n\\chapter{Two}\nB\n\\chapter{Three}\nC\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit) as exc:
+        split.split_one(src, ["appA", "appB"], skip_extra=False, tmp_dir=tmp_path)
+    assert "skip_extra" in str(exc.value)
+
+
+def test_chapter_split_errors_if_too_few_chapters(tmp_path):
+    src = tmp_path / "appendix.tex"
+    src.write_text("\\chapter{Only One}\nA\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        split.split_one(src, ["appA", "appB"], skip_extra=False, tmp_dir=tmp_path)
+    assert "only 1" in str(exc.value).lower() or "1 \\chapter" in str(exc.value)
+
+
+def test_chapter_split_handles_chapter_star(tmp_path):
+    """\\chapter*{Title} (unnumbered) is also a chapter boundary."""
+    src = tmp_path / "src.tex"
+    src.write_text(
+        "\\chapter{First}\nA\n\\chapter*{Unnumbered}\nB\n",
+        encoding="utf-8",
+    )
+    split.split_one(src, ["one", "two"], skip_extra=False, tmp_dir=tmp_path)
+    assert "First" in (tmp_path / "one.tex").read_text(encoding="utf-8")
+    assert "Unnumbered" in (tmp_path / "two.tex").read_text(encoding="utf-8")
+
+
+def test_chapter_split_no_chapter_blocks_errors(tmp_path):
+    src = tmp_path / "src.tex"
+    src.write_text("No chapter macros here.\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        split.split_one(src, ["a"], skip_extra=False, tmp_dir=tmp_path)
+    assert "no \\chapter" in str(exc.value).lower()
