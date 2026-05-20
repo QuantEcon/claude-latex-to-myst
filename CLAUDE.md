@@ -18,11 +18,55 @@ done — see `scripts/postprocess.py`, `scripts/preprocess.sh`, `scripts/convert
    find yourself editing `postprocess.py` for project-specific reasons, that
    reason probably belongs in config.
 3. **Run the pipeline; categorize errors; fix the largest category.** See
-   the "Iterative Error Reduction" section in the original PROMPT. One regex
-   fix can eliminate dozens of errors.
+   *Iterative error reduction* below — one regex fix usually eliminates
+   dozens of build errors.
 4. **Capture new lessons.** When you hit a non-obvious bug, run
    `/capture-lesson` to add it to the catalogue. Future-you (or future-Claude)
    will thank you.
+
+## Iterative error reduction
+
+Conversion is iterative, not one-shot. The first pipeline run on a new
+book typically produces hundreds of MyST build warnings. The fast path
+to "clean build" is **always** category-first, never error-by-error:
+
+1. **Run the pipeline.** `bash scripts/convert.sh --config mystmd/config.yaml`
+2. **Build the output.** `cd mystmd && myst build --html 2>&1 | tee build.log`
+3. **Categorize what came out.** Group warnings by kind, not by source
+   location. A typical opening shape:
+
+   ```bash
+   grep -oE '(duplicate_id|xref_not_found|math_parse|directive_unknown)' build.log \
+     | sort | uniq -c | sort -rn
+   ```
+
+   Or, when the patterns aren't obvious yet, a one-off Python counter:
+
+   ```python
+   import collections, re
+   counts = collections.Counter()
+   for line in open('build.log'):
+       m = re.search(r'(\w+_\w+)', line)
+       if m:
+           counts[m.group(1)] += 1
+   for cat, n in counts.most_common():
+       print(f'{n:5d}  {cat}')
+   ```
+
+4. **Fix the highest-count category first.** Almost always this means a
+   single regex transform in `postprocess.py` (or a single new
+   `config.yaml` rewrite rule), not 50 hand-edits to source files.
+5. **Re-run from step 1.** Recount; the category you just fixed should
+   now be gone or much smaller. Take the next-largest category.
+6. **Stop when the remaining errors are genuinely per-file edge cases.**
+   At that point hand-fix the markdown directly — but only at that
+   point. Hand-fixing too early means losing the fix on the next re-run.
+
+If a category is mechanically fixable and the same shape will appear in
+the next book, **codify it as a lesson + a pipeline transform** rather
+than as a hand-edit (per the "When to capture a lesson vs. fix the
+pipeline" section below). The lesson catalogue exists so the same hour
+of debugging never happens twice.
 
 ## Genuinely generic vs project-specific
 

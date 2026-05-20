@@ -48,6 +48,32 @@ extra_files:
   - stem: common_symbols
     title: "Notation"
 
+# --- Environments (extend the defaults) -------------------------------------
+
+# Pandoc emits LaTeX environments like ``\begin{conjecture}...\end{conjecture}``
+# as ``::: conjecture ... :::`` divs in markdown. The pipeline knows the
+# common ones (theorem, lemma, definition, proposition, corollary, example,
+# remark, assumption, algorithm, proof, Exercise, Answer) — see ENV_MAP in
+# scripts/postprocess.py for the full default list.
+#
+# Use ``extra_environments`` to add project-specific ones. Keys are the
+# pandoc div name (the LaTeX environment); values are the MyST directive
+# they should become. Common targets: any sphinx-proof type (prf:theorem,
+# prf:lemma, prf:remark, etc.) or built-in MyST directives.
+#
+# extra_environments:
+#   Conjecture: prf:conjecture
+#   Notation:   prf:remark
+#   Fact:       prf:theorem
+
+# Use ``skip_environments`` to silently strip wrapper divs that have no
+# MyST equivalent (the content is kept, the wrapper is removed). The
+# default list already handles ``multicols``, ``minipage``, ``center``.
+#
+# skip_environments:
+#   - columns
+#   - framed
+
 # --- Frontmatter style ------------------------------------------------------
 
 # Two valid MyST conventions for the chapter heading + label:

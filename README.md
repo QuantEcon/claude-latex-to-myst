@@ -27,11 +27,12 @@ and `pandoc` ≥ 3.0.
 # 1. Clone alongside your book repo
 git clone https://github.com/QuantEcon/claude-latex-to-myst.git
 
-# 2. In your book repo, set up the MyST output directory + config
+# 2. Scaffold mystmd/ for your book — discovers chapters automatically,
+#    picks sensible defaults from one of the bundled example projects.
 cd your-book/
-mkdir -p mystmd
-cp ../claude-latex-to-myst/config.example.yaml mystmd/config.yaml
-$EDITOR mystmd/config.yaml          # set chapter list, bib filename, etc.
+bash ../claude-latex-to-myst/scripts/new-book.sh \
+  --source . --dest mystmd --template dp2
+$EDITOR mystmd/config.yaml          # fill in 'TODO:' titles, bib name, etc.
 
 # 3. Run the pipeline. scripts/convert.sh auto-runs `uv sync` on first call,
 #    so the venv is created and pyyaml installed transparently.
@@ -40,6 +41,9 @@ bash ../claude-latex-to-myst/scripts/convert.sh --config mystmd/config.yaml
 # 4. Build and preview
 cd mystmd && myst build --html && myst start
 ```
+
+`--template` choices: `dp2` (default; full-featured), `dp1` (book/ subdir
+layout, standalone frontmatter), or `minimal` (you fill in everything).
 
 Output lands in `mystmd/ch_*.md`, `mystmd/figures/`, and `mystmd/references.bib`.
 

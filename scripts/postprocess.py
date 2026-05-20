@@ -29,6 +29,11 @@ from pathlib import Path
 
 # ── Environment mapping ──────────────────────────────────────────────────────
 
+# Default mapping from pandoc-emitted ``::: envname`` divs to MyST directive
+# names. Extended per-project via ``config.extra_environments`` / consumed
+# (skip-only) via ``config.skip_environments``. Both lists are merged into
+# the module-level dicts by ``apply_config`` — never edit per-book entries
+# in this file.
 ENV_MAP = {
     # sphinx-proof environments
     'theorem':        'prf:theorem',
@@ -1547,10 +1552,32 @@ def apply_config(config: dict, base_dir: Path | None = None) -> None:
     resolution, which is fine — listings are an opt-in feature.
     """
     global CHAPTER_TITLES, _LISTING_SOURCE_BASE, _FRONTMATTER_STYLE, _WHITESPACE_STYLE
+    global ENV_MAP, ENV_SKIP
     CHAPTER_TITLES = {
         entry['stem']: entry.get('title', entry['stem'])
         for entry in (config.get('chapters') or []) + (config.get('extra_files') or [])
     }
+
+    # Extend the env→directive map with project-specific environments. Use
+    # for theorem-like environments not in the default ENV_MAP (e.g.
+    # ``Conjecture: prf:conjecture``, ``Notation: prf:remark``). Project
+    # entries override defaults if the same key appears in both.
+    extra_envs = config.get('extra_environments') or {}
+    if not isinstance(extra_envs, dict):
+        raise SystemExit(
+            f"config.extra_environments must be a mapping, got {type(extra_envs).__name__}"
+        )
+    ENV_MAP = {**ENV_MAP, **extra_envs}
+
+    # Extend the "div wrappers to strip" set with project-specific
+    # environments — e.g. layout commands that pandoc preserves as ``:::``
+    # blocks but have no MyST equivalent (``columns``, ``framed`` …).
+    skip_envs = config.get('skip_environments') or []
+    if not isinstance(skip_envs, (list, tuple, set)):
+        raise SystemExit(
+            f"config.skip_environments must be a list, got {type(skip_envs).__name__}"
+        )
+    ENV_SKIP = ENV_SKIP | set(skip_envs)
 
     style = config.get('frontmatter_style', 'absorbed')
     if style not in ('absorbed', 'standalone'):
