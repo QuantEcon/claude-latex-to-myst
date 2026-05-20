@@ -20,6 +20,13 @@
 # Env overrides:
 #   CLAUDE_LATEX_TO_MYST_URL    Alternate clone URL (forks, mirrors).
 #   CLAUDE_LATEX_TO_MYST_TOOLS  Override the _tools/ directory location.
+#
+# Book-side post-conversion steps:
+#   Add commands at the bottom of this script (after the tool delegates).
+#   Common cases: render TikZ figures, generate llms.txt artifacts, run
+#   project-specific validators. The wrapper deliberately does NOT use
+#   `exec` to delegate, so anything you append after that line runs as
+#   part of the normal `bash mystmd/convert.sh` invocation.
 # =============================================================================
 
 set -euo pipefail
@@ -88,5 +95,14 @@ SHORT="$(cd "$TOOL_DIR" && git rev-parse --short HEAD)"
 echo "Using claude-latex-to-myst @ $VERSION ($SHORT)"
 echo ""
 
-exec bash "$TOOL_DIR/scripts/convert.sh" \
+bash "$TOOL_DIR/scripts/convert.sh" \
   --config "$SCRIPT_DIR/config.yaml" "$@"
+
+# ── 4. Book-side post-conversion steps ──────────────────────────────────────
+# Add any project-specific steps below — they run after the shared pipeline
+# but as part of the same `bash mystmd/convert.sh` invocation, so a single
+# command covers the whole regen workflow.
+#
+# Examples:
+#   uv run --no-project python "$SCRIPT_DIR/scripts/render_tikz.py"
+#   uv run --no-project python "$SCRIPT_DIR/scripts/build_llms_txt.py"

@@ -78,6 +78,12 @@ correct tool version. No need to remember anything externally.
 `.tool-version` accepts any git ref: a tag for stability, a branch like
 `main` for "always latest", or a SHA for fully-reproducible pinning.
 
+**Book-side post-steps:** the wrapper deliberately doesn't `exec` to
+delegate. Anything you append after the delegation line (TikZ rendering,
+`llms.txt` generation, project-specific validators, etc.) runs as part
+of the normal `bash mystmd/convert.sh` invocation. See the template's
+"Book-side post-conversion steps" block for the commented-out examples.
+
 Output lands in `mystmd/ch_*.md`, `mystmd/figures/`, and `mystmd/references.bib`.
 
 No venv activation, no `pip install`, no `PATH=…` prefix — the shell script
