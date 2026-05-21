@@ -167,9 +167,24 @@ haven't validated. Everything below is on `main` and available now.
   with label), the residual `*Proof.*` is also stripped so
   sphinx-proof's auto-rendered opener doesn't double up. Closes
   [#4].
+- **Doubled plural noun before `{prf:ref}`** ([#5]): prose like
+  `Chapters {prf:ref}` followed by multi-target refs left the leading
+  plural intact (`strip_doubled_noun_refs` only knew singular forms),
+  rendering as "Chapters Chapter 5 and Chapter 7" — sphinx-proof
+  doubles the noun on the first ref. Added plural forms to
+  `_DOUBLED_NOUN_REFS` (Chapters, Theorems, Lemmas, Algorithms,
+  Exercises, Propositions, Corollaries, Assumptions, Remarks). The
+  prefix-match guard applies to plurals the same as singulars.
+  Multi-target shapes (`X and Y`, `X--Y`, lists with `,`) don't need
+  extra handling: only the leading plural-noun token is redundant.
+  Fresh dp1 output drops to zero doubled-plural sites (committed dp1
+  via its legacy pipeline still has 9 — that's the deliberate
+  improvement drift the migration parity report will note).
+  Closes [#5].
 
 [#3]: https://github.com/QuantEcon/claude-latex-to-myst/issues/3
 [#4]: https://github.com/QuantEcon/claude-latex-to-myst/issues/4
+[#5]: https://github.com/QuantEcon/claude-latex-to-myst/issues/5
 
 ### Settled architectural decisions
 

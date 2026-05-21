@@ -72,16 +72,32 @@ ENV_SKIP = {'multicols', 'minipage', 'center'}
 # "Theorem Theorem 1.2" in the output. The second column is the label prefix
 # that confirms the ref points to that kind of object — guards against stripping
 # "Theorem ..." in front of a ref to something unrelated.
+#
+# Plural forms are listed alongside singulars so prose like
+# ``Chapters {prf:ref}`c-X` and {prf:ref}`c-Y```` (sphinx-proof renders
+# each ref as "Chapter N") also gets de-doubled. Multi-target shapes
+# (range/list separators) don't need extra handling: only the leading
+# plural-noun token is redundant; the refs between separators have no
+# intervening noun for sphinx-proof to collide with.
 _DOUBLED_NOUN_REFS = [
-    ('Algorithm',   'algo-'),
-    ('Assumption',  'a-'),
-    ('Chapter',     'c-'),
-    ('Corollary',   'c-'),
-    ('Exercise',    'ex-'),
-    ('Lemma',       'l-'),
-    ('Proposition', 'p-'),
-    ('Remark',      'r-'),
-    ('Theorem',     't-'),
+    ('Algorithm',    'algo-'),
+    ('Algorithms',   'algo-'),
+    ('Assumption',   'a-'),
+    ('Assumptions',  'a-'),
+    ('Chapter',      'c-'),
+    ('Chapters',     'c-'),
+    ('Corollary',    'c-'),
+    ('Corollaries',  'c-'),
+    ('Exercise',     'ex-'),
+    ('Exercises',    'ex-'),
+    ('Lemma',        'l-'),
+    ('Lemmas',       'l-'),
+    ('Proposition',  'p-'),
+    ('Propositions', 'p-'),
+    ('Remark',       'r-'),
+    ('Remarks',      'r-'),
+    ('Theorem',      't-'),
+    ('Theorems',     't-'),
 ]
 
 

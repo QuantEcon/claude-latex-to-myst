@@ -207,6 +207,52 @@ def test_strip_doubled_noun_refs_guards_unrelated_prefixes():
     assert out == text
 
 
+def test_strip_doubled_noun_refs_plural_chapters_and_separator():
+    """Leading plural 'Chapters' before a multi-target prose
+    (`{prf:ref}` X and Y) should be stripped — sphinx-proof renders
+    each ref's own noun, so the leading plural is the only redundancy."""
+    text = "In Chapters {prf:ref}`c-foo` and {prf:ref}`c-bar` we discuss X."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "In {prf:ref}`c-foo` and {prf:ref}`c-bar` we discuss X."
+
+
+def test_strip_doubled_noun_refs_plural_with_range_separator():
+    """Plural noun + `--`-separated range (Exercises X--Y)."""
+    text = "In Exercises {prf:ref}`ex-a`--{prf:ref}`ex-b`, prove X."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "In {prf:ref}`ex-a`--{prf:ref}`ex-b`, prove X."
+
+
+def test_strip_doubled_noun_refs_plural_with_nbsp():
+    """pandoc emits LaTeX `~` as U+00A0 between plural noun and ref."""
+    text = "Chapters\xa0{prf:ref}`c-introii`--{prf:ref}`c-mcs` cover X."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "{prf:ref}`c-introii`--{prf:ref}`c-mcs` cover X."
+
+
+def test_strip_doubled_noun_refs_irregular_plural_corollaries():
+    """`Corollary` → `Corollaries` is an irregular plural (not just +s).
+    Explicit listing in _DOUBLED_NOUN_REFS covers it."""
+    text = "Corollaries {prf:ref}`c-aleph` and {prf:ref}`c-beth` follow."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "{prf:ref}`c-aleph` and {prf:ref}`c-beth` follow."
+
+
+def test_strip_doubled_noun_refs_singular_still_works():
+    """Existing singular handling must continue to work after plural extension."""
+    text = "Theorem {prf:ref}`t-foo` proves X."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "{prf:ref}`t-foo` proves X."
+
+
+def test_strip_doubled_noun_refs_plural_guards_unrelated_prefix():
+    """The prefix guard applies to plurals the same as singulars —
+    don't strip 'Chapters' before a ref whose target isn't a chapter."""
+    text = "Chapters {prf:ref}`l-foo` should stay (l- is a lemma prefix)."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == text
+
+
 def test_strip_doubled_section_symbol_basic():
     text = "in §{ref}`s-foo` and §{ref}`ss-bar`"
     out = postprocess.strip_doubled_section_symbol(text)
