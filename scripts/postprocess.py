@@ -196,52 +196,44 @@ def convert_environment_divs(text: str) -> str:
                 body_lines.append(lines[i])
                 i += 1
             
-            # Extract label from body if present
+            # Extract label(s) from the body. Pandoc emits one or more
+            # ``[]{#label label="label"}`` anchors anywhere on a line.
+            # Multi-label LaTeX (e.g. ``\begin{Exercise}\label{a}\label{b}``)
+            # produces adjacent / consecutive anchors. The first anchor
+            # becomes ``:label:`` on the directive; subsequent anchors are
+            # emitted as sibling ``{div}`` blocks above the directive (issue
+            # #10) — each becomes its own valid cross-ref target.
+            #
+            # The regex captures the marker anywhere on the line; ``sub('', …)``
+            # strips it and leaves the surrounding whitespace in place. For
+            # ``\begin{proof}[Proof of …]\label{p:foo}`` the leading
+            # ``*Proof of …*`` opener stays intact (sphinx-proof renders just
+            # the prefix). For the bare ``\begin{proof}\label{p:foo}`` case,
+            # the residual ``*Proof.*`` is also stripped — sphinx-proof
+            # renders its own opener (issue #4).
             label = None
+            extra_labels: list[str] = []
             title = None
             clean_body = []
+            anchor_re = re.compile(r'\[\]\{#([^\s}]+)(?:\s+label="[^"]*")?\}')
             for bline in body_lines:
-                # Match []{#label label="label"} on its own line
-                lm = re.match(r'^\[\]\{#([^\s}]+)(?:\s+label="[^"]*")?\}\s*$', bline)
-                if lm:
-                    label = convert_label_colons(lm.group(1))
-                    continue
-                # Match []{#label label="label"} at START of a line with more text
-                lm2 = re.match(r'^\[\]\{#([^\s}]+)(?:\s+label="[^"]*")?\}\s+(.+)$', bline)
-                if lm2:
-                    label = convert_label_colons(lm2.group(1))
-                    rest = lm2.group(2).strip()
-                    if rest:
-                        clean_body.append(rest)
-                    continue
-                # Match []{#label label="label"} at END of a line (e.g., algorithm captions)
-                lm3 = re.search(r'\[\]\{#([^\s}]+)(?:\s+label="[^"]*")?\}\s*$', bline)
-                if lm3 and not lm3.start() == 0:
-                    label = convert_label_colons(lm3.group(1))
-                    rest = bline[:lm3.start()].strip()
-                    if rest:
-                        clean_body.append(rest)
-                    continue
-                # Match []{#label label="label"} mid-line — pandoc emits this
-                # shape for ``\begin{proof}[Proof of ...]\label{p:foo}``, where
-                # the label lands between the rendered ``*Proof of ...*``
-                # opener and the proof body (issue #4). Patterns 1-3 only
-                # catch line-boundary positions; strip mid-line markers and
-                # preserve the surrounding whitespace so the prose still reads
-                # cleanly. For ``\begin{proof}\label{p:foo}`` (bare opener),
-                # the residual ``*Proof.*`` prefix is also stripped — sphinx-
-                # proof renders its own opener.
-                lm4 = re.search(r'\[\]\{#([^\s}]+)(?:\s+label="[^"]*")?\}', bline)
-                if lm4:
-                    label = convert_label_colons(lm4.group(1))
-                    rest = bline[:lm4.start()] + bline[lm4.end():]
+                anchors = anchor_re.findall(bline)
+                if anchors:
+                    rest = anchor_re.sub('', bline)
                     if myst_env == 'prf:proof':
                         rest = re.sub(r'^\s*\*Proof\.\*\s*', '', rest)
                     rest = rest.strip()
+                    for a in anchors:
+                        a_conv = convert_label_colons(a)
+                        if label is None:
+                            label = a_conv
+                        else:
+                            extra_labels.append(a_conv)
                     if rest:
                         clean_body.append(rest)
                     continue
-                # For proof blocks, remove *Proof.* marker
+                # For proof blocks, remove a bare *Proof.* marker (sphinx-
+                # proof adds its own opener).
                 if myst_env == 'prf:proof' and re.match(r'^\*Proof\.\*\s*', bline):
                     rest = re.sub(r'^\*Proof\.\*\s*', '', bline).strip()
                     if rest:
@@ -276,6 +268,18 @@ def convert_environment_divs(text: str) -> str:
                     header = f'```{{solution}} {_last_exercise_label}'
                 _last_exercise_label = None
             
+            # Emit any extra labels as sibling ``{div}`` anchor blocks
+            # ahead of the directive. Multiple consecutive ``(label)=``
+            # anchors all attach to the same next block and MyST keeps
+            # only the last (warns "label X replaced with Y"); ``{div}``
+            # directives each become their own anchor node — see issue
+            # #10.
+            for extra in extra_labels:
+                result.append('```{div}')
+                result.append(f':name: {extra}')
+                result.append('```')
+                result.append('')
+
             result.append(header)
             if label and myst_env != 'solution':
                 result.append(f':label: {label}')
@@ -779,16 +783,31 @@ def convert_section_labels(text: str) -> str:
 
 def convert_standalone_labels(text: str) -> str:
     """Convert standalone []{#label ...} to MyST target syntax.
-    
-    []{#label label="label"} → (label)=
-    But only when on its own line (not inside a directive body — those are
-    handled by convert_environment_divs).
+
+    Own-line ``[]{#label label="label"}`` → ``(label)=``.
+
+    Mid-line orphan anchors that survived all previous transforms (typically
+    inside a markdown footnote body produced from
+    ``\\footnote{\\label{fn:foo}…}``, or any other context the env-div
+    promoter doesn't reach) are stripped. MyST footnotes are addressed via
+    the markdown ``[^N]`` syntax — a ``\\label{}`` on a footnote has no
+    MyST destination, so dropping the artifact is correct (issue #10). If
+    a future case needs the anchor preserved we can add a more targeted
+    promotion path then.
     """
+    # Own-line anchor → MyST cross-ref target
     text = re.sub(
         r'^\[\]\{#([^\s}]+)(?:\s+label="[^"]*")?\}\s*$',
         lambda m: f'({convert_label_colons(m.group(1))})=',
         text,
-        flags=re.MULTILINE
+        flags=re.MULTILINE,
+    )
+    # Strip residual mid-line orphan anchors (the own-line ones are gone
+    # after the first sub; only mid-line survivors remain).
+    text = re.sub(
+        r'\[\]\{#[^\s}]+(?:\s+label="[^"]*")?\}',
+        '',
+        text,
     )
     return text
 

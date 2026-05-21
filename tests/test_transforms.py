@@ -1070,6 +1070,97 @@ def test_proof_midline_hypertarget_strips_bare_proof_opener():
     assert '*Proof.*' not in out
 
 
+# ── Multi-label environments (issue #10) ────────────────────────────────────
+
+
+def test_multi_label_exercise_promotes_first_emits_div_for_rest():
+    """`\\begin{Exercise}\\label{a}\\label{b}` becomes a directive with
+    `:label: a` plus a sibling `{div}` anchor for `b` (so `{ref}` resolves
+    both labels)."""
+    body = (
+        '::: Exercise\n'
+        '[]{#ex:boeq label="ex:boeq"}[]{#ex:egmdps label="ex:egmdps"}'
+        ' Given $v$, prove that...\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    # Sibling {div} for the secondary label, ABOVE the directive
+    assert '```{div}' in out
+    assert ':name: ex-egmdps' in out
+    # First label promoted to :label:
+    assert ':label: ex-boeq' in out
+    # No leftover inline anchor artifacts
+    assert '[]{#ex:' not in out
+    # Body content preserved
+    assert 'Given $v$, prove that...' in out
+    # {div} block comes before the directive header
+    div_idx = out.index('```{div}')
+    exercise_idx = out.index('```{exercise}')
+    assert div_idx < exercise_idx
+
+
+def test_multi_label_proposition_two_separate_anchors_on_one_line():
+    body = (
+        '::: proposition\n'
+        '[]{#p:convmx label="p:convmx"}[]{#p:convmx2 label="p:convmx2"}'
+        ' If $\\rR$ is convex, then $\\rR$ is globally stable.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert ':name: p-convmx2' in out
+    assert ':label: p-convmx' in out
+    assert '[]{#p:' not in out
+
+
+def test_multi_label_three_anchors_emits_two_divs():
+    """Three labels → first promoted, two sibling {div}s."""
+    body = (
+        '::: lemma\n'
+        '[]{#l:a label="l:a"}[]{#l:b label="l:b"}[]{#l:c label="l:c"}'
+        ' Body text.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert ':label: l-a' in out
+    assert ':name: l-b' in out
+    assert ':name: l-c' in out
+    assert out.count('```{div}') == 2
+
+
+def test_standalone_labels_strips_midline_footnote_orphan():
+    """`\\footnote{\\label{fn:hcon}...}` produces a markdown footnote body
+    `[^1]: []{#fn:hcon label="fn:hcon"}body…`. The mid-line anchor has
+    no MyST destination (footnotes use `[^N]` syntax for refs), so it
+    must be stripped (issue #10)."""
+    body = '[^1]: []{#fn:hcon label="fn:hcon"}For X to be well-defined, …\n'
+    out = postprocess.convert_standalone_labels(body)
+    assert '[^1]: For X to be well-defined, …' in out
+    assert '[]{#fn:hcon' not in out
+
+
+def test_standalone_labels_keeps_own_line_anchor_as_myst_target():
+    """Own-line anchors still convert to `(X)=` — regression guard
+    against the second strip eating the first sub's output."""
+    body = '[]{#sec:foo label="sec:foo"}\n\nSection content.\n'
+    out = postprocess.convert_standalone_labels(body)
+    assert '(sec-foo)=' in out
+    assert 'Section content.' in out
+
+
+def test_single_label_still_works_after_refactor():
+    """Regression guard: the single-label case (the common shape) must
+    still produce `:label: X` with no extra {div} blocks."""
+    body = (
+        '::: theorem\n'
+        '[]{#t:foo label="t:foo"} The theorem statement.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert ':label: t-foo' in out
+    assert 'The theorem statement.' in out
+    assert '```{div}' not in out
+
+
 def test_proof_midline_hypertarget_works_with_real_dp1_shape():
     """End-to-end shape from book-dp1 appB.md."""
     body = (

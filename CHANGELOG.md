@@ -192,6 +192,25 @@ haven't validated. Everything below is on `main` and available now.
   are no longer parsed at all. Backreferences (`\1`, `\g<name>`)
   are no longer supported in this code path; no current consumer
   uses them. Closes [#7].
+- **Multi-label environments leak orphan inline anchors** ([#10]):
+  LaTeX writers sometimes attach more than one ``\label{}`` to a
+  single environment (``\begin{Exercise}\label{a}\label{b}``) so the
+  block can be cross-referenced under multiple identifiers. The
+  original anchor-extraction loop in ``convert_environment_divs``
+  overwrote ``label`` on each match, so only the LAST anchor was
+  promoted and earlier ones survived as inline ``[]{#X label="X"}``
+  artifacts at the start of the body — broken cross-refs in MyST.
+  Refactored to a ``findall`` + ``sub`` approach (matches dp1's
+  legacy structure): first anchor becomes ``:label:`` on the
+  directive; subsequent anchors are emitted as sibling
+  ``{div}`` blocks above the directive, each becoming its own valid
+  cross-ref target. Also extended ``convert_standalone_labels`` to
+  strip residual mid-line orphan anchors that survive both passes
+  (typically ``\footnote{\label{fn:foo}…}`` artifacts — MyST
+  footnotes are addressed via ``[^N]``, so the label has no MyST
+  destination). Fresh dp1 output: zero orphan anchors remain across
+  three previously-broken sites (Exercise w/ two labels, Proposition
+  w/ two labels, footnote w/ label). Closes [#10].
 - **Full-word `algo:` / `eg:` label prefixes routed to `{ref}`
   instead of `{prf:ref}`** ([#9]): the routing tuple in
   `convert_cross_references` had abbreviated prefixes (`alg:`, `ex:`)
@@ -225,6 +244,7 @@ haven't validated. Everything below is on `main` and available now.
 [#7]: https://github.com/QuantEcon/claude-latex-to-myst/issues/7
 [#8]: https://github.com/QuantEcon/claude-latex-to-myst/issues/8
 [#9]: https://github.com/QuantEcon/claude-latex-to-myst/issues/9
+[#10]: https://github.com/QuantEcon/claude-latex-to-myst/issues/10
 
 ### Settled architectural decisions
 
