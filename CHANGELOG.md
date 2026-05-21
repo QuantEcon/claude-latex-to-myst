@@ -192,6 +192,19 @@ haven't validated. Everything below is on `main` and available now.
   are no longer parsed at all. Backreferences (`\1`, `\g<name>`)
   are no longer supported in this code path; no current consumer
   uses them. Closes [#7].
+- **Display math blocks emit trailing blank line → MyST hard error**
+  ([#11]): pandoc preserves LaTeX source whitespace verbatim, and
+  ``cleanup_typography`` strips ``\qedhere`` AFTER ``convert_equations``
+  runs. The result is a whitespace-only line just before the closing
+  ``$$`` (the preserved indentation of the line ``\qedhere`` lived
+  on), which MyST treats as an empty math node and rejects with
+  ``No input for math node``. Added ``strip_blank_lines_in_math``
+  to collapse internal blank lines in ``$$ … $$`` blocks and strip
+  the body. Wired into ``process_file`` immediately after
+  ``cleanup_typography`` so the run-order dependency is explicit.
+  Verified on dp1 fixture: one hard error becomes zero; no
+  whitespace-only lines remain in any display-math block across the
+  fresh output. Closes [#11].
 - **Multi-label environments leak orphan inline anchors** ([#10]):
   LaTeX writers sometimes attach more than one ``\label{}`` to a
   single environment (``\begin{Exercise}\label{a}\label{b}``) so the
@@ -245,6 +258,7 @@ haven't validated. Everything below is on `main` and available now.
 [#8]: https://github.com/QuantEcon/claude-latex-to-myst/issues/8
 [#9]: https://github.com/QuantEcon/claude-latex-to-myst/issues/9
 [#10]: https://github.com/QuantEcon/claude-latex-to-myst/issues/10
+[#11]: https://github.com/QuantEcon/claude-latex-to-myst/issues/11
 
 ### Settled architectural decisions
 

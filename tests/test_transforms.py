@@ -983,6 +983,62 @@ def test_frontmatter_explicit_label_standalone():
 # ── Config-driven ENV_MAP extension ──────────────────────────────────────────
 
 
+# ── Strip blank lines inside display math (issue #11) ──────────────────────
+
+
+def test_strip_blank_lines_in_math_collapses_whitespace_line():
+    """``\\qedhere`` is stripped late in the pipeline; its preceding
+    whitespace survives as a blank line inside ``$$ … $$``, which MyST
+    rejects as 'No input for math node'."""
+    body = (
+        "$$\n"
+        "\\tau s(A)\n"
+        "        = s(\\tau A).\n"
+        "        \n"   # whitespace-only line from \qedhere strip
+        "$$ (eq-foo)\n"
+    )
+    out = postprocess.strip_blank_lines_in_math(body)
+    # No blank/whitespace-only lines inside the block
+    assert "= s(\\tau A).\n$$" in out
+    # Closing-with-label form preserved
+    assert "$$ (eq-foo)" in out
+
+
+def test_strip_blank_lines_in_math_collapses_multiple_blanks():
+    body = "$$\nx = 1\n\n\n\ny = 2\n$$\n"
+    out = postprocess.strip_blank_lines_in_math(body)
+    assert out == "$$\nx = 1\ny = 2\n$$\n"
+
+
+def test_strip_blank_lines_in_math_noop_when_clean():
+    body = "$$\nx = 1\ny = 2\n$$\n"
+    assert postprocess.strip_blank_lines_in_math(body) == body
+
+
+def test_strip_blank_lines_in_math_does_not_touch_inline_math():
+    """The regex requires ``$$\\n`` — inline ``$x$`` paragraphs are
+    left alone."""
+    body = "Some $inline$ math here and a paragraph.\n\nAnother $x$ ref.\n"
+    assert postprocess.strip_blank_lines_in_math(body) == body
+
+
+def test_strip_blank_lines_in_math_preserves_aligned_body():
+    """Multi-line aligned bodies are common; only blanks collapse."""
+    body = (
+        "$$\n"
+        "\\begin{aligned}\n"
+        "a &= b \\\\\n"
+        "c &= d\n"
+        "\\end{aligned}\n"
+        "$$\n"
+    )
+    out = postprocess.strip_blank_lines_in_math(body)
+    assert "\\begin{aligned}" in out
+    assert "a &= b" in out
+    assert "c &= d" in out
+    assert "\\end{aligned}" in out
+
+
 # ── TIKZCD_INLINE_MAP replacement literals (issue #7) ───────────────────────
 
 

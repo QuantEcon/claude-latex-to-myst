@@ -1308,6 +1308,39 @@ def strip_footnote_refs(text: str) -> str:
     return pattern.sub(repl, text)
 
 
+def strip_blank_lines_in_math(text: str) -> str:
+    """Collapse internal blank lines inside display-math blocks.
+
+    Pandoc preserves the LaTeX source's whitespace formatting verbatim,
+    and ``cleanup_typography`` strips ``\\qedhere`` (and a few other
+    constructs) AFTER ``convert_equations``. The result is a
+    whitespace-only line inside an otherwise valid ``$$ … $$`` block,
+    e.g.::
+
+        $$
+        \\tau s(A)
+                = …
+                = s(\\tau A).
+                ←  this line is all whitespace (was ``        \\qedhere``)
+        $$ (eq-foo)
+
+    MyST treats the trailing whitespace-only line + the empty math
+    region behind it as a separate empty math node and emits a hard
+    ``No input for math node`` error (issue #11).
+
+    Collapse any run of blank/whitespace-only lines inside a ``$$ … $$``
+    block down to a single newline, and strip leading/trailing
+    whitespace from the body. Closes-with-label form
+    (``$$ (eq-foo)``) is preserved — the regex only looks at the body
+    between the two ``$$`` delimiters.
+    """
+    def _strip(m: re.Match) -> str:
+        body = re.sub(r'\n\s*\n+', '\n', m.group(1))
+        return f'$$\n{body.strip()}\n$$'
+
+    return re.sub(r'\$\$\n(.*?)\n\$\$', _strip, text, flags=re.DOTALL)
+
+
 def ensure_blank_after_display_math(text: str) -> str:
     """Ensure a blank line follows the closing ``$$`` of every display-math block.
 
@@ -2174,7 +2207,8 @@ def process_file(input_path: Path, output_path: Path = None):
     text = resolve_algorithms(text)                # decode algorithm2e markers
     text = join_split_inline_math(text)
     text = ensure_blank_after_display_math(text)   # adds blank lines
-    text = cleanup_typography(text)                # caps blank-line runs
+    text = cleanup_typography(text)                # caps blank-line runs; strips \qedhere
+    text = strip_blank_lines_in_math(text)         # MUST run AFTER \qedhere removal (issue #11)
     text = strip_footnote_refs(text)               # operates on cleaned text
     text = compress_directive_whitespace(text)     # opt-in (compact mode)
 
