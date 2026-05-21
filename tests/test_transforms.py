@@ -270,6 +270,56 @@ def test_strip_doubled_noun_refs_program_alternate_noun():
 # ── Code-block listing cross-refs route to {numref} (issue #8 part 1) ──────
 
 
+def test_cross_ref_algo_target_routes_to_prf_ref():
+    """`algo:foo` labels target `prf:algorithm` directives. The full-word
+    `algo:` prefix wasn't in the original routing tuple (only the
+    abbreviated `alg:` was), so all 30 dp1 algorithm refs fell through
+    to `{ref}` and would have rendered the caption text instead of
+    "Algorithm N" — issue #9."""
+    text = (
+        '[\\[algo:fsvfi\\]](#algo:fsvfi)'
+        '{reference-type="ref" reference="algo:fsvfi"}'
+    )
+    out = postprocess.convert_cross_references(text)
+    assert '{prf:ref}`algo-fsvfi`' in out
+    assert '{ref}`algo-' not in out
+
+
+def test_cross_ref_eg_target_routes_to_prf_ref():
+    """`eg:foo` labels target `prf:example` directives (the ENV_MAP
+    routes `\\begin{example}` → `prf:example`). Same shape as the algo-
+    bug — full-word prefix missed by the original tuple. Pre-existing
+    bug shared by dp1's legacy pipeline; we fix it as a quality
+    improvement at the same time."""
+    text = (
+        '[\\[eg:retail\\]](#eg:retail)'
+        '{reference-type="ref" reference="eg:retail"}'
+    )
+    out = postprocess.convert_cross_references(text)
+    assert '{prf:ref}`eg-retail`' in out
+    assert '{ref}`eg-' not in out
+
+
+def test_strip_doubled_noun_refs_example_singular_and_plural():
+    """After issue #9: 'Example {prf:ref}`eg-foo`' should dedupe to
+    just '{prf:ref}`eg-foo`' (sphinx-proof renders 'Example N')."""
+    text = "Recall Example {prf:ref}`eg-retail` for the setup."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "Recall {prf:ref}`eg-retail` for the setup."
+
+    text_plural = "Compare Examples {prf:ref}`eg-a` and {prf:ref}`eg-b`."
+    out_plural = postprocess.strip_doubled_noun_refs(text_plural)
+    assert out_plural == "Compare {prf:ref}`eg-a` and {prf:ref}`eg-b`."
+
+
+def test_strip_doubled_noun_refs_algorithm_now_strips_for_kebab_labels():
+    """Now that `algo-` routes to {prf:ref}, the Algorithm-stripper
+    actually fires on real dp1 prose."""
+    text = "shown in Algorithm {prf:ref}`algo-fsvfi`."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "shown in {prf:ref}`algo-fsvfi`."
+
+
 def test_cross_ref_list_target_routes_to_numref():
     """`list:foo` / `list-foo` labels target enumerated `{code-block}`
     directives. The right MyST role is `{numref}` (lets the renderer

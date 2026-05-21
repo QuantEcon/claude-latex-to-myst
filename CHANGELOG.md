@@ -192,6 +192,20 @@ haven't validated. Everything below is on `main` and available now.
   are no longer parsed at all. Backreferences (`\1`, `\g<name>`)
   are no longer supported in this code path; no current consumer
   uses them. Closes [#7].
+- **Full-word `algo:` / `eg:` label prefixes routed to `{ref}`
+  instead of `{prf:ref}`** ([#9]): the routing tuple in
+  `convert_cross_references` had abbreviated prefixes (`alg:`, `ex:`)
+  that didn't match dp1/dp2's actual source labels (`algo:foo` for
+  algorithms, `eg:foo` for examples). Both fell through to `{ref}`,
+  which resolves to the directive's caption text — so 30 dp1
+  algorithm refs and 66 example refs rendered the full caption
+  inline instead of "Algorithm N" / "Example N". Added `'algo:'`,
+  `'algo-'`, `'eg:'`, `'eg-'` to the `{prf:ref}` branch. Also added
+  `('Example', 'eg-')` / `('Examples', 'eg-')` to
+  `_DOUBLED_NOUN_REFS` so prose like `Example {prf:ref}\`eg-foo\``
+  dedupes. The `eg-` case is a pre-existing bug shared by dp1's
+  legacy pipeline — fix lands as a quality improvement at the same
+  time. Closes [#9].
 - **`list-*` cross-refs and "Listing Program N" doubled noun** ([#8]):
   two coupled bugs in code-block listing references.
   `convert_cross_references` routed `list:` / `list-` labels to
@@ -210,6 +224,7 @@ haven't validated. Everything below is on `main` and available now.
 [#5]: https://github.com/QuantEcon/claude-latex-to-myst/issues/5
 [#7]: https://github.com/QuantEcon/claude-latex-to-myst/issues/7
 [#8]: https://github.com/QuantEcon/claude-latex-to-myst/issues/8
+[#9]: https://github.com/QuantEcon/claude-latex-to-myst/issues/9
 
 ### Settled architectural decisions
 

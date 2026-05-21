@@ -88,6 +88,8 @@ _DOUBLED_NOUN_REFS = [
     ('Chapters',     'c-'),
     ('Corollary',    'c-'),
     ('Corollaries',  'c-'),
+    ('Example',      'eg-'),
+    ('Examples',     'eg-'),
     ('Exercise',     'ex-'),
     ('Exercises',    'ex-'),
     ('Lemma',        'l-'),
@@ -561,7 +563,15 @@ def convert_cross_references(text: str) -> str:
             return '{numref}`' + target_converted + '`'
         elif target.startswith(('t:', 'thm:', 'l:', 'lem:', 'p:', 'pr:', 'prop:',
                                  'd:', 'def:', 'c:', 'cor:', 'ex:', 'r:', 'rem:',
-                                 'a:', 'as:', 'alg:')):
+                                 'a:', 'as:',
+                                 'alg:', 'algo:', 'algo-',
+                                 'eg:', 'eg-')):
+            # alg:/algo: target prf:algorithm directives (book-dp1 uses
+            # `\label{algo:foo}` → `algo-foo` after colon→hyphen).
+            # eg:  targets prf:example directives (the ENV_MAP maps
+            # `\begin{example}` → `prf:example`). Both full-word forms
+            # were missed by the original short-form abbreviations
+            # (`alg:` / `ex:`) — issue #9.
             return '{prf:ref}`' + target_converted + '`'
         elif target.startswith(('s:', 'ss:', 'sss:', 'sec:', 'ch:', 'c-', 'c:')):
             return '{ref}`' + target_converted + '`'
