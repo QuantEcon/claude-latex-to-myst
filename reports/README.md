@@ -42,35 +42,33 @@ if the sibling repos live elsewhere.
 
 ### dp2 smoke test
 
-```bash
-mkdir -p fixtures/book-dp2/mystmd-test
-cp examples/book-dp2/{config.yaml,tikz_overrides.py} fixtures/book-dp2/mystmd-test/
-bash scripts/convert.sh --config fixtures/book-dp2/mystmd-test/config.yaml
+Each book fixture has its own `regen/` directory carrying a working
+`config.yaml`. Run the pipeline against that config and diff the
+output against the committed `mystmd/` in the fixture.
 
-# Expected: blank-line additions plus several semantic improvements
-# (algorithm bullet lists, § Section dedupe). See `book-dp2-parity.md`
-# for the pre-pipeline-improvements baseline.
-diff -r fixtures/book-dp2/mystmd/ fixtures/book-dp2/mystmd-test/ | head -20
-rm -rf fixtures/book-dp2/mystmd-test
+```bash
+bash scripts/convert.sh --config fixtures/book-dp2/regen/config.yaml
+diff -r fixtures/book-dp2/mystmd/ fixtures/book-dp2/regen/ | head -20
 ```
+
+Expected: cosmetic differences (YAML quoting style, line wrapping for
+preface), plus any deliberate drift documented in the latest parity
+report.
 
 ### dp1 algorithm-block parity (#014 regression check)
 
 ```bash
-mkdir -p fixtures/book-dp1/mystmd-test
-cp examples/book-dp1/{config.yaml,tikz_overrides.py} fixtures/book-dp1/mystmd-test/
-bash scripts/convert.sh --config fixtures/book-dp1/mystmd-test/config.yaml
+bash scripts/convert.sh --config fixtures/book-dp1/regen/config.yaml
 
-# All five chapters with algorithm2e blocks should produce byte-identical
+# All chapters with algorithm2e blocks should produce byte-identical
 # {prf:algorithm} directives to the upstream dp1 mystmd output.
 for ch in ch_intro ch_mdps ch_rdps ch_state_dep ch_ctime; do
   awk '/^```{prf:algorithm}/{flag=1} flag{print} /^```$/ && flag{flag=0; print "==="}' \
     fixtures/book-dp1/mystmd/$ch.md > /tmp/dp1.txt
   awk '/^```{prf:algorithm}/{flag=1} flag{print} /^```$/ && flag{flag=0; print "==="}' \
-    fixtures/book-dp1/mystmd-test/$ch.md > /tmp/ours.txt
+    fixtures/book-dp1/regen/$ch.md > /tmp/ours.txt
   if diff -q /tmp/dp1.txt /tmp/ours.txt >/dev/null; then echo "$ch: ✓"; else echo "$ch: ✗"; fi
 done
-rm -rf fixtures/book-dp1/mystmd-test
 ```
 
 ### dp1 listing parity (#015 regression check)

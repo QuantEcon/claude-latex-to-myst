@@ -72,12 +72,13 @@ of debugging never happens twice.
 
 | Generic (rarely edited) | Project-specific (in config or overrides) |
 |-------------------------|-------------------------------------------|
-| `ENV_MAP` defaults (theorem, lemma, etc.) | Chapter list & filenames |
-| All 13 transform functions | `CHAPTER_TITLES` (frontmatter titles) |
+| `ENV_MAP` defaults (theorem, lemma, etc.) | Chapter list & per-stem `frontmatter_style` |
+| All transform functions in `postprocess.py` | `CHAPTER_TITLES` (frontmatter titles) |
 | KaTeX compatibility fixes | Bibliography filename |
-| Cross-ref / citation / figure regex | Custom-macro pre-rewrites (e.g., `\navy` → `\textbf`) |
-| Blank-line-in-math handling | `TIKZ_FIGURE_MAP` (TikZ label → SVG path) |
-| Pipeline ordering | `TIKZCD_INLINE_MAP` (inline tikzcd matches) |
+| Cross-ref / citation / figure regex | `preprocess.rewrites`/`strip` (LaTeX-side fixes) |
+| Blank-line-in-math handling | `postprocess.rewrites` (editorial Markdown fixes) |
+| Pipeline ordering | `preprocess.split` (multi-chapter source files) |
+| Natbib variant decoding | `TIKZ_FIGURE_MAP` / `TIKZCD_INLINE_MAP` |
 
 If a transform feels too book-specific, it probably belongs in a project
 overrides file, not in `postprocess.py`.
@@ -109,7 +110,9 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   rewrites, TikZ overrides live in `config.yaml` / `tikz_overrides.py`.
   Transforms live in `postprocess.py`. If something feels "too dp1-specific"
   or "too dp2-specific" inside `postprocess.py`, it probably belongs in
-  config.
+  config. Editorial decisions the tool can't infer from LaTeX (e.g.
+  promoting `**Bold heading**` to `## H2` only in specific chapters)
+  go in `config.postprocess.rewrites`, not in `postprocess.py`.
 - **`uv` is the project manager.** Not pip, not conda, not raw venv. Per
   lesson [010](lessons/010-pep-668-system-python.md).
 - **No Perl in the pipeline.** Per lesson [009](lessons/009-bsd-sed-mapfile-portability.md).

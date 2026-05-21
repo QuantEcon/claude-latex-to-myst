@@ -9,14 +9,16 @@ The pipeline is **pandoc + post-processing**:
 
 ```
 LaTeX (.tex) ──► preprocess.sh ──► pandoc ──► postprocess.py ──► MyST (.md)
-                  (sanitize)        (parse)     (13 transforms)
+                  (sanitize)        (parse)     (transforms)
 ```
 
-Pandoc handles the hard parsing. A 13-stage Python post-processor turns its
-output into proper MyST syntax (sphinx-proof directives, MyST cross-refs,
-figure directives, KaTeX-safe math, etc.). The transforms encode every
-lesson learned over a 26K-line book conversion — see [`lessons/`](lessons/)
-for the catalogue.
+Pandoc handles the hard parsing. A Python post-processor (25 transform
+stages and counting) turns its output into proper MyST syntax —
+sphinx-proof directives, MyST cross-refs, figure directives, KaTeX-safe
+math, natbib citation variant decoding, simple_tables → list-table,
+etc. The transforms encode every lesson learned over a 26K-line book
+conversion — see [`lessons/`](lessons/) for the catalogue and
+[`CHANGELOG.md`](CHANGELOG.md) for what changed when.
 
 ## Quick start
 
@@ -94,14 +96,17 @@ so installs are reproducible across machines.
 
 | Path | Purpose |
 |------|---------|
-| `scripts/postprocess.py` | The 13-stage transform library (generic). |
-| `scripts/preprocess.sh` | LaTeX sanitization before pandoc (config-driven). |
+| `scripts/postprocess.py` | The generic transform library (~25 stages chained in `process_file`). |
+| `scripts/preprocess.sh` | LaTeX sanitization before pandoc (config-driven). Calls helpers for chapter-split, rewrites, algorithm markers, listing markers. |
 | `scripts/convert.sh` | Orchestrator: preprocess → pandoc → postprocess → validate. |
-| `scripts/validate.py` | Structural diff: equations, refs, theorems counted in source vs output. |
-| `config.example.yaml` | Per-project config (chapter list, bib, custom-macro rewrites, TikZ map). |
+| `scripts/validate.py` | Structural diff: equations, refs, theorems counted in source vs output; flags broken inline math. |
+| `scripts/templates/book-convert.sh` | Vendored wrapper books ship as their `mystmd/convert.sh`. |
+| `scripts/new-book.sh` | Scaffolds a book's `mystmd/` directory from a template. |
+| `config.example.yaml` | Per-project config (chapter list, bib, preprocess/postprocess rewrites, TikZ map, validation toggles). |
 | `lessons/` | One markdown file per lesson learned, with frontmatter. |
 | `LESSONS.md` | Index of the lessons catalogue. |
-| `examples/book-dp2/` | Reference configuration that produced the `book-dp2` conversion. |
+| `CHANGELOG.md` | What changed in each tagged release. |
+| `examples/book-dp1/`, `examples/book-dp2/` | Reference configurations from the originating conversions. |
 | `.claude/commands/capture-lesson.md` | `/capture-lesson` slash command to add a new lesson. |
 
 ## The lessons catalogue
