@@ -148,6 +148,16 @@ haven't validated. Everything below is on `main` and available now.
 - **Algorithm2e edge cases** ([315e8f2]) — commented-out
   `\begin{algorithm}` blocks no longer rewritten; `\textnormal{}`
   inside algorithm bodies preserved; unbraced `\Return` accepted.
+- **Duplicate `# Title` after frontmatter** ([#3]): when `\chapter{X}`
+  in source has no `\label{}`, pandoc emits a bare `# X` that
+  `add_frontmatter` couldn't absorb (its regex required an anchor).
+  Combined with a config-supplied `title: X` this rendered two
+  identical headings in a row. `add_frontmatter` now strips a bare
+  body H1 when it exactly matches the configured title; mismatched
+  titles (author wrote two distinct things) are left alone. Closes
+  [#3].
+
+[#3]: https://github.com/QuantEcon/claude-latex-to-myst/issues/3
 
 ### Settled architectural decisions
 

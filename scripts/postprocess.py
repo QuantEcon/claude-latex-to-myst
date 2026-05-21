@@ -1774,6 +1774,16 @@ def add_frontmatter(text: str, title: str, style: str | None = None) -> str:
         text = text[heading_m.end():].lstrip('\n')
         if following_anchor_label is not None:
             text = re.sub(r'^\([^)]+\)=\s*\n+', '', text, count=1)
+    else:
+        # No body anchor + heading pair to absorb (the common
+        # ``\chapter{Preface}`` case where pandoc emits a bare ``# Title``
+        # with no attribute block). If that bare H1 exactly matches the
+        # configured frontmatter title, drop it — otherwise we'd render
+        # two identical headings in a row (issue #3). Mismatched titles
+        # are left alone: the author wrote two distinct things.
+        bare_h1 = re.match(r'#\s+' + re.escape(title) + r'\s*\n+', text)
+        if bare_h1:
+            text = text[bare_h1.end():]
     frontmatter = f'---\ntitle: "{title}"\n'
     if label:
         frontmatter += f'label: {label}\n'

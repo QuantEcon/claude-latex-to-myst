@@ -267,6 +267,54 @@ def test_frontmatter_idempotent_absorbed():
     assert once == twice
 
 
+# ── Duplicate-H1 stripping (issue #3) ────────────────────────────────────────
+
+
+def test_frontmatter_strips_bare_h1_that_matches_title():
+    """Source ``\\chapter{Preface}`` with no \\label yields pandoc
+    ``# Preface`` (no attribute block). Combined with a config-supplied
+    ``title: Preface``, the pipeline would otherwise emit both a YAML
+    title and a body H1 — two identical headings in a row."""
+    postprocess._FRONTMATTER_STYLE = "absorbed"
+    body = "# Preface\n\nThis book is the second of a two-volume sequence.\n"
+    out = postprocess.add_frontmatter(body, "Preface")
+    assert 'title: "Preface"' in out
+    assert "# Preface" not in out
+    assert "This book is the second" in out
+
+
+def test_frontmatter_keeps_bare_h1_when_title_differs():
+    """If the body H1 doesn't match the configured title, the author
+    wrote two distinct things — leave both alone."""
+    postprocess._FRONTMATTER_STYLE = "absorbed"
+    body = "# Common Symbols\n\nGlossary follows.\n"
+    out = postprocess.add_frontmatter(body, "Notation")
+    assert 'title: "Notation"' in out
+    assert "# Common Symbols" in out
+
+
+def test_frontmatter_no_body_h1_is_noop_for_duplicate_strip():
+    """When the body starts with prose (no H1 at all), the strip
+    regex shouldn't match and the body must pass through unchanged."""
+    postprocess._FRONTMATTER_STYLE = "absorbed"
+    body = "First paragraph of content.\n"
+    out = postprocess.add_frontmatter(body, "Preface")
+    assert 'title: "Preface"' in out
+    assert "First paragraph of content." in out
+
+
+def test_frontmatter_does_not_strip_h1_later_in_body():
+    """A heading buried inside the body that happens to share the title
+    must NOT be stripped — only a duplicate at the very start of the
+    body counts."""
+    postprocess._FRONTMATTER_STYLE = "absorbed"
+    body = "Introductory prose.\n\n# Preface\n\nMore content.\n"
+    out = postprocess.add_frontmatter(body, "Preface")
+    assert 'title: "Preface"' in out
+    # The buried heading survives.
+    assert "# Preface" in out
+
+
 def test_frontmatter_per_call_style_override_to_standalone():
     """add_frontmatter's `style` arg lets a single call use standalone
     even when the module default is absorbed — needed for books with
