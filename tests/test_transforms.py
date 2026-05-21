@@ -1022,6 +1022,38 @@ def test_strip_blank_lines_in_math_does_not_touch_inline_math():
     assert postprocess.strip_blank_lines_in_math(body) == body
 
 
+def test_strip_blank_lines_in_math_does_not_match_inline_closing_dollar():
+    """Regression for issue #12: inline ``$$ … $$`` at end of a bullet
+    must NOT trigger the block-math regex. Without anchoring the
+    opening ``$$`` to a line start, the non-greedy ``(.*?)`` extends
+    across the next bullets / paragraph until it finds the next
+    ``\\n$$`` (a real block opener), collapsing every blank line in
+    between."""
+    body = (
+        "- $\\Gamma$ defines $$\\Gsf \\coloneq \\{(x,a) : a \\in \\Gamma(x)\\},$$\n"
+        "\n"
+        "- a reward function $r$,\n"
+        "\n"
+        "- a stochastic kernel $P$.\n"
+        "\n"
+        "Some prose follows here.\n"
+        "\n"
+        "$$\n"
+        "\\EE \\sum_{t \\geq 0} \\beta^t r(X_t, A_t)\n"
+        "$$\n"
+    )
+    out = postprocess.strip_blank_lines_in_math(body)
+    # Bullets stay separated by blank lines
+    assert ",$$\n\n- a reward" in out
+    assert "- a reward function $r$,\n\n- a stochastic" in out
+    # Prose paragraph stays separated from the bullets
+    assert "kernel $P$.\n\nSome prose" in out
+    # And from the real display math block
+    assert "Some prose follows here.\n\n$$" in out
+    # The real block at the bottom is still well-formed
+    assert "$$\n\\EE \\sum_{t \\geq 0} \\beta^t r(X_t, A_t)\n$$" in out
+
+
 def test_strip_blank_lines_in_math_preserves_aligned_body():
     """Multi-line aligned bodies are common; only blanks collapse."""
     body = (

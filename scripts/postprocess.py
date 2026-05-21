@@ -1338,7 +1338,15 @@ def strip_blank_lines_in_math(text: str) -> str:
         body = re.sub(r'\n\s*\n+', '\n', m.group(1))
         return f'$$\n{body.strip()}\n$$'
 
-    return re.sub(r'\$\$\n(.*?)\n\$\$', _strip, text, flags=re.DOTALL)
+    # Anchor the opening ``$$`` to a line start (MULTILINE ``^``) — an
+    # inline-closing ``$$`` at end-of-line (e.g. ``- text $$x$$\n- next``)
+    # has its ``$$`` mid-line and must not be matched as a block opener;
+    # otherwise ``(.*?)`` extends across unrelated prose / list items
+    # until it finds the next genuine ``\n$$``, collapsing every blank
+    # line in between (issue #12).
+    return re.sub(
+        r'^\$\$\n(.*?)\n\$\$', _strip, text, flags=re.MULTILINE | re.DOTALL
+    )
 
 
 def ensure_blank_after_display_math(text: str) -> str:

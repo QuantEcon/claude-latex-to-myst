@@ -192,6 +192,20 @@ haven't validated. Everything below is on `main` and available now.
   are no longer parsed at all. Backreferences (`\1`, `\g<name>`)
   are no longer supported in this code path; no current consumer
   uses them. Closes [#7].
+- **`strip_blank_lines_in_math` regex over-matched across inline
+  `$$ … $$` and unrelated prose** ([#12]): the [#11] regex used
+  ``\$\$\n(.*?)\n\$\$`` without anchoring the opening ``$$`` to a
+  line start, so a bullet ending with an inline-closing ``$$``
+  (e.g. ``- text $$x$$\n``) was matched as a block-math opener and
+  the non-greedy ``(.*?)`` extended across the following bullets /
+  prose until it found the next real ``\n$$``, collapsing every
+  blank line in between. Anchored the opener with
+  ``^\$\$\n`` under ``re.MULTILINE | re.DOTALL`` — an inline
+  closing ``$$`` is never at line start so it can't be misread as
+  an opener. Verified on dp2 fixture: 2 mis-collapsed sites in
+  ch_egs.md restored to proper paragraph separation; dp1's #11 fix
+  still resolved (zero whitespace-only lines in any display-math
+  block across both books). Closes [#12].
 - **Display math blocks emit trailing blank line → MyST hard error**
   ([#11]): pandoc preserves LaTeX source whitespace verbatim, and
   ``cleanup_typography`` strips ``\qedhere`` AFTER ``convert_equations``
@@ -259,6 +273,7 @@ haven't validated. Everything below is on `main` and available now.
 [#9]: https://github.com/QuantEcon/claude-latex-to-myst/issues/9
 [#10]: https://github.com/QuantEcon/claude-latex-to-myst/issues/10
 [#11]: https://github.com/QuantEcon/claude-latex-to-myst/issues/11
+[#12]: https://github.com/QuantEcon/claude-latex-to-myst/issues/12
 
 ### Settled architectural decisions
 
