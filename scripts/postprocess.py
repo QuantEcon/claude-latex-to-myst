@@ -92,6 +92,16 @@ _DOUBLED_NOUN_REFS = [
     ('Exercises',    'ex-'),
     ('Lemma',        'l-'),
     ('Lemmas',       'l-'),
+    # Code-block listings: authors typically write "Listing X" in
+    # prose, but MyST's default kind name for code-blocks is "Program",
+    # so a ``{numref}`list-foo``` renders as "Program N". Strip both
+    # noun forms (Listing/Program — singular and plural) so the
+    # rendered text isn't doubled. Project-level "Listing N" wording
+    # is configured in ``myst.yml``, not here.
+    ('Listing',      'list-'),
+    ('Listings',     'list-'),
+    ('Program',      'list-'),
+    ('Programs',     'list-'),
     ('Proposition',  'p-'),
     ('Propositions', 'p-'),
     ('Remark',       'r-'),
@@ -542,6 +552,12 @@ def convert_cross_references(text: str) -> str:
         elif target.startswith(('f:', 'fig:')):
             return '{numref}`' + target_converted + '`'
         elif target.startswith(('tab:', 'tbl:')):
+            return '{numref}`' + target_converted + '`'
+        elif target.startswith(('list:', 'list-')):
+            # Code-block listings (``{code-block}`` with ``:name: list-…``)
+            # are enumerable; ``{numref}`` lets MyST render the auto-
+            # counter (default "Program N") rather than dumping the
+            # caption inline as ``{ref}`` would. See issue #8.
             return '{numref}`' + target_converted + '`'
         elif target.startswith(('t:', 'thm:', 'l:', 'lem:', 'p:', 'pr:', 'prop:',
                                  'd:', 'def:', 'c:', 'cor:', 'ex:', 'r:', 'rem:',
@@ -1104,11 +1120,22 @@ def resolve_tikz_figures(text: str, stem: str) -> str:
 
     text = '\n'.join(result)
 
-    # Handle inline tikzcd math blocks
+    # Handle inline tikzcd math blocks. The replacement is wrapped in a
+    # lambda so ``re.sub`` treats it as a literal string — authors write
+    # LaTeX-flavoured Markdown in these override entries (``\hat``,
+    # ``\Phi``, ``\beta``, …) and Python 3.13 hardened the regex parser
+    # to reject those as bad escapes when passed as a replacement string
+    # (issue #7). The lambda form bypasses escape parsing entirely.
+    # Backreferences (``\1``, ``\g<name>``) are not supported in this
+    # form; no current consumer uses them.
     if stem in TIKZCD_INLINE_MAP:
         for entry in TIKZCD_INLINE_MAP[stem]:
-            text = re.sub(entry['pattern'], entry['replacement'],
-                          text, flags=re.DOTALL)
+            text = re.sub(
+                entry['pattern'],
+                lambda m, r=entry['replacement']: r,
+                text,
+                flags=re.DOTALL,
+            )
 
     return text
 
@@ -1171,23 +1198,28 @@ def join_split_inline_math(text: str) -> str:
 
 
 def strip_doubled_noun_refs(text: str) -> str:
-    """Drop the prose noun before a {prf:ref} that auto-expands to that noun.
+    """Drop the prose noun before a MyST ref that auto-expands to that noun.
 
     Sphinx-proof renders ``{prf:ref}`t-foo``` as "Theorem 1.2", so prose like
     "Theorem {prf:ref}`t-foo`" renders as "Theorem Theorem 1.2". LaTeX writers
     ubiquitously prefix the noun before ``\\cref{...}`` because LaTeX's cref
     doesn't always auto-name; in MyST it always does, so the noun must go.
 
+    Handles both ``{prf:ref}`` (sphinx-proof directives — theorem, lemma,
+    algorithm, exercise, …) and ``{numref}`` (enumerable directives —
+    code-block listings render as "Program N" by default). The prefix
+    match in ``_DOUBLED_NOUN_REFS`` ensures only related noun/role
+    combinations get rewritten.
+
     Matches either a regular space or a non-breaking space (U+00A0) between
     the noun and the ref, since pandoc emits NBSP for LaTeX ``~`` ties.
-    Uses the prefix in ``_DOUBLED_NOUN_REFS`` to guard against stripping
-    "Theorem ..." before a ref to a non-theorem object.
     """
     for noun, prefix in _DOUBLED_NOUN_REFS:
         # Negative lookbehind on a word char so we don't strip inside a longer
         # word (e.g. avoid touching a hypothetical "Subtheorem").
         text = re.sub(
-            rf'(?<!\w){re.escape(noun)}[ \xa0]+(\{{prf:ref\}}`{re.escape(prefix)}[^`]+`)',
+            rf'(?<!\w){re.escape(noun)}[ \xa0]+'
+            rf'(\{{(?:prf:ref|numref)\}}`{re.escape(prefix)}[^`]+`)',
             r'\1',
             text,
         )

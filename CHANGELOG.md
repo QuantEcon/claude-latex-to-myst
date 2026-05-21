@@ -181,10 +181,35 @@ haven't validated. Everything below is on `main` and available now.
   via its legacy pipeline still has 9 — that's the deliberate
   improvement drift the migration parity report will note).
   Closes [#5].
+- **`tikz_overrides.py` replacements broke under Python 3.13** ([#7]):
+  `resolve_tikz_figures` passed `entry['replacement']` as a regex
+  replacement string. Python 3.13 hardened the parser to reject
+  unknown backslash escapes (`\h`, `\P`, etc.) as `re.PatternError`,
+  where 3.9-3.12 had only warned. Authors naturally write LaTeX
+  (`\hat`, `\Phi`, `\beta`) in their override entries, so this
+  blocked every Python 3.13 invocation. Replacement is now wrapped
+  in a lambda so `re.sub` treats it as a literal string — escapes
+  are no longer parsed at all. Backreferences (`\1`, `\g<name>`)
+  are no longer supported in this code path; no current consumer
+  uses them. Closes [#7].
+- **`list-*` cross-refs and "Listing Program N" doubled noun** ([#8]):
+  two coupled bugs in code-block listing references.
+  `convert_cross_references` routed `list:` / `list-` labels to
+  `{ref}`, which resolves to the caption text (so MyST dumped the
+  entire caption inline). Routes to `{numref}` now — same rationale
+  as `algo-` → `{prf:ref}` for `prf:algorithm`. And
+  `strip_doubled_noun_refs` didn't know about "Listing" / "Program"
+  noun forms; the broader regex change in this commit also lets it
+  match `{numref}` refs (previously only `{prf:ref}`), so prose like
+  `Listing {numref}\`list-foo\`` now de-doubles cleanly. Fresh dp1
+  output: 45 list-refs routed correctly, zero doubled "Listing
+  Program N" sites. Closes [#8].
 
 [#3]: https://github.com/QuantEcon/claude-latex-to-myst/issues/3
 [#4]: https://github.com/QuantEcon/claude-latex-to-myst/issues/4
 [#5]: https://github.com/QuantEcon/claude-latex-to-myst/issues/5
+[#7]: https://github.com/QuantEcon/claude-latex-to-myst/issues/7
+[#8]: https://github.com/QuantEcon/claude-latex-to-myst/issues/8
 
 ### Settled architectural decisions
 

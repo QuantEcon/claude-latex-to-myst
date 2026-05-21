@@ -245,6 +245,45 @@ def test_strip_doubled_noun_refs_singular_still_works():
     assert out == "{prf:ref}`t-foo` proves X."
 
 
+def test_strip_doubled_noun_refs_listing_singular():
+    """Code-block listings: prose "Listing {numref}`list-foo`" doubles
+    with MyST's auto-rendered "Program N" — strip the manual prefix."""
+    text = "Parameters appear in Listing {numref}`list-jobs`."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "Parameters appear in {numref}`list-jobs`."
+
+
+def test_strip_doubled_noun_refs_listing_plural():
+    text = "See Listings {numref}`list-a` and {numref}`list-b`."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "See {numref}`list-a` and {numref}`list-b`."
+
+
+def test_strip_doubled_noun_refs_program_alternate_noun():
+    """Some books use the noun MyST renders by default — 'Program' —
+    instead of 'Listing'. Strip both."""
+    text = "As shown in Program {numref}`list-foo`, the algorithm…"
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "As shown in {numref}`list-foo`, the algorithm…"
+
+
+# ── Code-block listing cross-refs route to {numref} (issue #8 part 1) ──────
+
+
+def test_cross_ref_list_target_routes_to_numref():
+    """`list:foo` / `list-foo` labels target enumerated `{code-block}`
+    directives. The right MyST role is `{numref}` (lets the renderer
+    show "Program N"), not `{ref}` (which dumps the caption inline)."""
+    text = (
+        '[\\[list:two\\_period\\_job\\_search\\]]'
+        '(#list:two_period_job_search)'
+        '{reference-type="ref" reference="list:two_period_job_search"}'
+    )
+    out = postprocess.convert_cross_references(text)
+    assert '{numref}`list-two_period_job_search`' in out
+    assert '{ref}`list-' not in out
+
+
 def test_strip_doubled_noun_refs_plural_guards_unrelated_prefix():
     """The prefix guard applies to plurals the same as singulars —
     don't strip 'Chapters' before a ref whose target isn't a chapter."""
@@ -892,6 +931,49 @@ def test_frontmatter_explicit_label_standalone():
 
 
 # ── Config-driven ENV_MAP extension ──────────────────────────────────────────
+
+
+# ── TIKZCD_INLINE_MAP replacement literals (issue #7) ───────────────────────
+
+
+def test_tikzcd_replacement_with_latex_backslash_escapes():
+    """Authors write LaTeX-flavoured Markdown in tikz_overrides.py
+    replacements (e.g. ``$\\hat U$``, ``\\Phi``). Under Python 3.13 the
+    regex parser rejects ``\\h``, ``\\P``, etc. when those are treated
+    as a regex replacement string. The lambda wrap bypasses escape
+    parsing so authors can write LaTeX freely in their override files."""
+    postprocess.TIKZCD_INLINE_MAP = {
+        'ch_x': [{
+            'pattern':     r'\$\$tikzcd-placeholder\$\$',
+            'replacement': (
+                '```{figure} figures/conjugacy.svg\n'
+                ':label: f-conjugacy\n'
+                '\n'
+                r'$(\hat U, \hat T)$ under $\Phi$ and $\beta$.'
+                '\n```'
+            ),
+        }],
+    }
+    body = 'Before.\n\n$$tikzcd-placeholder$$\n\nAfter.\n'
+    # Must not raise re.PatternError under Python 3.13+
+    out = postprocess.resolve_tikz_figures(body, 'ch_x')
+    assert r'$(\hat U, \hat T)$ under $\Phi$ and $\beta$.' in out
+    assert '```{figure} figures/conjugacy.svg' in out
+    # Surrounding prose preserved
+    assert 'Before.' in out and 'After.' in out
+    # Restore for other tests
+    postprocess.TIKZCD_INLINE_MAP = {}
+
+
+def test_tikzcd_replacement_left_alone_when_stem_not_in_map():
+    """No-op when there's no entry for this stem."""
+    postprocess.TIKZCD_INLINE_MAP = {
+        'ch_other': [{'pattern': 'X', 'replacement': 'Y'}],
+    }
+    body = 'X marks the spot.\n'
+    out = postprocess.resolve_tikz_figures(body, 'ch_x')
+    assert out == body
+    postprocess.TIKZCD_INLINE_MAP = {}
 
 
 # ── Mid-line hypertarget marker inside proof bodies (issue #4) ──────────────
