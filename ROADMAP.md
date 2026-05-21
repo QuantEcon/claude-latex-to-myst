@@ -13,7 +13,7 @@ for the per-release record of what's already landed.
 duplicate transforms now in this repo. Migrating drops the duplication
 and means future improvements propagate to dp1 automatically.
 
-All known gaps are closed in v0.1.0:
+All known gaps are closed on `main`:
 
 - `preprocess.split` handles `book/appendix.tex` (3 `\chapter{}` → appA/appB).
 - Per-file `frontmatter_style` handles dp1's mixed conventions

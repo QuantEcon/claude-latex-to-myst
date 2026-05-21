@@ -4,19 +4,16 @@ All notable changes to `claude-latex-to-myst` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Books pin the tool with `mystmd/.tool-version` — pointing at a tag for
-stability, `main` for "always latest", or a SHA for fully-reproducible
-pinning.
+Books pin the tool with `mystmd/.tool-version` — pointing at a tag once
+one exists, `main` for "always latest" (the current recommendation while
+the project is pre-release), or a SHA for fully-reproducible pinning.
 
 ## [Unreleased]
 
-(Nothing yet.)
-
-## [0.1.0] — 2026-05-21
-
-First tagged release. Covers the extraction from book-dp2's hand-tuned
-pipeline plus the round of generalisations that make book-dp1 adoption
-realistic.
+No tagged releases yet. The first tag (`v0.1.0`) is held back until at
+least one downstream book repo (`book-dp1`, `book-dp2`) is in production
+on this pipeline — tagging earlier would freeze a contract that consumers
+haven't validated. Everything below is on `main` and available now.
 
 ### Added — pipeline transforms
 
@@ -174,8 +171,7 @@ realistic.
   LaTeX `---`/`--` to Unicode em/en-dash. Real but cosmetic; full
   scope analysed in the issue. Not blocking dp1 adoption.
 
-[Unreleased]: https://github.com/QuantEcon/claude-latex-to-myst/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/QuantEcon/claude-latex-to-myst/releases/tag/v0.1.0
+[Unreleased]: https://github.com/QuantEcon/claude-latex-to-myst/commits/main
 
 [e7b65dc]: https://github.com/QuantEcon/claude-latex-to-myst/commit/e7b65dc
 [edc7040]: https://github.com/QuantEcon/claude-latex-to-myst/commit/edc7040
