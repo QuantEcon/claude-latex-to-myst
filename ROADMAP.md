@@ -30,7 +30,8 @@ Remaining work is dp1-side config (not tool changes):
 `\inputminted` strip, `\pageref` variants. All entries in
 `config.preprocess.rewrites` / `config.preprocess.strip`.
 
-Handover notes: see [`HANDOVER-book-dp1.md`](HANDOVER-book-dp1.md).
+Handover briefing for the dp1-side agent lives in the `book-dp1`
+repo (kept book-side rather than here so it travels with the work).
 
 ## Open items
 
