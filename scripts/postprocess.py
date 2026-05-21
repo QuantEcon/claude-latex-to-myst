@@ -194,6 +194,25 @@ def convert_environment_divs(text: str) -> str:
                     if rest:
                         clean_body.append(rest)
                     continue
+                # Match []{#label label="label"} mid-line — pandoc emits this
+                # shape for ``\begin{proof}[Proof of ...]\label{p:foo}``, where
+                # the label lands between the rendered ``*Proof of ...*``
+                # opener and the proof body (issue #4). Patterns 1-3 only
+                # catch line-boundary positions; strip mid-line markers and
+                # preserve the surrounding whitespace so the prose still reads
+                # cleanly. For ``\begin{proof}\label{p:foo}`` (bare opener),
+                # the residual ``*Proof.*`` prefix is also stripped — sphinx-
+                # proof renders its own opener.
+                lm4 = re.search(r'\[\]\{#([^\s}]+)(?:\s+label="[^"]*")?\}', bline)
+                if lm4:
+                    label = convert_label_colons(lm4.group(1))
+                    rest = bline[:lm4.start()] + bline[lm4.end():]
+                    if myst_env == 'prf:proof':
+                        rest = re.sub(r'^\s*\*Proof\.\*\s*', '', rest)
+                    rest = rest.strip()
+                    if rest:
+                        clean_body.append(rest)
+                    continue
                 # For proof blocks, remove *Proof.* marker
                 if myst_env == 'prf:proof' and re.match(r'^\*Proof\.\*\s*', bline):
                     rest = re.sub(r'^\*Proof\.\*\s*', '', bline).strip()

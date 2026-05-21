@@ -848,6 +848,70 @@ def test_frontmatter_explicit_label_standalone():
 # ── Config-driven ENV_MAP extension ──────────────────────────────────────────
 
 
+# ── Mid-line hypertarget marker inside proof bodies (issue #4) ──────────────
+
+
+def test_proof_midline_hypertarget_promoted_to_label():
+    """`\\begin{proof}[Proof of Lemma~\\ref{l:eqfst}]\\label{p:l:eqfst}`
+    renders as a pandoc ``::: proof`` block whose first body line is::
+
+        *Proof of {prf:ref}`l-eqfst`.* []{#p:l:eqfst label="p:l:eqfst"} body…
+
+    The mid-line ``[]{#…}`` marker must be stripped and the label
+    promoted to ``:label:`` on the directive (issue #4)."""
+    body = (
+        '::: proof\n'
+        '*Proof of {prf:ref}`l-eqfst`.* []{#p:l:eqfst label="p:l:eqfst"} '
+        'Regarding (i), fix $\\phi$.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert '```{prf:proof}' in out
+    assert ':label: p-l-eqfst' in out
+    # Marker token gone from the body
+    assert '[]{#p:l:eqfst' not in out
+    # Surrounding text preserved (proof opener + body prose)
+    assert '*Proof of {prf:ref}`l-eqfst`.*' in out
+    assert 'Regarding (i), fix' in out
+
+
+def test_proof_midline_hypertarget_strips_bare_proof_opener():
+    """For a `\\begin{proof}\\label{p:foo}` (no `[Proof of X]` arg),
+    pandoc emits `*Proof.* []{#p:foo label="p:foo"} body`. The mid-line
+    marker is stripped, the label promoted, AND the residual `*Proof.*`
+    opener is also removed — sphinx-proof adds its own."""
+    body = (
+        '::: proof\n'
+        '*Proof.* []{#p:foo label="p:foo"} body text here.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert ':label: p-foo' in out
+    assert 'body text here.' in out
+    # *Proof.* opener stripped (sphinx-proof renders its own)
+    assert '*Proof.*' not in out
+
+
+def test_proof_midline_hypertarget_works_with_real_dp1_shape():
+    """End-to-end shape from book-dp1 appB.md."""
+    body = (
+        '::: proof\n'
+        '*Proof of {prf:ref}`l-eqfst`.* []{#p:l:eqfst label="p:l:eqfst"} '
+        'Regarding (i), fix x.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    expected_substrings = [
+        '```{prf:proof}',
+        ':label: p-l-eqfst',
+        '*Proof of {prf:ref}`l-eqfst`.*',
+        'Regarding (i), fix x.',
+        '```',
+    ]
+    for s in expected_substrings:
+        assert s in out, f"missing: {s!r} in:\n{out}"
+
+
 def test_extra_environments_extends_env_map():
     # Reset the dicts to defaults before testing.
     import importlib

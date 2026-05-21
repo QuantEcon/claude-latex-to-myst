@@ -156,8 +156,20 @@ haven't validated. Everything below is on `main` and available now.
   body H1 when it exactly matches the configured title; mismatched
   titles (author wrote two distinct things) are left alone. Closes
   [#3].
+- **Mid-line hypertarget marker in proof bodies** ([#4]): pandoc
+  renders `\begin{proof}[Proof of ...]\label{p:foo}` with the
+  `[]{#p:foo label="p:foo"}` marker between the opener and the
+  proof body — a position none of the existing three patterns in
+  `convert_environment_divs` matched. Added a 4th pattern that
+  catches mid-line markers, strips them, and promotes the label
+  to `:label:` on the directive (with `convert_label_colons`
+  kebab-casing). For `\begin{proof}\label{p:foo}` (bare opener
+  with label), the residual `*Proof.*` is also stripped so
+  sphinx-proof's auto-rendered opener doesn't double up. Closes
+  [#4].
 
 [#3]: https://github.com/QuantEcon/claude-latex-to-myst/issues/3
+[#4]: https://github.com/QuantEcon/claude-latex-to-myst/issues/4
 
 ### Settled architectural decisions
 
