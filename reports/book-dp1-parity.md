@@ -159,3 +159,19 @@ config and worked, generic gaps are clearly identified and 3 are already
 closed. The 2 remaining gaps are documented with reference
 implementations — they're "fund this work" items, not "redesign the
 tool" items.
+
+---
+
+## Status update (2026-05-22)
+
+Both open gaps from this report are closed on `main`:
+
+- Gap #014 (algorithm2e) — closed by `9118518`, lesson
+  [014](../lessons/014-algorithm2e-resolution.md) marked codified.
+- Gap #015 (minted listings) — closed by `223bd12`, lesson
+  [015](../lessons/015-minted-listings-resolution.md) marked codified.
+
+The dp1 migration is no longer tracked here — the handover briefing now
+lives in the `book-dp1` repo (see commit `2cd78ae`). For the up-to-date
+list of pipeline changes since this report was written, see
+[CHANGELOG.md](../CHANGELOG.md) under `[Unreleased]`.
