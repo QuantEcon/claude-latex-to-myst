@@ -10,5 +10,5 @@ tmp/
 # Local copies of sibling book repos used for parity testing. Populated by
 # scripts/setup_fixtures.sh; never committed (they would be ~megabytes of
 # duplicated text whose canonical home is the upstream book-dp1 / book-dp2
-# repos). See HANDOFF.md for the verification workflow.
+# repos). See reports/README.md for the verification workflow.
 fixtures/
