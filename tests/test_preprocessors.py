@@ -14,6 +14,7 @@ import pytest
 
 import _apply_algorithm_markers as alg
 import _apply_chapter_splits as split
+import _apply_description_markers as desc
 import _apply_listing_markers as lst
 import _apply_rewrites as rew
 
@@ -328,3 +329,112 @@ def test_chapter_split_no_chapter_blocks_errors(tmp_path):
     with pytest.raises(SystemExit) as exc:
         split.split_one(src, ["a"], skip_extra=False, tmp_dir=tmp_path)
     assert "no \\chapter" in str(exc.value).lower()
+
+
+# ── Description list markers (issue #19) ─────────────────────────────────────
+
+
+def _decode_desc(out: str) -> list[tuple[str, str]]:
+    """Pull the (term, body) pairs out of a DESCRIPTION-marked string."""
+    items = []
+    for m in re.finditer(
+        r'<!--DESCITEM term=([A-Za-z0-9+/=]*)-->\n+(.*?)(?=\n+<!--DESCITEM|\n+<!--DESCRIPTION-END)',
+        out,
+        re.DOTALL,
+    ):
+        term = base64.b64decode(m.group(1)).decode("utf-8")
+        items.append((term, m.group(2).strip()))
+    return items
+
+
+def test_description_marker_basic_two_items():
+    tex = (
+        r"\begin{description}" "\n"
+        r"\item[Term One] Body one." "\n"
+        r"\item[Term Two] Body two." "\n"
+        r"\end{description}" "\n"
+    )
+    out = desc.process_text(tex)
+    assert "<!--DESCRIPTION-START-->" in out
+    assert "<!--DESCRIPTION-END-->" in out
+    items = _decode_desc(out)
+    assert items == [("Term One", "Body one."), ("Term Two", "Body two.")]
+
+
+def test_description_marker_strips_optional_arg():
+    """``\\begin{description}[opts]`` formatting options have no MyST
+    analogue and must be dropped, not leaked into the body."""
+    tex = (
+        r"\begin{description}[itemsep=3pt, leftmargin=1.4em]" "\n"
+        r"\item[T] B" "\n"
+        r"\end{description}" "\n"
+    )
+    out = desc.process_text(tex)
+    assert "itemsep" not in out
+    assert _decode_desc(out) == [("T", "B")]
+
+
+def test_description_marker_handles_multi_paragraph_body():
+    tex = (
+        r"\begin{description}" "\n"
+        r"\item[Term] First paragraph." "\n"
+        "\n"
+        "Second paragraph still under term.\n"
+        r"\item[Other] Just one para." "\n"
+        r"\end{description}" "\n"
+    )
+    out = desc.process_text(tex)
+    items = _decode_desc(out)
+    assert items[0][0] == "Term"
+    assert "First paragraph" in items[0][1]
+    assert "Second paragraph still under term" in items[0][1]
+    assert items[1] == ("Other", "Just one para.")
+
+
+def test_description_marker_item_without_optional_arg():
+    """``\\item`` with no ``[…]`` is legal LaTeX (renders with no term)."""
+    tex = (
+        r"\begin{description}" "\n"
+        r"\item Term-less body." "\n"
+        r"\end{description}" "\n"
+    )
+    out = desc.process_text(tex)
+    items = _decode_desc(out)
+    assert items == [("", "Term-less body.")]
+
+
+def test_description_marker_skips_commented_block():
+    """A ``\\begin{description}`` on a commented-out line must be left
+    alone — same guard as the algorithm + listing preprocessors."""
+    tex = (
+        "%\\begin{description}\n"
+        "%\\item[T] B\n"
+        "%\\end{description}\n"
+    )
+    assert desc.process_text(tex) == tex
+
+
+def test_description_marker_no_items_left_intact():
+    """A description env with no \\item inside is malformed; better to
+    leave it in the source for a human to look at than to silently emit
+    an empty marker block."""
+    tex = "\\begin{description}\nempty\n\\end{description}\n"
+    assert "<!--DESCRIPTION" not in desc.process_text(tex)
+
+
+def test_description_marker_term_with_brackets_and_math():
+    """Term labels can contain inline math and other punctuation;
+    base64 encoding lets us round-trip them safely."""
+    tex = (
+        r"\begin{description}" "\n"
+        r"\item[$x \in [0, 1]$] Body." "\n"
+        r"\end{description}" "\n"
+    )
+    out = desc.process_text(tex)
+    # The naive [^\]]+ parser stops at the FIRST `]`, so the term in
+    # this edge case truncates to ``$x \in [0, 1`` — acceptable per the
+    # scope decision in GH #19. Body picks up the remainder, which is
+    # visible to the author for hand-correction.
+    items = _decode_desc(out)
+    assert len(items) == 1
+    assert items[0][0].startswith("$x \\in [0, 1")

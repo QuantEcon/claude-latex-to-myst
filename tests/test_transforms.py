@@ -1492,6 +1492,73 @@ def test_nested_subfigures_with_embed_unreferenced_outer_uses_suffixes():
     assert 'figures/a.pdf' in out and 'figures/b.pdf' in out
 
 
+# ── Description lists (issue #19) ────────────────────────────────────────────
+
+
+def _desc_markers(items: list[tuple[str, str]]) -> str:
+    """Build the pandoc-escaped marker shape that ``convert_description_lists``
+    receives — same form pandoc emits when the preprocess marker file is
+    converted (``<`` → ``\\<``)."""
+    parts = [r"\<!--DESCRIPTION-START--\>", ""]
+    for term, body in items:
+        b64 = base64.b64encode(term.encode("utf-8")).decode("ascii")
+        parts.append(rf"\<!--DESCITEM term={b64}--\>")
+        parts.append("")
+        parts.append(body)
+        parts.append("")
+    parts.append(r"\<!--DESCRIPTION-END--\>")
+    return "\n".join(parts) + "\n"
+
+
+def test_convert_description_lists_basic_pair():
+    src = _desc_markers([
+        ("Hard constraints, encoded in the architecture.",
+         "Some equations can be satisfied exactly."),
+        ("Soft constraint, minimized in the loss.",
+         "The only equilibrium condition."),
+    ])
+    out = postprocess.convert_description_lists(src)
+    assert "Hard constraints, encoded in the architecture.\n: Some equations can be satisfied exactly." in out
+    assert "Soft constraint, minimized in the loss.\n: The only equilibrium condition." in out
+    # No marker residue left.
+    assert "DESCITEM" not in out
+    assert "DESCRIPTION-START" not in out
+    assert "DESCRIPTION-END" not in out
+
+
+def test_convert_description_lists_term_with_punctuation_round_trips():
+    """Base64 encoding lets the term carry arbitrary characters
+    (parentheses, math, em-dashes)."""
+    src = _desc_markers([
+        (r"Term with (parens), $x \in [0,1]$, and — punctuation.",
+         "Body."),
+    ])
+    out = postprocess.convert_description_lists(src)
+    assert r"Term with (parens), $x \in [0,1]$, and — punctuation." in out
+    assert ": Body." in out
+
+
+def test_convert_description_lists_no_term_emits_plain_paragraph():
+    """``\\item`` without ``[…]`` produces an empty term — render as a
+    plain paragraph (the LaTeX behaviour) rather than ``\\n: body``."""
+    src = _desc_markers([("", "Bare item body.")])
+    out = postprocess.convert_description_lists(src)
+    assert "Bare item body." in out
+    assert "\n: " not in out
+
+
+def test_convert_description_lists_preserves_surrounding_prose():
+    src = (
+        "Before the list.\n\n"
+        + _desc_markers([("T", "B")])
+        + "\nAfter the list.\n"
+    )
+    out = postprocess.convert_description_lists(src)
+    assert out.startswith("Before the list.")
+    assert "After the list." in out
+    assert "T\n: B" in out
+
+
 def test_nested_subfigures_without_embed_keeps_admonition_path():
     """When inner subfigures have no ``<embed>`` (e.g. ``\\input{tikz/…}``
     that pandoc couldn't include), keep the admonition placeholder so

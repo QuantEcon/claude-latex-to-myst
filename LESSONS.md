@@ -28,10 +28,11 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 019 | [Pandoc simple_tables vs multiline_tables — blank-line presence flips row-parsing logic](lessons/019-simple-vs-multiline-tables.md) | post-processing | 🔴 | codified |
 | 020 | [Natbib variants pandoc can't distinguish need bracket-marker sentinels — and the decode pass must run before cross-refs](lessons/020-natbib-bracket-markers-precede-cross-refs.md) | post-processing | 🔴 | codified |
 | 021 | [Unlabeled subfigures inside a labeled figure silently drop all but the first image](lessons/021-unlabeled-subfigures-silent-image-drop.md) | post-processing | 🔴 | codified |
+| 022 | [Pandoc silently drops \\item[Term] labels in description envs — preprocess to sentinel markers](lessons/022-description-item-labels-silently-dropped.md) | post-processing | 🔴 | codified |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022
 - **regex-safety:** 002, 017
 - **katex:** 003, 006
 - **myst:** 013

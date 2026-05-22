@@ -103,6 +103,13 @@ for ch in "${CHAPTER_STEMS[@]}"; do
   # that contain no listing blocks.
   python3 "$SCRIPT_DIR/_apply_listing_markers.py" "$dst"
 
+  # Replace \begin{description}...\end{description} with DESCITEM markers.
+  # Pandoc otherwise drops every \item[Term] label silently, leaving a
+  # paragraph soup of definitions with no terms attached. The postprocess
+  # step decodes the markers into MyST definition-list syntax. No-op for
+  # sources that contain no description envs (GH #19).
+  python3 "$SCRIPT_DIR/_apply_description_markers.py" "$dst"
+
   echo "  Preprocessed: ${ch}.tex"
 done
 

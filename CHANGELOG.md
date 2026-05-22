@@ -264,6 +264,17 @@ haven't validated. Everything below is on `main` and available now.
   `Listing {numref}\`list-foo\`` now de-doubles cleanly. Fresh dp1
   output: 45 list-refs routed correctly, zero doubled "Listing
   Program N" sites. Closes [#8].
+- **`description` env support** ([#19]): LaTeX `description` lists
+  arrived in MyST as `::: description` divs with every `\item[Term]`
+  term label silently stripped — pandoc drops them at the AST level,
+  so a post-pandoc transform couldn't recover them. New preprocess
+  step (`_apply_description_markers.py`) rewrites
+  `\begin{description}…\end{description}` blocks into
+  base64-encoded HTML-comment sentinels that pandoc passes through
+  verbatim; `convert_description_lists` in postprocess decodes them
+  back to MyST definition-list syntax (`Term\n: body`). Same
+  sentinel pattern as algorithm2e ([014]) and minted ([015]).
+  Surfaced converting an external book. Lesson [022]. Closes [#19].
 - **Chapter splitter missed `\chapter[short]{long}`** ([#18]): the
   ``_apply_chapter_splits`` regex only matched ``\chapter{}`` and
   ``\chapter*{}``, so a book with even one TOC-short-title chapter
@@ -344,7 +355,11 @@ haven't validated. Everything below is on `main` and available now.
 [#16]: https://github.com/QuantEcon/claude-latex-to-myst/issues/16
 [#17]: https://github.com/QuantEcon/claude-latex-to-myst/issues/17
 [#18]: https://github.com/QuantEcon/claude-latex-to-myst/issues/18
+[#19]: https://github.com/QuantEcon/claude-latex-to-myst/issues/19
+[014]: lessons/014-algorithm2e-resolution.md
+[015]: lessons/015-minted-listings-resolution.md
 [021]: lessons/021-unlabeled-subfigures-silent-image-drop.md
+[022]: lessons/022-description-item-labels-silently-dropped.md
 
 ### Settled architectural decisions
 

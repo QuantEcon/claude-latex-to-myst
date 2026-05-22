@@ -1737,6 +1737,81 @@ def _algo_convert_body(body: str) -> str:
     return '\n'.join(out_lines).strip()
 
 
+def convert_description_lists(text: str) -> str:
+    """Decode ``<!--DESCRIPTION-START-->`` / ``<!--DESCITEM-->`` /
+    ``<!--DESCRIPTION-END-->`` markers (emitted by
+    ``_apply_description_markers.py``) into MyST definition-list syntax.
+
+    Pandoc escapes the surrounding ``<`` / ``>`` to ``\\<`` / ``\\>`` on
+    LaTeX→Markdown, so the regex tolerates both forms.
+
+    A description block::
+
+        <!--DESCRIPTION-START-->
+        <!--DESCITEM term=BASE64TERM-->
+
+        Item body, possibly multiple paragraphs.
+
+        <!--DESCITEM term=BASE64TERM-->
+
+        Second item body.
+
+        <!--DESCRIPTION-END-->
+
+    becomes::
+
+        Term1
+        : Item body, possibly multiple paragraphs.
+
+        Term2
+        : Second item body.
+
+    Without this, pandoc emits ``::: description`` divs and silently
+    drops every ``\\item[Term]`` label entirely — definitions arrive
+    as a paragraph soup with no terms attached (GH #19).
+    """
+    block_pattern = re.compile(
+        r'\\?<!--DESCRIPTION-START--\\?>(.*?)\\?<!--DESCRIPTION-END--\\?>',
+        re.DOTALL,
+    )
+    item_pattern = re.compile(
+        r'\\?<!--DESCITEM\s+term=(?P<term>[A-Za-z0-9+/=]*)--\\?>',
+    )
+
+    def render_block(m: re.Match) -> str:
+        block = m.group(1)
+        # Split on DESCITEM markers; we want (term_b64, body) pairs.
+        positions = list(item_pattern.finditer(block))
+        if not positions:
+            return ''  # malformed — drop the empty wrapper
+        rendered = []
+        for idx, pos in enumerate(positions):
+            term_b64 = pos.group('term')
+            body_start = pos.end()
+            body_end = positions[idx + 1].start() if idx + 1 < len(positions) else len(block)
+            try:
+                term = base64.b64decode(term_b64).decode('utf-8').strip()
+            except Exception:
+                term = ''
+            body = block[body_start:body_end].strip()
+            # MyST def-list: term on its own line, body indented under ``: ``.
+            # Multi-paragraph bodies indent continuation lines so MyST
+            # treats them as part of the same definition.
+            if term and body:
+                first, *rest = body.split('\n')
+                lines = [term, f': {first}']
+                for line in rest:
+                    lines.append(f'  {line}' if line.strip() else line)
+                rendered.append('\n'.join(lines))
+            elif body:
+                # No term — emit as a plain paragraph (matches LaTeX
+                # behaviour of ``\item`` without ``[…]`` in description).
+                rendered.append(body)
+        return '\n\n'.join(rendered) + '\n'
+
+    return block_pattern.sub(render_block, text)
+
+
 def resolve_algorithms(text: str) -> str:
     """Replace ALGORITHM markers with ``{prf:algorithm}`` directives.
 
@@ -2227,6 +2302,7 @@ def process_file(input_path: Path, output_path: Path = None):
     text = fix_text_dollar(text)
     text = convert_epigraphs(text)
     text = convert_environment_divs(text)
+    text = convert_description_lists(text)         # decode DESCITEM markers (lesson 022)
     text = convert_equations(text)
     text = decode_natbib_markers(text)              # before cross-refs (lesson 020)
     text = convert_cross_references(text)
