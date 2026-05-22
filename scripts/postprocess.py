@@ -1017,6 +1017,18 @@ def convert_html_figures(text: str) -> str:
         re.DOTALL,
     )
 
+    def make_figure(label, src, caption):
+        if '/' not in src:
+            src = 'figures/' + src
+        lines = ['```{figure} ' + src]
+        if label:
+            lines.append(f':name: {label}')
+        lines.append('')
+        if caption:
+            lines.append(caption)
+        lines.append('```')
+        return '\n'.join(lines)
+
     def replace_nested(m):
         outer_label = convert_label_colons(m.group('outer_id'))
         inner_blob = m.group('inner')
@@ -1043,7 +1055,26 @@ def convert_html_figures(text: str) -> str:
             ):
                 chosen = outer_label
                 outer_assigned = True
-            parts.append(make_admonition(chosen, extract_caption(inner_block)))
+            # Fallback: an unlabeled subfigure that didn't inherit the outer
+            # label would otherwise vanish in `resolve_tikz_figures` (no
+            # :name: → "orphaned" branch). Auto-generate ``{outer}-{a,b,…}``
+            # so each subfigure survives with a distinct, cross-refable
+            # label. GH #17.
+            if chosen is None and outer_label:
+                chosen = f"{outer_label}-{chr(ord('a') + idx)}"
+
+            embed_match = re.search(r'<embed[^>]*src="([^"]+)"', inner_block)
+            caption = extract_caption(inner_block)
+            if embed_match:
+                # Real raster/vector image — emit a {figure} directly
+                # from the embed src. Skips the TikZ-placeholder round
+                # trip, which would silently drop unlabeled subfigures
+                # whose label isn't in TIKZ_FIGURE_MAP. GH #17.
+                parts.append(make_figure(chosen, embed_match.group(1), caption))
+            else:
+                # No image source (e.g. \input{tikz/...}) — keep the
+                # admonition placeholder so TIKZ_FIGURE_MAP can resolve it.
+                parts.append(make_admonition(chosen, caption))
         return '\n'.join(parts)
 
     text = nested_pattern.sub(replace_nested, text)

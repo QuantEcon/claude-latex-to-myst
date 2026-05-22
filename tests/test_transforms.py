@@ -1434,3 +1434,80 @@ def test_convert_label_colons():
     assert postprocess.convert_label_colons("thm:main") == "thm-main"
     assert postprocess.convert_label_colons("eq:foo:bar") == "eq-foo-bar"
     assert postprocess.convert_label_colons("no-colon") == "no-colon"
+
+
+# ── Nested subfigures (issue #17) ────────────────────────────────────────────
+
+
+def test_nested_subfigures_with_embed_emits_both_images_outer_referenced():
+    """GH #17 — dp2's ``ch_approx_learning`` shape: outer figure has a
+    label that is cross-referenced via ``{numref}`` elsewhere in the
+    chapter, so the outer label is donated to the first unlabeled
+    inner subfigure (to keep the existing cross-ref working). The
+    second subfigure auto-generates ``{outer}-b`` so it survives
+    instead of being silently dropped by the old admonition path.
+    """
+    pandoc_out = (
+        'See {numref}`f-foo` below.\n'
+        '<figure id="f:foo">\n'
+        '<figure>\n'
+        '<embed src="figures/a.pdf" />\n'
+        '<figcaption>First</figcaption>\n'
+        '</figure>\n'
+        '<figure>\n'
+        '<embed src="figures/b.pdf" />\n'
+        '<figcaption>Second</figcaption>\n'
+        '</figure>\n'
+        '<figcaption>Outer caption</figcaption>\n'
+        '</figure>\n'
+    )
+    out = postprocess.convert_html_figures(pandoc_out)
+    assert 'figures/a.pdf' in out
+    assert 'figures/b.pdf' in out, "second subfigure image was dropped"
+    assert ':name: f-foo\n' in out, "outer label should transfer to first inner"
+    assert ':name: f-foo-b\n' in out, "second inner should get auto-suffix"
+    assert 'First' in out and 'Second' in out
+
+
+def test_nested_subfigures_with_embed_unreferenced_outer_uses_suffixes():
+    """When the outer label isn't cross-referenced anywhere, no
+    consumer cares about preserving it, so both unlabeled inners get
+    clean ``{outer}-a`` / ``{outer}-b`` auto-suffixes."""
+    pandoc_out = (
+        '<figure id="f:foo">\n'
+        '<figure>\n'
+        '<embed src="figures/a.pdf" />\n'
+        '<figcaption>First</figcaption>\n'
+        '</figure>\n'
+        '<figure>\n'
+        '<embed src="figures/b.pdf" />\n'
+        '<figcaption>Second</figcaption>\n'
+        '</figure>\n'
+        '<figcaption>Outer caption</figcaption>\n'
+        '</figure>\n'
+    )
+    out = postprocess.convert_html_figures(pandoc_out)
+    assert ':name: f-foo-a\n' in out
+    assert ':name: f-foo-b\n' in out
+    assert 'figures/a.pdf' in out and 'figures/b.pdf' in out
+
+
+def test_nested_subfigures_without_embed_keeps_admonition_path():
+    """When inner subfigures have no ``<embed>`` (e.g. ``\\input{tikz/…}``
+    that pandoc couldn't include), keep the admonition placeholder so
+    ``TIKZ_FIGURE_MAP`` can resolve labels later. The fix to #17 must
+    not break this dp2 pattern."""
+    pandoc_out = (
+        '<figure id="f:bar">\n'
+        '<figure id="f:bar_a">\n'
+        '<figcaption>A</figcaption>\n'
+        '</figure>\n'
+        '<figure id="f:bar_b">\n'
+        '<figcaption>B</figcaption>\n'
+        '</figure>\n'
+        '<figcaption>Outer</figcaption>\n'
+        '</figure>\n'
+    )
+    out = postprocess.convert_html_figures(pandoc_out)
+    assert '{admonition} Figure (TikZ' in out
+    assert 'f-bar_a' in out and 'f-bar_b' in out

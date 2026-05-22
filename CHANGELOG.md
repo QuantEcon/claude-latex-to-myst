@@ -264,6 +264,24 @@ haven't validated. Everything below is on `main` and available now.
   `Listing {numref}\`list-foo\`` now de-doubles cleanly. Fresh dp1
   output: 45 list-refs routed correctly, zero doubled "Listing
   Program N" sites. Closes [#8].
+- **Unlabeled subfigures silently dropped images** ([#17]): a
+  `\begin{figure}` containing multiple `\begin{subfigure}` blocks
+  where the subfigures had no individual `\label{}` collapsed into a
+  single `{figure}` directive — only the first subfigure's image
+  survived. Pandoc emits each subfigure as `<embed src="…">` inside a
+  nested HTML `<figure>` with no `id`; the old
+  `convert_html_figures.replace_nested` ignored `<embed src>` and
+  always produced an admonition placeholder, then the unlabeled
+  placeholders for inners 2+ hit the "orphaned sub-panel — skip"
+  branch in `resolve_tikz_figures` and vanished. Fix: detect
+  `<embed src>` and emit a real `{figure}` directive directly using
+  the embed source path (bypassing the TikZ-placeholder round trip),
+  and auto-generate `{outer-label}-{a,b,…}` names for unlabeled
+  inners so each subfigure gets a distinct, cross-refable label. The
+  TikZ path (`\input{tikz/…}` with no `<embed>`) is unchanged.
+  Double-masked until [#15] was fixed — the old validator's
+  figure-blind counting reported a clean `10/10` while the rendered
+  output was missing an image. Lesson [021]. Closes [#17].
 - **`validate.py` false-positive mismatches** ([#14], [#15], [#16]):
   three independent count blind spots in `scripts/validate.py` that
   produced spurious `!` markers and diluted the validator's signal.
@@ -315,6 +333,8 @@ haven't validated. Everything below is on `main` and available now.
 [#14]: https://github.com/QuantEcon/claude-latex-to-myst/issues/14
 [#15]: https://github.com/QuantEcon/claude-latex-to-myst/issues/15
 [#16]: https://github.com/QuantEcon/claude-latex-to-myst/issues/16
+[#17]: https://github.com/QuantEcon/claude-latex-to-myst/issues/17
+[021]: lessons/021-unlabeled-subfigures-silent-image-drop.md
 
 ### Settled architectural decisions
 
