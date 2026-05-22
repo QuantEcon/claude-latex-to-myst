@@ -264,6 +264,15 @@ haven't validated. Everything below is on `main` and available now.
   `Listing {numref}\`list-foo\`` now de-doubles cleanly. Fresh dp1
   output: 45 list-refs routed correctly, zero doubled "Listing
   Program N" sites. Closes [#8].
+- **Chapter splitter missed `\chapter[short]{long}`** ([#18]): the
+  ``_apply_chapter_splits`` regex only matched ``\chapter{}`` and
+  ``\chapter*{}``, so a book with even one TOC-short-title chapter
+  (``\chapter[Short]{Long title}``) under-counted by one and the
+  splitter errored out (``has only N-1 \chapter block(s) but config
+  requires N``). Pattern now also matches the optional-argument form,
+  covering all four LaTeX variants
+  (with/without ``*``, with/without ``[short]``). Surfaced while
+  converting an external book outside the QuantEcon org. Closes [#18].
 - **Unlabeled subfigures silently dropped images** ([#17]): a
   `\begin{figure}` containing multiple `\begin{subfigure}` blocks
   where the subfigures had no individual `\label{}` collapsed into a
@@ -334,6 +343,7 @@ haven't validated. Everything below is on `main` and available now.
 [#15]: https://github.com/QuantEcon/claude-latex-to-myst/issues/15
 [#16]: https://github.com/QuantEcon/claude-latex-to-myst/issues/16
 [#17]: https://github.com/QuantEcon/claude-latex-to-myst/issues/17
+[#18]: https://github.com/QuantEcon/claude-latex-to-myst/issues/18
 [021]: lessons/021-unlabeled-subfigures-silent-image-drop.md
 
 ### Settled architectural decisions

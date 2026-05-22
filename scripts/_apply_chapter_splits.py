@@ -37,7 +37,7 @@ from pathlib import Path
 from _config import load
 
 
-_CHAPTER_RE = re.compile(r'^\\chapter\*?\{', re.MULTILINE)
+_CHAPTER_RE = re.compile(r'^\\chapter\*?(?:\[[^\]]*\])?\{', re.MULTILINE)
 
 
 def split_one(src_path: Path, targets: list[str], skip_extra: bool,

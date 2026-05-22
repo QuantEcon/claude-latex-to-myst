@@ -294,6 +294,34 @@ def test_chapter_split_handles_chapter_star(tmp_path):
     assert "Unnumbered" in (tmp_path / "two.tex").read_text(encoding="utf-8")
 
 
+def test_chapter_split_handles_optional_short_title(tmp_path):
+    """GH #18: ``\\chapter[short]{long}`` is used when the TOC/running
+    head needs a different label than the body title. The splitter
+    must recognise it as a chapter boundary."""
+    src = tmp_path / "src.tex"
+    src.write_text(
+        "\\chapter{Plain}\nA\n"
+        "\\chapter[Short]{Long body title}\nB\n",
+        encoding="utf-8",
+    )
+    split.split_one(src, ["one", "two"], skip_extra=False, tmp_dir=tmp_path)
+    assert "Plain" in (tmp_path / "one.tex").read_text(encoding="utf-8")
+    assert "Long body title" in (tmp_path / "two.tex").read_text(encoding="utf-8")
+
+
+def test_chapter_split_handles_chapter_star_with_optional_arg(tmp_path):
+    """``\\chapter*[short]{long}`` is rare but legal."""
+    src = tmp_path / "src.tex"
+    src.write_text(
+        "\\chapter{First}\nA\n"
+        "\\chapter*[Short]{Unnumbered long}\nB\n",
+        encoding="utf-8",
+    )
+    split.split_one(src, ["one", "two"], skip_extra=False, tmp_dir=tmp_path)
+    assert "First" in (tmp_path / "one.tex").read_text(encoding="utf-8")
+    assert "Unnumbered long" in (tmp_path / "two.tex").read_text(encoding="utf-8")
+
+
 def test_chapter_split_no_chapter_blocks_errors(tmp_path):
     src = tmp_path / "src.tex"
     src.write_text("No chapter macros here.\n", encoding="utf-8")
