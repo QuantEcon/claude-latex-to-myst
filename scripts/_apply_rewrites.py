@@ -25,15 +25,23 @@ from _config import load
 #
 # Variants pandoc handles correctly (``\cite`` → ``{cite}``, ``\citet``
 # → ``{cite:t}``) are left alone.
+#
+# Optional ``[...]`` locator arguments (natbib accepts up to two:
+# ``\citep[prenote][postnote]{key}``) are matched and discarded — MyST's
+# ``{cite:*}`` roles have no locator-suffix syntax to route them into.
+# Without this, ``\citep[p.~351]{key}`` slipped past the rewrite, pandoc
+# emitted ``[@key, p.~351]``, and downstream regex produced an empty
+# ``{cite}`` role (GH #13).
+_NATBIB_OPT = r'(?:\s*\[[^\]]*\]){0,2}'
 _NATBIB_REWRITES = [
-    (r'\\citep\b\s*\{([^}]+)\}',       r'[[CITEP:\1]]'),
-    (r'\\citealp\b\s*\{([^}]+)\}',     r'[[CITEALP:\1]]'),
-    (r'\\citealt\b\s*\{([^}]+)\}',     r'[[CITEALT:\1]]'),
-    (r'\\citeauthor\b\s*\{([^}]+)\}',  r'[[CITEAUTHOR:\1]]'),
+    (rf'\\citep\b{_NATBIB_OPT}\s*\{{([^}}]+)\}}',       r'[[CITEP:\1]]'),
+    (rf'\\citealp\b{_NATBIB_OPT}\s*\{{([^}}]+)\}}',     r'[[CITEALP:\1]]'),
+    (rf'\\citealt\b{_NATBIB_OPT}\s*\{{([^}}]+)\}}',     r'[[CITEALT:\1]]'),
+    (rf'\\citeauthor\b{_NATBIB_OPT}\s*\{{([^}}]+)\}}',  r'[[CITEAUTHOR:\1]]'),
     # \citeyearpar must precede \citeyear — both share a prefix and the
     # shorter pattern would otherwise win.
-    (r'\\citeyearpar\b\s*\{([^}]+)\}', r'[[CITEYEARPAR:\1]]'),
-    (r'\\citeyear\b\s*\{([^}]+)\}',    r'[[CITEYEAR:\1]]'),
+    (rf'\\citeyearpar\b{_NATBIB_OPT}\s*\{{([^}}]+)\}}', r'[[CITEYEARPAR:\1]]'),
+    (rf'\\citeyear\b{_NATBIB_OPT}\s*\{{([^}}]+)\}}',    r'[[CITEYEAR:\1]]'),
 ]
 
 

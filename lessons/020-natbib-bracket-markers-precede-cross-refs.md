@@ -146,6 +146,33 @@ All three return zero in dp2's regenerated output. Pre-fix, the third
 was misaligned (14 source `\citep` → 11 `{cite:p}` because 3 were eaten
 by cross-refs).
 
+## Locator-arg gotcha (GH #13)
+
+Natbib's optional `[locator]` args (`\citep[p.~351]{key}`,
+`\citep[prenote][postnote]{key}`) break the rewrite if the pattern
+forces `{` to follow the command name directly. Original pattern was::
+
+    r'\\citep\b\s*\{([^}]+)\}'
+
+— the `\s*\{` anchor lets a citation with a locator slip past
+unchanged. Pandoc then renders `\citep[p.~351]{key}` as roughly
+`[@key, p.~351]`, and the multi-cite regex in `convert_citations`
+(`@(\S+?)(?:;|\])`) can't terminate inside that bracket group, so
+`replace_multi_cite` finds zero keys and emits an empty `` {cite}`` ``
+— silent data loss.
+
+Fix: match up to two optional `[…]` groups between the command and the
+`{key}`, and discard them. MyST's `{cite:*}` roles have no locator-
+suffix syntax, so the locator can't be routed anywhere::
+
+    _NATBIB_OPT = r'(?:\s*\[[^\]]*\]){0,2}'
+    (rf'\\citep\b{_NATBIB_OPT}\s*\{{([^}}]+)\}}',  r'[[CITEP:\1]]'),
+    # …same for the other 5
+
+The detection grep at "How to detect" above won't surface this — the
+output looks superficially valid (`` {cite}`` ``), just empty. The
+better signal is a `grep -rE "\{cite[^}]*\}\`\`"` for empty-key roles.
+
 ## Generalizable rule
 
 When introducing a new sentinel that uses syntax similar to an existing

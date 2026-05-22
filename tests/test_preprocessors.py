@@ -15,6 +15,13 @@ import pytest
 import _apply_algorithm_markers as alg
 import _apply_chapter_splits as split
 import _apply_listing_markers as lst
+import _apply_rewrites as rew
+
+
+def _apply_natbib(text: str) -> str:
+    for pat, repl in rew._NATBIB_REWRITES:
+        text = re.sub(pat, repl, text)
+    return text
 
 
 # ── Algorithm markers ────────────────────────────────────────────────────────
@@ -173,6 +180,45 @@ def test_listing_marker_handles_multiline_caption():
     )
     out = lst.process_text(tex)
     assert "Multi-line caption that spans" in out
+
+
+# ── Natbib pre-pandoc rewrites ───────────────────────────────────────────────
+
+
+def test_natbib_rewrite_plain_citep():
+    assert _apply_natbib(r"\citep{smith2020}") == "[[CITEP:smith2020]]"
+
+
+def test_natbib_rewrite_plain_citealp_multi_key():
+    assert _apply_natbib(r"\citealp{a, b}") == "[[CITEALP:a, b]]"
+
+
+def test_natbib_rewrite_citeyearpar_wins_over_citeyear():
+    """Both share a prefix; the longer pattern must win — regression
+    guard for the ordering inside ``_NATBIB_REWRITES``."""
+    assert _apply_natbib(r"\citeyearpar{k}") == "[[CITEYEARPAR:k]]"
+    assert _apply_natbib(r"\citeyear{k}") == "[[CITEYEAR:k]]"
+
+
+@pytest.mark.parametrize("src,want", [
+    # GH #13: single locator
+    (r"\citep[p.~351]{loewenstein1991negative}",
+     "[[CITEP:loewenstein1991negative]]"),
+    # natbib's pre + post locators
+    (r"\citep[see][p.~12]{key}", "[[CITEP:key]]"),
+    # whitespace between cite and locator
+    (r"\citep [p.~7]{key}", "[[CITEP:key]]"),
+    # all variants accept locators
+    (r"\citealp[p.~1]{k}",    "[[CITEALP:k]]"),
+    (r"\citealt[p.~1]{k}",    "[[CITEALT:k]]"),
+    (r"\citeauthor[p.~1]{k}", "[[CITEAUTHOR:k]]"),
+    (r"\citeyear[p.~1]{k}",   "[[CITEYEAR:k]]"),
+    (r"\citeyearpar[p.~1]{k}", "[[CITEYEARPAR:k]]"),
+])
+def test_natbib_rewrite_drops_locator_arg(src, want):
+    """Locator args (``[p.~351]``) must not block the rewrite, and must
+    be discarded (MyST has no locator-suffix syntax). GH #13."""
+    assert _apply_natbib(src) == want
 
 
 # ── Chapter splits (multi-chapter source files) ──────────────────────────────

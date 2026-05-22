@@ -264,6 +264,17 @@ haven't validated. Everything below is on `main` and available now.
   `Listing {numref}\`list-foo\`` now de-doubles cleanly. Fresh dp1
   output: 45 list-refs routed correctly, zero doubled "Listing
   Program N" sites. Closes [#8].
+- **Natbib citations with locator args silently dropped key** ([#13]):
+  `\citep[p.~351]{key}` (and the other 5 natbib variants with one or
+  two `[…]` optional args) slipped past the preprocess rewrite, which
+  required `{` to follow the command name directly. Pandoc then
+  emitted `[@key, p.~351]`, and the downstream multi-cite regex
+  couldn't terminate inside that bracket group, producing an empty
+  `{cite}` role. `_NATBIB_REWRITES` now matches up to two optional
+  `[…]` groups before `{key}` and discards them (MyST's `{cite:*}`
+  roles have no locator-suffix syntax). One known occurrence in
+  book-dp1 (`ch_rdps.tex:3381`) restored. Lesson 020 updated.
+  Closes [#13].
 
 [#3]: https://github.com/QuantEcon/claude-latex-to-myst/issues/3
 [#4]: https://github.com/QuantEcon/claude-latex-to-myst/issues/4
@@ -274,6 +285,7 @@ haven't validated. Everything below is on `main` and available now.
 [#10]: https://github.com/QuantEcon/claude-latex-to-myst/issues/10
 [#11]: https://github.com/QuantEcon/claude-latex-to-myst/issues/11
 [#12]: https://github.com/QuantEcon/claude-latex-to-myst/issues/12
+[#13]: https://github.com/QuantEcon/claude-latex-to-myst/issues/13
 
 ### Settled architectural decisions
 
