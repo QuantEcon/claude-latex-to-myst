@@ -16,21 +16,51 @@ from pathlib import Path
 from _config import load
 
 
+def _strip_latex_comments(text: str) -> str:
+    """Drop whole-line LaTeX comments (a line whose first non-whitespace
+    char is ``%``). Mid-line trailing comments are left alone so a line
+    like ``\\begin{lemma} % TODO`` still counts the env. GH #14.
+    """
+    return re.sub(r'(?m)^[ \t]*%.*$', '', text)
+
+
+def _count_figures_latex(text: str) -> int:
+    """Count figures the pipeline will materialize on the MyST side.
+
+    A ``\\begin{figure}`` block containing N ``\\begin{subfigure}`` blocks
+    emits N ``{figure}`` directives (one per subfigure label, outer
+    wrapper discarded). A ``\\begin{figure}`` with no subfigures emits
+    one. GH #15.
+    """
+    n = 0
+    for m in re.finditer(r'\\begin\{figure\}(.*?)\\end\{figure\}', text, flags=re.DOTALL):
+        subs = len(re.findall(r'\\begin\{subfigure\}', m.group(1)))
+        n += max(subs, 1)
+    return n
+
+
 def count_latex(text: str) -> dict:
+    text = _strip_latex_comments(text)
     return {
         'equations':       len(re.findall(r'\\begin\{(equation|align|gather|multline)\*?\}', text)),
         'labeled_eqs':     len(re.findall(r'\\label\{eq:', text)),
         'theorems':        len(re.findall(r'\\begin\{(box)?(theorem|lemma|corollary|proposition|definition)\}', text)),
-        'figures':         len(re.findall(r'\\begin\{figure\}', text)),
+        'figures':         _count_figures_latex(text),
         'citations':       len(re.findall(r'\\cite[pt]?\{', text)),
         'cross_refs':      len(re.findall(r'\\(cref|Cref|ref|eqref|autoref)\{', text)),
     }
 
 
 def count_myst(text: str) -> dict:
+    # An unlabeled equation block has two ``$$`` fence lines; a labeled
+    # block has ``$$`` open + ``$$ (eq-foo)`` close, so the labeled
+    # close doesn't match the bare-fence regex. Count both, then //2.
+    # GH #16.
+    bare_fence = len(re.findall(r'^\$\$\s*$', text, flags=re.MULTILINE))
+    labeled_close = len(re.findall(r'^\$\$\s+\(eq-', text, flags=re.MULTILINE))
     return {
-        'equations':       len(re.findall(r'^\$\$\s*$', text, flags=re.MULTILINE)) // 2,
-        'labeled_eqs':     len(re.findall(r'^\$\$\s+\(eq-', text, flags=re.MULTILINE)),
+        'equations':       (bare_fence + labeled_close) // 2,
+        'labeled_eqs':     labeled_close,
         'theorems':        len(re.findall(r'\{prf:(theorem|lemma|corollary|proposition|definition)\}', text)),
         'figures':         len(re.findall(r'\{figure\}', text)),
         'citations':       len(re.findall(r'\{cite(?::t)?\}', text)),

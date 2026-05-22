@@ -264,6 +264,32 @@ haven't validated. Everything below is on `main` and available now.
   `Listing {numref}\`list-foo\`` now de-doubles cleanly. Fresh dp1
   output: 45 list-refs routed correctly, zero doubled "Listing
   Program N" sites. Closes [#8].
+- **`validate.py` false-positive mismatches** ([#14], [#15], [#16]):
+  three independent count blind spots in `scripts/validate.py` that
+  produced spurious `!` markers and diluted the validator's signal.
+  - **Commented-out LaTeX envs counted** ([#14]): `count_latex` now
+    strips whole-line `%` comments before counting, so a deliberately
+    commented `\begin{lemma}` no longer bumps the theorems column.
+    Mid-line trailing comments (`\begin{lemma} % TODO`) are preserved
+    so the live env still counts.
+  - **Figures column ignored subfigures** ([#15]): a `\begin{figure}`
+    containing N `\begin{subfigure}` blocks emits N `{figure}`
+    directives on the MyST side (outer wrapper discarded), but the
+    old LaTeX-side regex counted only the wrapper. New
+    `_count_figures_latex` walks each figure block and contributes
+    `max(subfigures, 1)`. (Reporter's diagnosis attributed the
+    discrepancy to `\input{tikz/...}` resolution; verified against
+    dp2 fixture that subfigures are the actual cause.)
+  - **MyST equation count missed labeled-close fences** ([#16]):
+    labeled blocks close with `$$ (eq-foo)`, which the bare-fence
+    regex (`^\$\$\s*$`) didn't match. `count_myst` now sums bare and
+    labeled-close fences before `// 2`, restoring labeled blocks to
+    the equation count. Fixed a ~25% under-count on every chapter
+    using labeled equations.
+  - Adds `tests/test_validate.py` (previously zero coverage). On the
+    dp2 fixture, `theorems` and `figures` columns are now 100% clean;
+    remaining `!` markers are genuine off-by-one discrepancies the
+    validator is supposed to surface.
 - **Natbib citations with locator args silently dropped key** ([#13]):
   `\citep[p.~351]{key}` (and the other 5 natbib variants with one or
   two `[…]` optional args) slipped past the preprocess rewrite, which
@@ -286,6 +312,9 @@ haven't validated. Everything below is on `main` and available now.
 [#11]: https://github.com/QuantEcon/claude-latex-to-myst/issues/11
 [#12]: https://github.com/QuantEcon/claude-latex-to-myst/issues/12
 [#13]: https://github.com/QuantEcon/claude-latex-to-myst/issues/13
+[#14]: https://github.com/QuantEcon/claude-latex-to-myst/issues/14
+[#15]: https://github.com/QuantEcon/claude-latex-to-myst/issues/15
+[#16]: https://github.com/QuantEcon/claude-latex-to-myst/issues/16
 
 ### Settled architectural decisions
 
