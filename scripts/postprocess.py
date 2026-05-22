@@ -1602,6 +1602,39 @@ _ALGPSEUDO_KEYWORD_RE = re.compile(
 )
 
 
+def _unwrap_text_macro(text: str, macro: str, wrap: str) -> str:
+    """Replace every ``\\<macro>{INNER}`` with ``wrap.format(inner)``,
+    walking braces with balanced-depth matching so ``INNER`` containing
+    nested ``{…}`` (typically math like ``\\mathcal{Q}`` or
+    ``\\texttt{foo}``) is captured in full.
+
+    The naive ``re.sub(r'\\\\<macro>\\{([^}]*)\\}', …)`` stops at the
+    first ``}``, which for input like ``\\textbf{$\\mathcal{Q}$ is X}``
+    yields ``**$\\mathcal{Q**$ is X}`` — markdown no parser agrees on
+    (GH #21).
+    """
+    out: list[str] = []
+    i = 0
+    needle = '\\' + macro + '{'
+    while True:
+        j = text.find(needle, i)
+        if j < 0:
+            out.append(text[i:])
+            return ''.join(out)
+        brace_open = j + len(needle) - 1  # position of '{'
+        brace_close = _algo_find_balanced(text, brace_open)
+        if brace_close < 0:
+            # Unbalanced — bail on this occurrence (preserve source) but
+            # keep scanning past it so later occurrences still rewrite.
+            out.append(text[i : j + len(needle)])
+            i = j + len(needle)
+            continue
+        out.append(text[i:j])
+        inner = text[brace_open + 1 : brace_close]
+        out.append(wrap.format(inner))
+        i = brace_close + 1
+
+
 def _algpseudo_tokenize(body: str) -> list[dict]:
     """Split an algpseudocode body into an ordered list of token dicts.
 
@@ -1694,11 +1727,13 @@ def _algpseudo_inline(text: str) -> str:
     if text is None:
         return ''
     t = text
-    t = re.sub(r'\\navy\{([^}]*)\}', r'**\1**', t)
-    t = re.sub(r'\\textbf\{([^}]*)\}', r'**\1**', t)
-    t = re.sub(r'\\textit\{([^}]*)\}', r'*\1*', t)
-    t = re.sub(r'\\textnormal\{([^}]*)\}', r'\1', t)
-    t = re.sub(r'\\emph\{([^}]*)\}', r'*\1*', t)
+    # Balanced-brace unwrap — naive [^}]* stops at the first } and
+    # mangles nested constructs like \textbf{$\mathcal{Q}$ X} (GH #21).
+    t = _unwrap_text_macro(t, 'navy',        '**{}**')
+    t = _unwrap_text_macro(t, 'textbf',      '**{}**')
+    t = _unwrap_text_macro(t, 'textit',      '*{}*')
+    t = _unwrap_text_macro(t, 'textnormal',  '{}')
+    t = _unwrap_text_macro(t, 'emph',        '*{}*')
     # Strip leftover algpseudocode formatting that doesn't apply here.
     t = re.sub(r'\\vspace\{[^}]*\}', '', t)
     # Collapse whitespace — algpseudocode tolerates arbitrary linebreaks
@@ -1907,12 +1942,14 @@ def _algo_convert_body(body: str) -> str:
     s = re.sub(r'\\SetAlgoLined', '', s)
     s = re.sub(r'\\vspace\{[^}]*\}', '', s)
     s = re.sub(r'\\index\{[^}]*\}', '', s)
-    s = re.sub(r'\\navy\{([^}]*)\}', r'**\1**', s)
-    s = re.sub(r'\\textbf\{([^}]*)\}', r'**\1**', s)
+    # Balanced-brace unwrap — naive [^}]* stops at the first } and
+    # mangles nested math like \textbf{$\mathcal{Q}$ X} (GH #21).
+    s = _unwrap_text_macro(s, 'navy',   '**{}**')
+    s = _unwrap_text_macro(s, 'textbf', '**{}**')
     # ``\textnormal{...}`` is LaTeX's way to drop into upright text inside
     # math mode; in an algorithm condition like ``\While{\textnormal{true}}``
     # the wrapper has no markdown equivalent — unwrap it. (FOLLOWUP #014, Gap B)
-    s = re.sub(r'\\textnormal\{([^}]*)\}', r'\1', s)
+    s = _unwrap_text_macro(s, 'textnormal', '{}')
 
     # Repeatedly expand control blocks (innermost first via simple loop).
     def expand_one(text: str) -> tuple[str, bool]:

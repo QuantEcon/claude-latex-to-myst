@@ -1718,6 +1718,46 @@ def test_algpseudo_textbf_becomes_markdown_bold():
     assert _bullets(out) == ["- **Input:** value"]
 
 
+def test_algpseudo_textbf_with_nested_braces_preserves_inner_math():
+    """GH #21: \\textbf{} containing inline math with \\mathcal{Q} used
+    to mangle into ``**[…$\\mathcal{Q**$ …]}`` because the naive
+    ``[^}]*`` regex stopped at the first ``}``. Balanced-brace unwrap
+    keeps the inner math intact."""
+    body = r"\STATE Loss: \textbf{[NEW: $\mathcal{Q}$ is chosen]}"
+    out = postprocess._algpseudo_convert_body(body)
+    assert _bullets(out) == [
+        r"- Loss: **[NEW: $\mathcal{Q}$ is chosen]**",
+    ]
+
+
+def test_algpseudo_textbf_with_multiple_nested_braced_macros():
+    """Reporter's second case: ``\\texttt{}`` groups inside ``\\textbf{}``."""
+    body = (
+        r"\STATE Update: $x \leftarrow y$ "
+        r"\textbf{[NEW: wrap in \texttt{@tf.function} or "
+        r"\texttt{@jax.jit} for $5$ speed-up]}"
+    )
+    out = postprocess._algpseudo_convert_body(body)
+    line = _bullets(out)[0]
+    # Bold opens and closes exactly once around the bracketed note.
+    assert line.count("**") == 2
+    # Inner macros / math survive unbroken.
+    assert r"\texttt{@tf.function}" in line
+    assert r"\texttt{@jax.jit}" in line
+    assert "$5$" in line
+
+
+def test_algo2e_textbf_with_nested_braces_also_balanced():
+    """Same fix applies to the algorithm2e body converter — it shared
+    the same regex bug. The body lacks algpseudocode keywords, so
+    ``_algo_convert_body`` stays on its native algorithm2e path."""
+    body = r"\textbf{Step $\mathcal{A}$ matrix} \;"
+    out = postprocess._algo_convert_body(body)
+    assert r"**Step $\mathcal{A}$ matrix**" in out
+    # No mid-math `**` insertion.
+    assert r"$\mathcal{A**$" not in out
+
+
 def test_algpseudo_comment_annotation_becomes_inline_note():
     body = r"\STATE work \Comment{annotation here}"
     out = postprocess._algpseudo_convert_body(body)

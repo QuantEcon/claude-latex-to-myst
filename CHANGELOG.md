@@ -264,6 +264,17 @@ haven't validated. Everything below is on `main` and available now.
   `Listing {numref}\`list-foo\`` now de-doubles cleanly. Fresh dp1
   output: 45 list-refs routed correctly, zero doubled "Listing
   Program N" sites. Closes [#8].
+- **`\textbf{...$math$...}` mangled by naive brace regex** ([#21]):
+  the inline-formatting unwrap in both `_algpseudo_inline` (#20 path)
+  and `_algo_convert_body` (algorithm2e path) used `[^}]*` to capture
+  the macro argument, which stopped at the first `}` — so a
+  `\textbf{[NEW: $\mathcal{Q}$ is chosen]}` body broke at the `}` of
+  `\mathcal{Q}` and emitted `**[NEW: $\mathcal{Q**$ is chosen]}` with
+  an unbalanced math fence and an orphan `}`. Surfaced after #20
+  routed algorithmic bodies through the inline-formatter for the
+  first time. New `_unwrap_text_macro` walks braces with balanced-
+  depth matching and is used for `\textbf`, `\textit`, `\textnormal`,
+  `\emph`, and `\navy` in both body converters. Closes [#21].
 - **`algorithmic` / algpseudocode env support** ([#20]): LaTeX books
   using the `algorithmic` (algorithmicx) environment for pseudocode
   had either no support at all (raw `\STATE`, `\FOR`, `\ENDFOR`
@@ -386,6 +397,7 @@ haven't validated. Everything below is on `main` and available now.
 [#18]: https://github.com/QuantEcon/claude-latex-to-myst/issues/18
 [#19]: https://github.com/QuantEcon/claude-latex-to-myst/issues/19
 [#20]: https://github.com/QuantEcon/claude-latex-to-myst/issues/20
+[#21]: https://github.com/QuantEcon/claude-latex-to-myst/issues/21
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
