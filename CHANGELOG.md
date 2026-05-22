@@ -264,6 +264,35 @@ haven't validated. Everything below is on `main` and available now.
   `Listing {numref}\`list-foo\`` now de-doubles cleanly. Fresh dp1
   output: 45 list-refs routed correctly, zero doubled "Listing
   Program N" sites. Closes [#8].
+- **`algorithmic` / algpseudocode env support** ([#20]): LaTeX books
+  using the `algorithmic` (algorithmicx) environment for pseudocode
+  had either no support at all (raw `\STATE`, `\FOR`, `\ENDFOR`
+  markers leaking into `::: algorithmic` divs) or were unreachable
+  via the existing `\begin{algorithm}` preprocessor (which only
+  knew the algorithm2e dialect). Two new pieces:
+  - **New preprocess step** (`_apply_algorithmic_markers.py`) finds
+    standalone `\begin{algorithmic}…\end{algorithmic}` blocks (e.g.
+    inside a custom `definitionbox` tcolorbox wrapper) and emits
+    base64-encoded `<!--ALGORITHMIC body=…-->` sentinels. Runs
+    AFTER the algorithm-marker preprocessor so algorithmic blocks
+    already nested inside `\begin{algorithm}` (which get encoded
+    by the outer wrapper) are left alone.
+  - **New native parser** (`_algpseudo_convert_body`) walks the
+    algpseudocode keyword set (`\STATE`, `\FOR{}…\ENDFOR`,
+    `\WHILE{}…\ENDWHILE`, `\REPEAT…\UNTIL{C}`, `\IF{}…\ELSE…\ENDIF`,
+    `\LOOP…\ENDLOOP`, `\FORALL{}`, `\REQUIRE`, `\ENSURE`, `\RETURN`,
+    `\COMMENT{}`, `\ELSIF{}`, etc.) with a stack-based tokeniser
+    and emits nested Markdown bullets. `_algo_convert_body`
+    dispatches here when it sees algpseudocode keywords or a
+    `\begin{algorithmic}` wrapper, so a single `\begin{algorithm}`
+    block renders correctly whether the inner pseudocode is
+    algorithm2e or algorithmicx.
+  - **`resolve_algorithmics`** decodes standalone markers into a
+    bare bullet list (no `{prf:algorithm}` wrapper — no caption or
+    label was given).
+  - Native parser preserves `\UNTIL{C}` conditions, `\ELSE` branches,
+    and `\LOOP` — none of which translate cleanly to algorithm2e.
+    Lesson [023]. Closes [#20].
 - **`description` env support** ([#19]): LaTeX `description` lists
   arrived in MyST as `::: description` divs with every `\item[Term]`
   term label silently stripped — pandoc drops them at the AST level,
@@ -356,6 +385,8 @@ haven't validated. Everything below is on `main` and available now.
 [#17]: https://github.com/QuantEcon/claude-latex-to-myst/issues/17
 [#18]: https://github.com/QuantEcon/claude-latex-to-myst/issues/18
 [#19]: https://github.com/QuantEcon/claude-latex-to-myst/issues/19
+[#20]: https://github.com/QuantEcon/claude-latex-to-myst/issues/20
+[023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
 [021]: lessons/021-unlabeled-subfigures-silent-image-drop.md

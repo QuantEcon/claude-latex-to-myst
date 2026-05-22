@@ -1559,6 +1559,237 @@ def test_convert_description_lists_preserves_surrounding_prose():
     assert "T\n: B" in out
 
 
+# ── algpseudocode body parser (issue #20) ────────────────────────────────────
+
+
+def _bullets(out: str) -> list[str]:
+    return [ln.rstrip() for ln in out.split("\n") if ln.strip()]
+
+
+def test_algpseudo_state_only_flat_bullets():
+    body = r"\STATE Init $v$" "\n" r"\STATE Iterate"
+    out = postprocess._algpseudo_convert_body(body)
+    assert _bullets(out) == ["- Init $v$", "- Iterate"]
+
+
+def test_algpseudo_for_endfor_nests():
+    body = (
+        r"\FOR{$i = 1$ to $n$}" "\n"
+        r"  \STATE work($i$)" "\n"
+        r"\ENDFOR"
+    )
+    out = postprocess._algpseudo_convert_body(body)
+    assert _bullets(out) == [
+        "- for $i = 1$ to $n$:",
+        "  - work($i$)",
+    ]
+
+
+def test_algpseudo_nested_for():
+    body = (
+        r"\FOR{$i$}" "\n"
+        r"  \FOR{$j$}" "\n"
+        r"    \STATE cell($i$, $j$)" "\n"
+        r"  \ENDFOR" "\n"
+        r"\ENDFOR"
+    )
+    out = postprocess._algpseudo_convert_body(body)
+    assert _bullets(out) == [
+        "- for $i$:",
+        "  - for $j$:",
+        "    - cell($i$, $j$)",
+    ]
+
+
+def test_algpseudo_while_endwhile():
+    body = (
+        r"\WHILE{$v > \epsilon$}" "\n"
+        r"  \STATE step" "\n"
+        r"\ENDWHILE"
+    )
+    out = postprocess._algpseudo_convert_body(body)
+    assert _bullets(out) == [
+        r"- while $v > \epsilon$:",
+        "  - step",
+    ]
+
+
+def test_algpseudo_repeat_until_preserves_condition():
+    """algorithm2e's \\Repeat is one-arg and drops the condition; the
+    algpseudocode parser keeps it as a trailing ``until C`` bullet."""
+    body = (
+        r"\REPEAT" "\n"
+        r"  \STATE noop" "\n"
+        r"\UNTIL{converged}"
+    )
+    out = postprocess._algpseudo_convert_body(body)
+    assert _bullets(out) == [
+        "- repeat:",
+        "  - noop",
+        "- until converged",
+    ]
+
+
+def test_algpseudo_if_else_endif():
+    body = (
+        r"\IF{$x < 0$}" "\n"
+        r"  \STATE neg" "\n"
+        r"\ELSE" "\n"
+        r"  \STATE pos" "\n"
+        r"\ENDIF"
+    )
+    out = postprocess._algpseudo_convert_body(body)
+    assert _bullets(out) == [
+        "- if $x < 0$:",
+        "  - neg",
+        "- else:",
+        "  - pos",
+    ]
+
+
+def test_algpseudo_if_elsif_else_chain():
+    body = (
+        r"\IF{$x < 0$}" "\n"
+        r"  \STATE neg" "\n"
+        r"\ELSIF{$x = 0$}" "\n"
+        r"  \STATE zero" "\n"
+        r"\ELSE" "\n"
+        r"  \STATE pos" "\n"
+        r"\ENDIF"
+    )
+    out = postprocess._algpseudo_convert_body(body)
+    assert _bullets(out) == [
+        "- if $x < 0$:",
+        "  - neg",
+        "- else if $x = 0$:",
+        "  - zero",
+        "- else:",
+        "  - pos",
+    ]
+
+
+def test_algpseudo_require_ensure_return_kw_words():
+    body = (
+        r"\REQUIRE Initial $x_0$" "\n"
+        r"\STATE Iterate" "\n"
+        r"\ENSURE Converged $\bar x$" "\n"
+        r"\RETURN $\bar x$"
+    )
+    out = postprocess._algpseudo_convert_body(body)
+    assert _bullets(out) == [
+        "- **Input:** Initial $x_0$",
+        "- Iterate",
+        r"- **Output:** Converged $\bar x$",
+        r"- return $\bar x$",
+    ]
+
+
+def test_algpseudo_loop_endloop():
+    """``\\LOOP``/``\\ENDLOOP`` has no algorithm2e equivalent — the
+    native parser supports it directly."""
+    body = (
+        r"\LOOP" "\n"
+        r"  \STATE forever" "\n"
+        r"\ENDLOOP"
+    )
+    out = postprocess._algpseudo_convert_body(body)
+    assert _bullets(out) == [
+        "- loop:",
+        "  - forever",
+    ]
+
+
+def test_algpseudo_strips_algorithmic_wrapper_if_present():
+    """When dispatched from the algorithm2e path, the body still has
+    ``\\begin{algorithmic}…\\end{algorithmic}`` around it — strip and
+    proceed."""
+    body = (
+        r"\begin{algorithmic}" "\n"
+        r"\STATE work" "\n"
+        r"\end{algorithmic}"
+    )
+    out = postprocess._algpseudo_convert_body(body)
+    assert _bullets(out) == ["- work"]
+
+
+def test_algpseudo_textbf_becomes_markdown_bold():
+    body = r"\STATE \textbf{Input:} value"
+    out = postprocess._algpseudo_convert_body(body)
+    assert _bullets(out) == ["- **Input:** value"]
+
+
+def test_algpseudo_comment_annotation_becomes_inline_note():
+    body = r"\STATE work \Comment{annotation here}"
+    out = postprocess._algpseudo_convert_body(body)
+    assert "annotation here" in out
+    assert "\\Comment" not in out
+
+
+def test_algo_convert_body_dispatches_to_algpseudo_on_algorithmic_wrapper():
+    """The algorithm-body converter must route algpseudocode bodies to
+    ``_algpseudo_convert_body``. Without dispatch, the algorithm2e
+    parser would leak ``\\STATE`` / ``\\FOR`` as literal text."""
+    body = (
+        r"\begin{algorithmic}" "\n"
+        r"\STATE Step one" "\n"
+        r"\FOR{$i$}" "\n"
+        r"  \STATE inner" "\n"
+        r"\ENDFOR" "\n"
+        r"\end{algorithmic}"
+    )
+    out = postprocess._algo_convert_body(body)
+    assert "\\STATE" not in out
+    assert "\\FOR" not in out
+    assert "- Step one" in out
+    assert "- for $i$:" in out
+    assert "  - inner" in out
+
+
+# ── resolve_algorithmics end-to-end (issue #20) ──────────────────────────────
+
+
+def _algic_marker(body: str) -> str:
+    """Build the pandoc-escaped ALGORITHMIC marker shape that
+    ``resolve_algorithmics`` receives."""
+    b64 = base64.b64encode(body.encode("utf-8")).decode("ascii")
+    return rf"\<!--ALGORITHMIC body={b64}--\>"
+
+
+def test_resolve_algorithmics_basic():
+    body = r"\STATE first" "\n" r"\STATE second"
+    out = postprocess.resolve_algorithmics(f"Before.\n\n{_algic_marker(body)}\n\nAfter.\n")
+    assert "ALGORITHMIC" not in out
+    assert "- first" in out
+    assert "- second" in out
+    assert "Before." in out and "After." in out
+
+
+def test_resolve_algorithmics_full_reporter_example():
+    """End-to-end shape matching the GH #20 reporter's example
+    (DL for DSGE ch02_deqns)."""
+    body = (
+        r"\small" "\n"
+        r"\STATE \textbf{Input:} Initial state $x_0$" "\n"
+        r"\FOR{episode $e = 1, \ldots, E$}" "\n"
+        r"    \STATE \textbf{Simulate path:} ..." "\n"
+        r"    \FOR{gradient step $t = 1, \ldots, T$}" "\n"
+        r"        \STATE Compute loss" "\n"
+        r"    \ENDFOR" "\n"
+        r"\ENDFOR" "\n"
+        r"\STATE \textbf{Output:} Trained network"
+    )
+    out = postprocess.resolve_algorithmics(_algic_marker(body))
+    bullets = _bullets(out)
+    assert bullets == [
+        "- **Input:** Initial state $x_0$",
+        r"- for episode $e = 1, \ldots, E$:",
+        "  - **Simulate path:** ...",
+        r"  - for gradient step $t = 1, \ldots, T$:",
+        "    - Compute loss",
+        "- **Output:** Trained network",
+    ]
+
+
 def test_nested_subfigures_without_embed_keeps_admonition_path():
     """When inner subfigures have no ``<embed>`` (e.g. ``\\input{tikz/…}``
     that pandoc couldn't include), keep the admonition placeholder so

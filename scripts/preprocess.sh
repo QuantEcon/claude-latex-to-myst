@@ -97,6 +97,15 @@ for ch in "${CHAPTER_STEMS[@]}"; do
   # No-op for sources that contain no algorithm blocks.
   python3 "$SCRIPT_DIR/_apply_algorithm_markers.py" "$dst"
 
+  # Replace standalone \begin{algorithmic}...\end{algorithmic} (algorithmicx
+  # / algpseudocode) with marker comments. The algorithm-marker pass above
+  # already base64-encoded any algorithmic block wrapped inside
+  # \begin{algorithm}, so this pass picks up only the standalone ones
+  # (e.g. inside a custom tcolorbox wrapper). The postprocess step decodes
+  # the markers into Markdown bullet lists. No-op for sources without
+  # algorithmic blocks (GH #20).
+  python3 "$SCRIPT_DIR/_apply_algorithmic_markers.py" "$dst"
+
   # Replace \begin{listing}...\end{listing} (minted) with marker comments.
   # The postprocess step reads the referenced source file and emits a MyST
   # code-block directive with :name: and :caption:. No-op for sources

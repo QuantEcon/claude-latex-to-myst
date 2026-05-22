@@ -13,6 +13,7 @@ import re
 import pytest
 
 import _apply_algorithm_markers as alg
+import _apply_algorithmic_markers as algic
 import _apply_chapter_splits as split
 import _apply_description_markers as desc
 import _apply_listing_markers as lst
@@ -438,3 +439,65 @@ def test_description_marker_term_with_brackets_and_math():
     items = _decode_desc(out)
     assert len(items) == 1
     assert items[0][0].startswith("$x \\in [0, 1")
+
+
+# ── Standalone algorithmic markers (issue #20) ───────────────────────────────
+
+
+def _decode_algic(out: str) -> str:
+    m = re.search(r'<!--ALGORITHMIC body=([A-Za-z0-9+/=]+)-->', out)
+    assert m, f"no ALGORITHMIC marker: {out!r}"
+    return base64.b64decode(m.group(1)).decode("utf-8")
+
+
+def test_algorithmic_marker_basic():
+    tex = (
+        r"\begin{algorithmic}" "\n"
+        r"\STATE Init" "\n"
+        r"\STATE Step" "\n"
+        r"\end{algorithmic}" "\n"
+    )
+    out = algic.process_text(tex)
+    body = _decode_algic(out)
+    assert "\\STATE Init" in body
+    assert "\\STATE Step" in body
+
+
+def test_algorithmic_marker_strips_optional_arg():
+    """``\\begin{algorithmic}[1]`` is line-numbering style; no MyST analogue."""
+    tex = (
+        r"\begin{algorithmic}[1]" "\n"
+        r"\STATE Body" "\n"
+        r"\end{algorithmic}" "\n"
+    )
+    out = algic.process_text(tex)
+    body = _decode_algic(out)
+    assert "[1]" not in body
+    assert "\\STATE Body" in body
+
+
+def test_algorithmic_marker_skips_commented_block():
+    """A ``\\begin{algorithmic}`` on a commented-out line stays as source."""
+    tex = (
+        "%\\begin{algorithmic}\n"
+        "%\\STATE x\n"
+        "%\\end{algorithmic}\n"
+    )
+    assert algic.process_text(tex) == tex
+
+
+def test_algorithmic_marker_no_op_when_no_blocks():
+    tex = "Just prose, no algorithmic envs.\n"
+    assert algic.process_text(tex) == tex
+
+
+def test_algorithmic_marker_leaves_algorithm_wrapped_block_alone():
+    """When the standalone preprocessor runs AFTER _apply_algorithm_markers
+    (the convert.sh ordering), an algorithmic block already inside a
+    base64-encoded ALGORITHM marker is invisible to this scanner.
+    Smoke test: nothing matches in a string that's been algorithm-encoded."""
+    pre_encoded = (
+        "\n\n<!--ALGORITHM name=algo-foo title=T body=YWxnb2JvZHk=-->\n\n"
+        "Some prose with no algorithmic env at the top level.\n"
+    )
+    assert algic.process_text(pre_encoded) == pre_encoded

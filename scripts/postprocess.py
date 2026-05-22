@@ -1580,6 +1580,294 @@ def _algo_find_balanced(s: str, start: int) -> int:
     return -1
 
 
+# algpseudocode (algorithmicx) keyword set. ``_algpseudo_convert_body`` is
+# the native parser for this dialect — algorithm2e and algpseudocode use
+# different shapes (paired \STATE/\FOR…\ENDFOR markers vs braced
+# \While{}{} arguments) and translation between them is lossy
+# (\REPEAT…\UNTIL{C} loses the condition, \LOOP has no algorithm2e
+# equivalent, etc.) so each dialect gets its own walker. GH #20.
+_ALGPSEUDO_KEYWORDS = (
+    'STATE', 'STATEx', 'PRINT', 'COMMENT',
+    'REQUIRE', 'ENSURE', 'INPUT', 'OUTPUT', 'RETURN',
+    'FOR', 'FORALL', 'ENDFOR',
+    'WHILE', 'ENDWHILE',
+    'REPEAT', 'UNTIL',
+    'IF', 'ELSIF', 'ELSE', 'ENDIF',
+    'LOOP', 'ENDLOOP',
+    'PROCEDURE', 'ENDPROCEDURE',
+    'FUNCTION', 'ENDFUNCTION',
+)
+_ALGPSEUDO_KEYWORD_RE = re.compile(
+    r'\\(' + '|'.join(_ALGPSEUDO_KEYWORDS) + r')(?![A-Za-z])'
+)
+
+
+def _algpseudo_tokenize(body: str) -> list[dict]:
+    """Split an algpseudocode body into an ordered list of token dicts.
+
+    Each token is ``{'kw': str, 'arg': str | None, 'text': str}``:
+      - ``kw``: the keyword (``STATE``, ``FOR``, ``ENDFOR``, …)
+      - ``arg``: text inside the braced ``{…}`` argument if the keyword
+        takes one (``FOR``, ``WHILE``, ``IF``, ``UNTIL``, ``ELSIF``,
+        ``COMMENT``), else ``None``
+      - ``text``: the prose body that follows the keyword (and arg) up
+        to the next keyword, used for ``STATE``/``REQUIRE``/``ENSURE``
+        /``RETURN``/``PRINT`` etc.
+
+    Comments (``%…``), the ``\\algorithmiccomment`` annotation form, and
+    bare formatting noise (``\\small``, ``\\footnotesize``, ``\\algrenewcommand``
+    etc.) are stripped first.
+    """
+    # Strip line comments and size-change declarations that have no
+    # structural meaning in the converted output.
+    s = body
+    # Drop full-line and trailing ``%`` comments (not inside math — but
+    # algpseudocode bodies rarely have ``%`` mid-math, so this is safe).
+    s = re.sub(r'(?<!\\)%.*$', '', s, flags=re.MULTILINE)
+    for noise in ('small', 'footnotesize', 'scriptsize', 'normalsize',
+                  'tiny', 'large', 'Large', 'algsetup', 'algrenewcommand'):
+        s = re.sub(r'\\' + noise + r'\b', '', s)
+    # ``\Comment{text}`` — algorithmicx in-line annotation. Reduce to
+    # ``-- text`` so it can survive as a trailing comment on the
+    # statement we're attaching it to. We just rewrite the source so
+    # downstream walker doesn't need a special case.
+    def _comment_to_inline(m):
+        i = m.end() - 1  # position of '{'
+        j = _algo_find_balanced(s, i)
+        if j < 0:
+            return m.group(0)
+        inner = s[i + 1 : j]
+        return f' (-- {inner.strip()})' + s[j + 1 : j + 1]  # ↓ rewritten below
+    # Run the comment rewrite as a textual substitution so positions stay
+    # consistent.
+    out = []
+    i = 0
+    pat = re.compile(r'\\Comment\s*\{')
+    while True:
+        m = pat.search(s, i)
+        if not m:
+            out.append(s[i:])
+            break
+        out.append(s[i : m.start()])
+        brace = m.end() - 1
+        end = _algo_find_balanced(s, brace)
+        if end < 0:
+            out.append(s[m.start():])
+            break
+        inner = s[brace + 1 : end].strip()
+        out.append(f' (-- {inner})')
+        i = end + 1
+    s = ''.join(out)
+
+    tokens: list[dict] = []
+    positions = list(_ALGPSEUDO_KEYWORD_RE.finditer(s))
+    for idx, m in enumerate(positions):
+        kw = m.group(1)
+        # Some keywords take a braced ``{cond}`` argument immediately.
+        arg: str | None = None
+        cursor = m.end()
+        if kw in {'FOR', 'FORALL', 'WHILE', 'IF', 'ELSIF', 'UNTIL',
+                  'PROCEDURE', 'FUNCTION'}:
+            # Skip whitespace, expect ``{``.
+            j = cursor
+            while j < len(s) and s[j] in ' \t\n':
+                j += 1
+            if j < len(s) and s[j] == '{':
+                end = _algo_find_balanced(s, j)
+                if end > 0:
+                    arg = s[j + 1 : end]
+                    cursor = end + 1
+        # Prose body runs up to the next keyword (or end of source).
+        text_end = positions[idx + 1].start() if idx + 1 < len(positions) else len(s)
+        text = s[cursor:text_end]
+        tokens.append({'kw': kw, 'arg': arg, 'text': text})
+    return tokens
+
+
+def _algpseudo_inline(text: str) -> str:
+    """Clean up a single statement/condition for Markdown rendering.
+
+    Drops algpseudocode-only macros that have no MyST analogue and
+    collapses whitespace. Bold/text-style rewrites mirror those in
+    ``_algo_convert_body`` so the two dialects render identically.
+    """
+    if text is None:
+        return ''
+    t = text
+    t = re.sub(r'\\navy\{([^}]*)\}', r'**\1**', t)
+    t = re.sub(r'\\textbf\{([^}]*)\}', r'**\1**', t)
+    t = re.sub(r'\\textit\{([^}]*)\}', r'*\1*', t)
+    t = re.sub(r'\\textnormal\{([^}]*)\}', r'\1', t)
+    t = re.sub(r'\\emph\{([^}]*)\}', r'*\1*', t)
+    # Strip leftover algpseudocode formatting that doesn't apply here.
+    t = re.sub(r'\\vspace\{[^}]*\}', '', t)
+    # Collapse whitespace — algpseudocode tolerates arbitrary linebreaks
+    # inside a STATE body, but Markdown bullet items want a single line.
+    t = re.sub(r'\s+', ' ', t).strip()
+    return t
+
+
+def _algpseudo_convert_body(body: str) -> str:
+    """Convert an algpseudocode (algorithmicx) body to a Markdown bullet
+    list. Native parser for paired-marker syntax — see
+    ``_ALGPSEUDO_KEYWORDS``. Used both for standalone ``algorithmic``
+    blocks (decoded from ``<!--ALGORITHMIC body=…-->`` markers) and for
+    ``\\begin{algorithmic}`` bodies nested inside ``\\begin{algorithm}``
+    wrappers (the algorithm2e converter delegates here when it sees
+    algpseudocode keywords).
+
+    The parser maintains a stack of open blocks and emits Markdown
+    bullets with indentation that matches block depth. Closing
+    keywords (``\\ENDFOR``, ``\\ENDWHILE``, ``\\UNTIL{C}``, ``\\ENDIF``,
+    etc.) pop the stack; ``\\ELSE`` / ``\\ELSIF`` open a sibling branch
+    at the same depth.
+    """
+    # Strip the ``\begin{algorithmic}…\end{algorithmic}`` wrapper if
+    # present (the standalone preprocessor strips this, but when called
+    # from the algorithm path the wrapper is still there).
+    body = re.sub(
+        r'\\begin\{algorithmic\}(?:\[[^\]]*\])?',
+        '',
+        body,
+    )
+    body = body.replace('\\end{algorithmic}', '')
+
+    tokens = _algpseudo_tokenize(body)
+
+    lines: list[str] = []
+    depth = 0  # current nesting level (bullet indent = 2 * depth)
+    stack: list[str] = []  # open block keywords (FOR, WHILE, IF, REPEAT, LOOP, …)
+
+    def emit(content: str) -> None:
+        if not content:
+            return
+        lines.append('  ' * depth + '- ' + content)
+
+    def emit_header(content: str) -> None:
+        """Open a new block: emit the header bullet and bump depth."""
+        nonlocal depth
+        emit(content)
+        depth += 1
+
+    def close_block(expected_open: set[str]) -> None:
+        nonlocal depth
+        while stack and stack[-1] not in expected_open:
+            # Tolerate slightly mis-nested input by popping until we
+            # find the matching opener; safer than asserting.
+            stack.pop()
+            if depth > 0:
+                depth -= 1
+        if stack:
+            stack.pop()
+            if depth > 0:
+                depth -= 1
+
+    for tok in tokens:
+        kw = tok['kw']
+        arg = _algpseudo_inline(tok['arg']) if tok['arg'] is not None else None
+        text = _algpseudo_inline(tok['text'])
+
+        if kw in ('STATE', 'STATEx', 'PRINT'):
+            emit(text)
+        elif kw == 'REQUIRE' or kw == 'INPUT':
+            emit(f'**Input:** {text}' if text else '**Input:**')
+        elif kw == 'ENSURE' or kw == 'OUTPUT':
+            emit(f'**Output:** {text}' if text else '**Output:**')
+        elif kw == 'RETURN':
+            emit(f'return {text}' if text else 'return')
+        elif kw == 'COMMENT':
+            # Standalone \COMMENT{...} — rare; if seen at top level emit
+            # as italicized note rather than a bullet so it stands out.
+            if arg:
+                emit(f'*{arg}*')
+        elif kw == 'FOR':
+            stack.append('FOR')
+            emit_header(f'for {arg}:' if arg else 'for:')
+            if text:
+                emit(text)
+        elif kw == 'FORALL':
+            stack.append('FOR')  # closed by same \ENDFOR
+            emit_header(f'for all {arg}:' if arg else 'for all:')
+            if text:
+                emit(text)
+        elif kw == 'ENDFOR':
+            close_block({'FOR'})
+            if text:
+                emit(text)
+        elif kw == 'WHILE':
+            stack.append('WHILE')
+            emit_header(f'while {arg}:' if arg else 'while:')
+            if text:
+                emit(text)
+        elif kw == 'ENDWHILE':
+            close_block({'WHILE'})
+            if text:
+                emit(text)
+        elif kw == 'REPEAT':
+            stack.append('REPEAT')
+            emit_header('repeat:')
+            if text:
+                emit(text)
+        elif kw == 'UNTIL':
+            # Closes the matching REPEAT and emits a trailing "until C"
+            # bullet at the now-restored depth so the condition is
+            # preserved (unlike algorithm2e's one-arg \Repeat).
+            close_block({'REPEAT'})
+            emit(f'until {arg}' if arg else 'until')
+            if text:
+                emit(text)
+        elif kw == 'IF':
+            stack.append('IF')
+            emit_header(f'if {arg}:' if arg else 'if:')
+            if text:
+                emit(text)
+        elif kw == 'ELSIF':
+            # Pop the previous IF/ELSIF branch (drop depth), open a new
+            # sibling at the same depth.
+            if stack and stack[-1] in ('IF', 'ELSIF', 'ELSE'):
+                stack.pop()
+                if depth > 0:
+                    depth -= 1
+            stack.append('ELSIF')
+            emit_header(f'else if {arg}:' if arg else 'else if:')
+            if text:
+                emit(text)
+        elif kw == 'ELSE':
+            if stack and stack[-1] in ('IF', 'ELSIF'):
+                stack.pop()
+                if depth > 0:
+                    depth -= 1
+            stack.append('ELSE')
+            emit_header('else:')
+            if text:
+                emit(text)
+        elif kw == 'ENDIF':
+            close_block({'IF', 'ELSIF', 'ELSE'})
+            if text:
+                emit(text)
+        elif kw == 'LOOP':
+            stack.append('LOOP')
+            emit_header('loop:')
+            if text:
+                emit(text)
+        elif kw == 'ENDLOOP':
+            close_block({'LOOP'})
+            if text:
+                emit(text)
+        elif kw in ('PROCEDURE', 'FUNCTION'):
+            stack.append(kw)
+            label = 'procedure' if kw == 'PROCEDURE' else 'function'
+            emit_header(f'{label} {arg}:' if arg else f'{label}:')
+            if text:
+                emit(text)
+        elif kw in ('ENDPROCEDURE', 'ENDFUNCTION'):
+            close_block({'PROCEDURE', 'FUNCTION'})
+            if text:
+                emit(text)
+
+    return '\n'.join(lines).strip()
+
+
 def _algo_convert_body(body: str) -> str:
     """Convert an algorithm2e body to a Markdown bullet list.
 
@@ -1598,7 +1886,16 @@ def _algo_convert_body(body: str) -> str:
     Statements are emitted as bullet items; nested blocks are indented under
     their header. The parser is recursive so deeply-nested ``\\While``/``\\If``
     structures expand correctly.
+
+    Dispatches to ``_algpseudo_convert_body`` when the body contains
+    algpseudocode (algorithmicx) keywords — this lets a single
+    ``\\begin{algorithm}\\begin{algorithmic}…\\end{algorithmic}\\end{algorithm}``
+    block render correctly whether the inner pseudocode uses algorithm2e
+    or algorithmicx syntax. GH #20.
     """
+    if _ALGPSEUDO_KEYWORD_RE.search(body) or '\\begin{algorithmic}' in body:
+        return _algpseudo_convert_body(body)
+
     s = body
 
     # Source-LaTeX indentation is incidental; only the structural indentation
@@ -1849,6 +2146,36 @@ def resolve_algorithms(text: str) -> str:
         out.append(converted)
         out.append('```')
         return '\n'.join(out)
+
+    return pattern.sub(repl, text)
+
+
+def resolve_algorithmics(text: str) -> str:
+    """Replace standalone ALGORITHMIC markers with a Markdown bullet list.
+
+    Marker format (emitted by ``_apply_algorithmic_markers.py``)::
+
+        <!--ALGORITHMIC body=BASE64-->
+
+    Unlike ``resolve_algorithms`` (the algorithm2e-wrapping variant),
+    there is no ``{prf:algorithm}`` directive wrapper — the source had
+    no caption or label, so the body renders as bare bullets that fit
+    inside whatever wrapper the author chose (custom tcolorbox,
+    ``definitionbox`` div, or plain prose). Pandoc may escape ``<`` to
+    ``\\<``; the regex tolerates both forms (GH #20).
+    """
+    pattern = re.compile(
+        r'\\?<!--ALGORITHMIC\s+body=(?P<body>[A-Za-z0-9+/=]+)--\\?>',
+        re.DOTALL,
+    )
+
+    def repl(m: re.Match) -> str:
+        body_b64 = m.group('body').strip()
+        try:
+            body = base64.b64decode(body_b64).decode('utf-8')
+        except Exception:
+            return ''
+        return _algpseudo_convert_body(body)
 
     return pattern.sub(repl, text)
 
@@ -2320,6 +2647,7 @@ def process_file(input_path: Path, output_path: Path = None):
     # (Julia ``@views`` etc. would otherwise be eaten by convert_citations).
     text = resolve_listings(text)                  # decode minted markers
     text = resolve_algorithms(text)                # decode algorithm2e markers
+    text = resolve_algorithmics(text)              # decode standalone algorithmicx markers (lesson 023)
     text = join_split_inline_math(text)
     text = ensure_blank_after_display_math(text)   # adds blank lines
     text = cleanup_typography(text)                # caps blank-line runs; strips \qedhere
