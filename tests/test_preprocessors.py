@@ -424,6 +424,55 @@ def test_description_marker_no_items_left_intact():
     assert "<!--DESCRIPTION" not in desc.process_text(tex)
 
 
+def test_description_marker_preserves_nested_itemize():
+    """A ``\\begin{itemize}…\\end{itemize}`` nested inside a description
+    body must keep its own ``\\item`` markers — they belong to the inner
+    env, not to the outer description (GH #29). The flat finditer of the
+    original implementation consumed them and left the nested itemize
+    with zero items, which pandoc then dropped as ``Unknown environment``
+    and cascaded into MyST dropping every following figure."""
+    tex = (
+        r"\begin{description}" "\n"
+        r"\item[Outer A.] Body of A." "\n"
+        r"  \begin{itemize}" "\n"
+        r"  \item nested 1" "\n"
+        r"  \item nested 2" "\n"
+        r"  \end{itemize}" "\n"
+        r"\item[Outer B.] Body of B." "\n"
+        r"\end{description}" "\n"
+    )
+    out = desc.process_text(tex)
+    # Exactly the two top-level items get DESCITEM markers; the nested
+    # \item markers must NOT be replaced.
+    assert out.count("<!--DESCITEM term=") == 2
+    items = _decode_desc(out)
+    assert [t for t, _ in items] == ["Outer A.", "Outer B."]
+    # The nested itemize body lives inside the first description item
+    # and the inner \item markers must survive verbatim for pandoc.
+    assert items[0][1].count(r"\item nested") == 2
+    assert r"\begin{itemize}" in items[0][1]
+    assert r"\end{itemize}" in items[0][1]
+
+
+def test_description_marker_preserves_nested_enumerate():
+    """Same as nested itemize, but for ``\\begin{enumerate}`` (GH #29)."""
+    tex = (
+        r"\begin{description}" "\n"
+        r"\item[Term] Body." "\n"
+        r"  \begin{enumerate}" "\n"
+        r"  \item first" "\n"
+        r"  \item second" "\n"
+        r"  \end{enumerate}" "\n"
+        r"\end{description}" "\n"
+    )
+    out = desc.process_text(tex)
+    assert out.count("<!--DESCITEM term=") == 1
+    items = _decode_desc(out)
+    assert items[0][0] == "Term"
+    assert items[0][1].count(r"\item first") == 1
+    assert items[0][1].count(r"\item second") == 1
+
+
 def test_description_marker_term_with_brackets_and_math():
     """Term labels can contain inline math and other punctuation;
     base64 encoding lets us round-trip them safely."""

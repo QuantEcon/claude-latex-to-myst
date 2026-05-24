@@ -35,6 +35,8 @@ from pathlib import Path
 
 
 _ITEM_RE = re.compile(r'\\item\s*(?:\[([^\]]*)\])?\s*', re.DOTALL)
+_NEST_OPEN = re.compile(r'\\begin\{(?:itemize|enumerate|description)\}')
+_NEST_CLOSE = re.compile(r'\\end\{(?:itemize|enumerate|description)\}')
 
 
 def _starts_in_comment(text: str, pos: int) -> bool:
@@ -60,15 +62,39 @@ def _split_items(body: str) -> list[tuple[str, str]]:
 
     ``term`` is the literal text from the ``\\item[…]`` optional arg
     (empty string if absent). ``body`` is the text that follows the
-    item up to the next ``\\item`` (or end of body).
+    item up to the next *top-level* ``\\item`` (or end of body).
+
+    Only ``\\item`` occurrences at depth 0 count — those inside a nested
+    ``itemize`` / ``enumerate`` / ``description`` belong to that inner
+    env and must pass through to pandoc untouched (GH #29).
     """
+    events: list[tuple[int, str, re.Match]] = []
+    for m in _NEST_OPEN.finditer(body):
+        events.append((m.start(), 'open', m))
+    for m in _NEST_CLOSE.finditer(body):
+        events.append((m.start(), 'close', m))
+    for m in _ITEM_RE.finditer(body):
+        events.append((m.start(), 'item', m))
+    events.sort(key=lambda e: e[0])
+
     items: list[tuple[str, str]] = []
-    matches = list(_ITEM_RE.finditer(body))
-    for idx, m in enumerate(matches):
-        term = (m.group(1) or '').strip()
-        body_start = m.end()
-        body_end = matches[idx + 1].start() if idx + 1 < len(matches) else len(body)
-        items.append((term, body[body_start:body_end].strip()))
+    depth = 0
+    pending_item: re.Match | None = None
+    pending_start = 0
+    for pos, kind, m in events:
+        if kind == 'open':
+            depth += 1
+        elif kind == 'close':
+            depth -= 1
+        elif kind == 'item' and depth == 0:
+            if pending_item is not None:
+                term = (pending_item.group(1) or '').strip()
+                items.append((term, body[pending_start:m.start()].strip()))
+            pending_item = m
+            pending_start = m.end()
+    if pending_item is not None:
+        term = (pending_item.group(1) or '').strip()
+        items.append((term, body[pending_start:].strip()))
     return items
 
 

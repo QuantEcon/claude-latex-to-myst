@@ -148,6 +148,20 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **`_apply_description_markers` consumed `\item` markers inside nested
+  itemize/enumerate** ([#29]): the flat `_ITEM_RE.finditer(body)` in
+  `_split_items` matched every `\item` regardless of nesting depth, so a
+  description body containing a nested `\begin{itemize}…\end{itemize}`
+  had its inner `\item` lines silently replaced with `<!--DESCITEM
+  term=-->` markers — leaving the nested env with zero items. Pandoc
+  then dropped the empty `itemize` as `% Unknown environment: itemize`
+  and the malformed output cascaded into MyST dropping every `{figure}`
+  directive that followed in the chapter (6 figures in ch02 of the
+  Deep-Learning book). Rewrote `_split_items` to walk a sorted timeline
+  of open/close/item events and only emit a description item when the
+  current nest depth is 0; inner `\item` markers pass through verbatim
+  for pandoc to handle in their natural list context. Lesson [029].
+  Closes [#29].
 - **`convert_equations` orphan `\label{}` + DOTALL regex swallowed
   figures between equations** ([#26]): the labelled-extract pass
   required `\label{}` *immediately after* `\begin{equation}` and
@@ -456,6 +470,7 @@ haven't validated. Everything below is on `main` and available now.
 [#24]: https://github.com/QuantEcon/claude-latex-to-myst/issues/24
 [#25]: https://github.com/QuantEcon/claude-latex-to-myst/issues/25
 [#26]: https://github.com/QuantEcon/claude-latex-to-myst/issues/26
+[#29]: https://github.com/QuantEcon/claude-latex-to-myst/issues/29
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
@@ -466,6 +481,7 @@ haven't validated. Everything below is on `main` and available now.
 [026]: lessons/026-pandoc-img-vs-embed-for-includegraphics.md
 [027]: lessons/027-pandoc-empty-html-comment-separator-artifact.md
 [028]: lessons/028-preamble-text-macros-pandoc-silently-drops.md
+[029]: lessons/029-nested-list-item-markers-consumed-by-description-preprocess.md
 
 ### Settled architectural decisions
 
