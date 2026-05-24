@@ -148,6 +148,21 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **Inline `\itemsep<dim>` on a list opener confused pandoc inside
+  nested lists** ([#28]): the common manuscript shorthand
+  `\begin{itemize}\itemsep1pt` (no space between env-open and the
+  inline `\itemsep`) is tolerated by pandoc at top level but breaks
+  when the construct is nested inside another list/description env.
+  Pandoc lexes `\itemsep` as a 1-arg macro it doesn't know, drops the
+  command, keeps the argument as orphan text, and falls back to
+  `% Unknown environment: itemize` — corrupting the chapter for every
+  following figure. `\itemsep` is a TeX low-level spacing command with
+  no MyST analogue regardless, so `_apply_rewrites` now strips it
+  globally as a built-in (alongside the natbib rewrites), matching
+  any signed decimal dimension and an optional trailing `\\` line
+  break. Pairs with [#29] to retire the local `mystmd/config.yaml`
+  workaround the Deep-Learning book was carrying. Lesson [030].
+  Closes [#28].
 - **`_apply_description_markers` consumed `\item` markers inside nested
   itemize/enumerate** ([#29]): the flat `_ITEM_RE.finditer(body)` in
   `_split_items` matched every `\item` regardless of nesting depth, so a
@@ -470,6 +485,7 @@ haven't validated. Everything below is on `main` and available now.
 [#24]: https://github.com/QuantEcon/claude-latex-to-myst/issues/24
 [#25]: https://github.com/QuantEcon/claude-latex-to-myst/issues/25
 [#26]: https://github.com/QuantEcon/claude-latex-to-myst/issues/26
+[#28]: https://github.com/QuantEcon/claude-latex-to-myst/issues/28
 [#29]: https://github.com/QuantEcon/claude-latex-to-myst/issues/29
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
@@ -482,6 +498,7 @@ haven't validated. Everything below is on `main` and available now.
 [027]: lessons/027-pandoc-empty-html-comment-separator-artifact.md
 [028]: lessons/028-preamble-text-macros-pandoc-silently-drops.md
 [029]: lessons/029-nested-list-item-markers-consumed-by-description-preprocess.md
+[030]: lessons/030-inline-itemsep-on-list-opener-cascades-pandoc.md
 
 ### Settled architectural decisions
 

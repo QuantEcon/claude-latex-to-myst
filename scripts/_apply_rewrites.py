@@ -32,6 +32,18 @@ from _config import load
 # Without this, ``\citep[p.~351]{key}`` slipped past the rewrite, pandoc
 # emitted ``[@key, p.~351]``, and downstream regex produced an empty
 # ``{cite}`` role (GH #13).
+# Inline ``\itemsep<dim>`` on a list/env opener confuses pandoc when the
+# construct is nested inside another list (GH #28). ``\itemsep`` is a TeX
+# low-level spacing command with no MyST analogue, so we strip it globally
+# (the form attached to ``\begin{itemize}…`` and the form on its own line
+# are both handled by the same pattern). Matches optional ``=``, a signed
+# decimal dimension, any TeX length unit, and trailing whitespace / ``\\``.
+_ITEMSEP_STRIP = re.compile(
+    r'\\itemsep\s*=?\s*-?[0-9.]+'
+    r'(?:pt|em|ex|in|cm|mm|pc|bp|dd|cc|sp)\b'
+    r'(?:\s*\\\\)?\s*'
+)
+
 _NATBIB_OPT = r'(?:\s*\[[^\]]*\]){0,2}'
 _NATBIB_REWRITES = [
     (rf'\\citep\b{_NATBIB_OPT}\s*\{{([^}}]+)\}}',       r'[[CITEP:\1]]'),
@@ -65,7 +77,12 @@ def main():
     for pat, repl in _NATBIB_REWRITES:
         text = re.sub(pat, repl, text)
 
-    # 3. Search-and-replace: { from: regex, to: replacement }
+    # 3. Strip inline ``\itemsep<dim>`` — confuses pandoc inside nested
+    # lists (GH #28). No MyST analogue regardless, so a global strip is
+    # safe.
+    text = _ITEMSEP_STRIP.sub('', text)
+
+    # 4. Search-and-replace: { from: regex, to: replacement }
     for rule in pre.get('rewrites') or []:
         if not rule:
             continue

@@ -36,13 +36,14 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 027 | [Pandoc's empty `<!-- -->`{=html} lexer-defeat separator survives into rendered HTML](lessons/027-pandoc-empty-html-comment-separator-artifact.md) | pandoc | 🟢 | codified |
 | 028 | [Custom preamble text macros (\\DeclareUrlCommand, \\newcommand wrapping \\textcolor) pandoc drops silently along with their argument](lessons/028-preamble-text-macros-pandoc-silently-drops.md) | preprocess | 🟡 | codified |
 | 029 | [Nested \\item markers inside a description body consumed by the description preprocess — cascades into dropped figures](lessons/029-nested-list-item-markers-consumed-by-description-preprocess.md) | preprocess | 🔴 | codified |
+| 030 | [Inline \\itemsep&lt;dim&gt; on a list opener cascades into 'Unknown environment' when nested](lessons/030-inline-itemsep-on-list-opener-cascades-pandoc.md) | preprocess | 🟡 | codified |
 
 ## By category
 
 - **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026
 - **regex-safety:** 002, 017, 024
 - **pandoc:** 027
-- **preprocess:** 028, 029
+- **preprocess:** 028, 029, 030
 - **katex:** 003, 006
 - **myst:** 013
 - **tooling:** 009, 010

@@ -224,6 +224,64 @@ def test_natbib_rewrite_drops_locator_arg(src, want):
     assert _apply_natbib(src) == want
 
 
+# ── Inline \itemsep<dim> strip (issue #28) ───────────────────────────────────
+
+
+def _apply_itemsep_strip(text: str) -> str:
+    return rew._ITEMSEP_STRIP.sub('', text)
+
+
+def test_itemsep_attached_to_itemize_open_stripped():
+    """``\\begin{itemize}\\itemsep1pt`` is the canonical form that breaks
+    pandoc when nested in a description. The strip must remove the
+    spacing directive while leaving the env-open intact (GH #28)."""
+    src = r"\begin{itemize}\itemsep1pt"
+    out = _apply_itemsep_strip(src)
+    assert r"\itemsep" not in out
+    assert r"\begin{itemize}" in out
+
+
+@pytest.mark.parametrize("src,want", [
+    (r"\begin{itemize}\itemsep1pt",      r"\begin{itemize}"),
+    (r"\begin{itemize}\itemsep 3pt",     r"\begin{itemize}"),
+    (r"\begin{itemize}\itemsep=2em",     r"\begin{itemize}"),
+    (r"\begin{itemize}\itemsep0.5ex",    r"\begin{itemize}"),
+    (r"\begin{enumerate}\itemsep1pt",    r"\begin{enumerate}"),
+    (r"\itemsep1pt\\",                   ""),
+])
+def test_itemsep_strip_variants(src, want):
+    assert _apply_itemsep_strip(src) == want
+
+
+def test_itemsep_strip_does_not_touch_setlength_form():
+    """``\\setlength{\\itemsep}{1pt}`` is a different shape that doesn't
+    trip pandoc (no bare ``\\itemsep`` token before the dimension). Leave
+    it alone — the strip should only consume the inline ``\\itemsep<dim>``
+    form."""
+    src = r"\setlength{\itemsep}{1pt}"
+    assert _apply_itemsep_strip(src) == src
+
+
+def test_itemsep_strip_full_nested_example():
+    """End-to-end example mirroring GH #28's reproducer: nested itemize
+    inside description, with the inline ``\\itemsep1pt`` that triggers
+    pandoc's ``Unknown environment`` cascade."""
+    src = (
+        r"\begin{description}" "\n"
+        r"\item[Hard.] Body." "\n"
+        r"  \begin{itemize}\itemsep1pt" "\n"
+        r"  \item nested 1" "\n"
+        r"  \end{itemize}" "\n"
+        r"\end{description}" "\n"
+    )
+    out = _apply_itemsep_strip(src)
+    assert r"\itemsep" not in out
+    # The env opens / closes / items must all survive.
+    assert r"\begin{itemize}" in out
+    assert r"\end{itemize}" in out
+    assert r"\item nested 1" in out
+
+
 # ── Chapter splits (multi-chapter source files) ──────────────────────────────
 
 
