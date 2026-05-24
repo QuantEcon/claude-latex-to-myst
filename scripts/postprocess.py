@@ -1048,7 +1048,26 @@ def convert_html_figures(text: str) -> str:
         )
         if not cap_match:
             return ''
-        return re.sub(r'<[^>]+>', '', cap_match.group(1)).strip()
+        cap = cap_match.group(1)
+        # Convert pandoc-resolved HTML ref anchors into MyST ``{ref}``
+        # directives BEFORE stripping HTML. The pre-resolved number in
+        # the ``<a>`` body is chapter-unaware (pandoc only sees the
+        # split-per-chapter file, not the book), but the
+        # ``data-reference`` attribute preserves the original label —
+        # MyST can resolve it with full project context (closes #33).
+        cap = re.sub(
+            r'<a[^>]*data-reference="([^"]+)"[^>]*>[^<]*</a>',
+            lambda m: '{ref}`' + convert_label_colons(m.group(1)) + '`',
+            cap,
+        )
+        cap = re.sub(r'<[^>]+>', '', cap).strip()
+        # The doubled-noun strippers ran earlier in ``process_file``;
+        # any ``§ Section`` / ``Chapter Chapter`` produced *here* by
+        # the ref-conversion above would otherwise survive into the
+        # final caption. Re-run them locally on the caption string.
+        cap = strip_doubled_noun_refs(cap)
+        cap = strip_doubled_section_symbol(cap)
+        return cap
 
     # Determine which labels are actually referenced by {numref} elsewhere in
     # the chapter so that nested-subfigure handling can choose the right

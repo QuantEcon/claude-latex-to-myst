@@ -1745,6 +1745,68 @@ def test_nested_subfigures_with_embed_unreferenced_outer_uses_suffixes():
     assert 'figures/a.pdf' in out and 'figures/b.pdf' in out
 
 
+def test_html_figure_caption_ref_becomes_myst_directive_not_baked_number():
+    """GH #33 — a ``\\ref{sec:X}`` inside a ``\\caption{}`` is resolved
+    by pandoc to a chapter-unaware number BEFORE MyST gets a chance.
+    The HTML caption arrives shaped like ``§<a data-reference="sec:X">
+    1.12</a>`` where ``1.12`` is wrong (the book number is §11.12).
+    Strip the baked-in number, keep the label, emit a MyST ``{ref}``
+    directive that MyST resolves with full project context. The
+    leading ``§`` doubles with MyST's auto-rendered ``Section …`` and
+    must be removed."""
+    pandoc_out = (
+        '<figure id="fig:bar">\n'
+        '<img src="img.png" />\n'
+        '<figcaption>The bilevel search of §<a href="#sec:foo" '
+        'data-reference-type="ref" data-reference="sec:foo">1.12</a> '
+        'is end-to-end feasible.</figcaption>\n'
+        '</figure>\n'
+    )
+    out = postprocess.convert_html_figures(pandoc_out)
+    assert '{ref}`sec-foo`' in out
+    # Pre-resolved number must be gone.
+    assert '1.12' not in out
+    # Leading § must be dropped (sphinx-proof auto-renders the noun).
+    assert '§{ref}`sec-foo`' not in out
+    assert '§ {ref}`sec-foo`' not in out
+
+
+def test_html_figure_caption_ref_preserves_non_section_targets():
+    """A non-section target (e.g. ``eq:`` / ``thm:``) inside a caption
+    routes to ``{eq}`` / ``{prf:ref}`` via the existing label-routing
+    rules. Regression guard: ``extract_caption`` shouldn't bypass that
+    routing — for now it produces ``{ref}`` and the downstream
+    cross-ref converter doesn't re-touch caption text, so this just
+    documents current behaviour (still resolves; numbering may differ
+    from a ``{eq}`` role but no broken refs)."""
+    pandoc_out = (
+        '<figure id="fig:bar">\n'
+        '<img src="img.png" />\n'
+        '<figcaption>See <a href="#thm:main" '
+        'data-reference-type="ref" data-reference="thm:main">2</a>.'
+        '</figcaption>\n'
+        '</figure>\n'
+    )
+    out = postprocess.convert_html_figures(pandoc_out)
+    # Label survives; pre-resolved number does not leak as literal text.
+    assert 'thm-main' in out
+    assert '>2</a>' not in out
+    assert 'See 2.' not in out  # the baked number must not survive as plain text
+
+
+def test_html_figure_caption_no_refs_unchanged_shape():
+    """Regression guard: a caption with no HTML ref anchors keeps the
+    existing strip-all-html behaviour."""
+    pandoc_out = (
+        '<figure id="fig:bar">\n'
+        '<img src="img.png" />\n'
+        '<figcaption>Plain caption with <em>emphasis</em>.</figcaption>\n'
+        '</figure>\n'
+    )
+    out = postprocess.convert_html_figures(pandoc_out)
+    assert 'Plain caption with emphasis.' in out
+
+
 def test_non_nested_figure_with_img_src_emits_figure_not_admonition():
     """GH #25 — pandoc emits ``<img src=...>`` (not ``<embed>``) for
     plain ``\\includegraphics`` figures. The Pass 2 (non-nested) branch

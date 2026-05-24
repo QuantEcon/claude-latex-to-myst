@@ -167,6 +167,20 @@ haven't validated. Everything below is on `main` and available now.
   block) but cross-refs all resolve — preferable to broken refs.
   18 labels → >30 broken `{eq}` references in the Deep-Learning
   book. Lesson [032]. Closes [#30].
+- **`\ref{}` inside `\caption{}` rendered as a chapter-unaware
+  number** ([#33]): pandoc resolves cross-refs inside caption
+  arguments during the LaTeX→Markdown step, computing the number
+  from the single-chapter file pandoc sees rather than the whole
+  book. `convert_html_figures.extract_caption` then stripped HTML
+  wholesale, discarding the `data-reference` attribute and
+  preserving the wrong pre-resolved number as plain text. Now
+  converts the `<a data-reference="X">N</a>` tag to `{ref}\`X\``
+  before stripping HTML, so MyST resolves with full project
+  context. Re-runs `strip_doubled_noun_refs` /
+  `strip_doubled_section_symbol` on the caption string locally
+  (the project-level passes ran earlier in `process_file`). 10
+  caption sites in the Deep-Learning book. Lesson [033]. Closes
+  [#33].
 - **Pipeline ordering: `convert_simple_tables` runs before
   `convert_environment_divs`** ([#27]): the GH #24 fix bounded the
   multiline-table forward scan on the `:::` fenced-div boundary, but
@@ -523,6 +537,7 @@ haven't validated. Everything below is on `main` and available now.
 [#29]: https://github.com/QuantEcon/claude-latex-to-myst/issues/29
 [#30]: https://github.com/QuantEcon/claude-latex-to-myst/issues/30
 [#32]: https://github.com/QuantEcon/claude-latex-to-myst/issues/32
+[#33]: https://github.com/QuantEcon/claude-latex-to-myst/issues/33
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
@@ -537,6 +552,7 @@ haven't validated. Everything below is on `main` and available now.
 [030]: lessons/030-inline-itemsep-on-list-opener-cascades-pandoc.md
 [031]: lessons/031-textual-citation-regex-truncates-at-colon.md
 [032]: lessons/032-per-row-align-labels-lost-as-anchors.md
+[033]: lessons/033-pandoc-pre-resolves-ref-inside-caption-to-wrong-number.md
 
 ### Settled architectural decisions
 
