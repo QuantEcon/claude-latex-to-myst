@@ -30,11 +30,18 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 021 | [Unlabeled subfigures inside a labeled figure silently drop all but the first image](lessons/021-unlabeled-subfigures-silent-image-drop.md) | post-processing | 🔴 | codified |
 | 022 | [Pandoc silently drops \\item[Term] labels in description envs — preprocess to sentinel markers](lessons/022-description-item-labels-silently-dropped.md) | post-processing | 🔴 | codified |
 | 023 | [algpseudocode bodies need their own native parser — algorithm2e translation is lossy](lessons/023-algpseudocode-native-parser.md) | post-processing | 🟡 | codified |
+| 024 | [Orphan \\label{} + DOTALL catch-all spans paragraphs and swallows figures between equations](lessons/024-orphan-label-dotall-regex-spans-paragraphs.md) | regex-safety | 🔴 | codified |
+| 025 | [Multiline-table forward scan needs the ::: fenced-div boundary or it eats the next table](lessons/025-multiline-table-forward-scan-needs-fenced-div-bound.md) | post-processing | 🔴 | codified |
+| 026 | [Pandoc emits `<img>` for \\includegraphics and `<embed>` for \\input{tikz/…} — both must be recognised as figure sources](lessons/026-pandoc-img-vs-embed-for-includegraphics.md) | post-processing | 🟡 | codified |
+| 027 | [Pandoc's empty `<!-- -->`{=html} lexer-defeat separator survives into rendered HTML](lessons/027-pandoc-empty-html-comment-separator-artifact.md) | pandoc | 🟢 | codified |
+| 028 | [Custom preamble text macros (\\DeclareUrlCommand, \\newcommand wrapping \\textcolor) pandoc drops silently along with their argument](lessons/028-preamble-text-macros-pandoc-silently-drops.md) | preprocess | 🟡 | codified |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023
-- **regex-safety:** 002, 017
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026
+- **regex-safety:** 002, 017, 024
+- **pandoc:** 027
+- **preprocess:** 028
 - **katex:** 003, 006
 - **myst:** 013
 - **tooling:** 009, 010

@@ -17,6 +17,16 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Added — pipeline transforms
 
+- **`_warn_dropped_text_macros`** ([#22]): a new preprocess step that
+  scans the source preamble(s) for custom text macros pandoc will
+  silently drop (`\DeclareUrlCommand`, `\newcommand` bodies that wrap
+  `#1` in macros pandoc doesn't know like `\textcolor`/`\urlstyle`),
+  counts usages across the chapters, and prints a single warning
+  with a paste-ready `preprocess.rewrites` block. Level 1 (warn) from
+  the issue proposal — pipeline does not auto-rewrite because the
+  conversion is lossy and the user should opt in. Surfaced converting
+  a book that used `\tpath{…}` 160 times and got every occurrence
+  silently dropped along with its argument. Lesson [028]. Closes [#22].
 - **`convert_simple_tables`** ([d6dcbe7]): pandoc 2-column `simple_tables`
   (the common glossary shape) become MyST `{list-table}` directives.
   3+ column tables pass through untouched. Captions migrate to the
@@ -111,7 +121,7 @@ haven't validated. Everything below is on `main` and available now.
   ([1e2dc1a]) reference configurations.
 - **`reports/`** — parity reports per book (`book-dp2-parity.md`,
   `book-dp1-parity.md`); see [reports/README.md](reports/README.md).
-- **`lessons/`** — 20 catalogued pitfalls. See
+- **`lessons/`** — 28 catalogued pitfalls. See
   [LESSONS.md](LESSONS.md) for the index and
   [lessons/README.md](lessons/README.md) for the schema.
 - **Iterative-error-reduction workflow** documented in
@@ -138,6 +148,49 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **`convert_equations` orphan `\label{}` + DOTALL regex swallowed
+  figures between equations** ([#26]): the labelled-extract pass
+  required `\label{}` *immediately after* `\begin{equation}` and
+  silently skipped the dominant `\begin{equation} body \label{eq:foo}
+  \end{equation}` convention, leaving an orphan `\label{}` in the
+  body. The catch-all `$$ … \label{} … $$` cleanup ran with `DOTALL`
+  and `(.*?)`, so the engine paired the orphan label with the nearest
+  prior inline `$$math$$` — sometimes 60+ lines back — and swallowed
+  every paragraph, figure, and directive in between (~15 figures
+  silently dropped in the book that surfaced this; one fused match
+  measured at 8,127 chars). Two changes: (1) collapse the labelled/
+  unlabelled equation passes into one that extracts `\label{}` from
+  anywhere inside the body; (2) bound the standalone-label cleanup
+  to a single line (`[^\n]*?`, no DOTALL). Lesson [024]. Closes [#26].
+- **`convert_simple_tables` forward scan ran past the table region**
+  ([#24]): pandoc renders `\begin{center}\begin{tabular}…` as a
+  multiline_table inside a `::: center` div with an opening dash-rule
+  but no closing one. The forward scan looked only for a matching
+  closing rule and ran on until it found one — typically the *next*
+  table's opening rule pages later — fusing the two tables and all
+  intervening prose into one mangled `{list-table}`. Bound the scan
+  on the fenced-div boundary (`:::` close or new `:::` open) and
+  preserve that boundary in output when the scan stops on it rather
+  than on a rule line. Extends lesson [019]. Lesson [025]. Closes [#24].
+- **`convert_html_figures` mis-classified plain `\includegraphics`
+  figures as TikZ admonitions** ([#25]): pandoc emits `<img src=…>`
+  for ordinary `\includegraphics` and `<embed src=…>` for
+  `\input{tikz/…}`. Pass 1 (nested subfigures) only recognised
+  `<embed>`, and Pass 2 (non-nested) skipped the image-source check
+  entirely and unconditionally produced an admonition — so every
+  plain figure became a "TikZ — needs manual conversion" placeholder
+  (10 of 88 in the book that surfaced this). Unified the regex
+  (`<(?:embed|img)>`) into a shared `_figure_src_re` and mirrored
+  the Pass 1 image-check into Pass 2. Lesson [026]. Closes [#25].
+- **Pandoc's empty `<!-- -->`{=html} lexer-defeat separator survived
+  into MyST output** ([#23]): pandoc inserts the empty raw-HTML span
+  between adjacent inline tokens to keep CommonMark's lexer from
+  merging them (e.g. `$\sim$\`<!-- -->\`{=html}30 s`). MyST has
+  stricter tokenisation and doesn't need the separator, so it surfaced
+  as raw text in rendered HTML (14 occurrences across 6 chapters in
+  the book that surfaced this). New `strip_pandoc_html_separators`
+  runs as the first step of `process_file` and removes the artifact
+  unconditionally. Lesson [027]. Closes [#23].
 - **`convert_equations` regex bug** ([9118518]) — surfaced during the
   algorithm port; previously labelled `equation*` blocks were
   mishandled. See lesson 014's "side bug" section.
@@ -398,11 +451,21 @@ haven't validated. Everything below is on `main` and available now.
 [#19]: https://github.com/QuantEcon/claude-latex-to-myst/issues/19
 [#20]: https://github.com/QuantEcon/claude-latex-to-myst/issues/20
 [#21]: https://github.com/QuantEcon/claude-latex-to-myst/issues/21
+[#22]: https://github.com/QuantEcon/claude-latex-to-myst/issues/22
+[#23]: https://github.com/QuantEcon/claude-latex-to-myst/issues/23
+[#24]: https://github.com/QuantEcon/claude-latex-to-myst/issues/24
+[#25]: https://github.com/QuantEcon/claude-latex-to-myst/issues/25
+[#26]: https://github.com/QuantEcon/claude-latex-to-myst/issues/26
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
 [021]: lessons/021-unlabeled-subfigures-silent-image-drop.md
 [022]: lessons/022-description-item-labels-silently-dropped.md
+[024]: lessons/024-orphan-label-dotall-regex-spans-paragraphs.md
+[025]: lessons/025-multiline-table-forward-scan-needs-fenced-div-bound.md
+[026]: lessons/026-pandoc-img-vs-embed-for-includegraphics.md
+[027]: lessons/027-pandoc-empty-html-comment-separator-artifact.md
+[028]: lessons/028-preamble-text-macros-pandoc-silently-drops.md
 
 ### Settled architectural decisions
 
