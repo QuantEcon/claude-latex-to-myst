@@ -1016,6 +1016,13 @@ def convert_html_figures(text: str) -> str:
     # figure based on actual cross-references.
     referenced_labels = set(re.findall(r'\{numref\}`([^`]+)`', text))
 
+    # Pandoc emits ``<embed src=...>`` for ``\input{tikz/...}`` figures and
+    # ``<img src=...>`` for ordinary ``\includegraphics`` references. Both
+    # shapes signal a real image source — without a unified match, plain
+    # ``\includegraphics`` figures get mis-classified as TikZ admonitions
+    # (GH #25).
+    _figure_src_re = re.compile(r'<(?:embed|img)[^>]*src="([^"]+)"')
+
     # Pass 1: nested subfigure pattern (parent with one or more labelled inner figures).
     # Each inner figure carries its own id; the outer figure has its own id and trailing caption.
     nested_pattern = re.compile(
@@ -1072,7 +1079,7 @@ def convert_html_figures(text: str) -> str:
             if chosen is None and outer_label:
                 chosen = f"{outer_label}-{chr(ord('a') + idx)}"
 
-            embed_match = re.search(r'<embed[^>]*src="([^"]+)"', inner_block)
+            embed_match = _figure_src_re.search(inner_block)
             caption = extract_caption(inner_block)
             if embed_match:
                 # Real raster/vector image — emit a {figure} directly
@@ -1088,12 +1095,20 @@ def convert_html_figures(text: str) -> str:
 
     text = nested_pattern.sub(replace_nested, text)
 
-    # Pass 2: any remaining (non-nested) figure blocks.
+    # Pass 2: any remaining (non-nested) figure blocks. Mirror Pass 1's
+    # image-source check — when a real ``<img>``/``<embed>`` src is
+    # present (the common ``\includegraphics`` case), emit a ``{figure}``
+    # directly; only fall back to the TikZ admonition when no image
+    # source is found. GH #25.
     def replace_html_figure(m):
         block = m.group(0)
         id_match = re.search(r'<figure[^>]*id="([^"]+)"', block)
         label = convert_label_colons(id_match.group(1)) if id_match else None
-        return make_admonition(label, extract_caption(block))
+        caption = extract_caption(block)
+        embed_match = _figure_src_re.search(block)
+        if embed_match:
+            return make_figure(label, embed_match.group(1), caption)
+        return make_admonition(label, caption)
 
     text = re.sub(
         r'<figure[^>]*>.*?</figure>',

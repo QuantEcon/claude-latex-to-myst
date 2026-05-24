@@ -1580,6 +1580,46 @@ def test_nested_subfigures_with_embed_unreferenced_outer_uses_suffixes():
     assert 'figures/a.pdf' in out and 'figures/b.pdf' in out
 
 
+def test_non_nested_figure_with_img_src_emits_figure_not_admonition():
+    """GH #25 — pandoc emits ``<img src=...>`` (not ``<embed>``) for
+    plain ``\\includegraphics`` figures. The Pass 2 (non-nested) branch
+    used to call ``make_admonition`` unconditionally, mis-classifying
+    every such figure as a TikZ placeholder."""
+    pandoc_out = (
+        '<figure id="fig:loss_kernels" data-latex-placement="ht">\n'
+        '<img src="loss_kernel_convergence.png" />\n'
+        '<figcaption>Convergence of relative Euler-error.</figcaption>\n'
+        '</figure>\n'
+    )
+    out = postprocess.convert_html_figures(pandoc_out)
+    assert '```{figure}' in out
+    assert 'loss_kernel_convergence.png' in out
+    assert ':name: fig-loss_kernels' in out
+    assert 'TikZ' not in out
+
+
+def test_nested_subfigure_with_img_src_emits_figure():
+    """GH #25 — the Pass 1 nested-subfigure branch must also recognise
+    ``<img src=...>``, not just ``<embed>``."""
+    pandoc_out = (
+        '<figure id="fig:panels">\n'
+        '<figure>\n'
+        '<img src="panel_a.png" />\n'
+        '<figcaption>Panel A</figcaption>\n'
+        '</figure>\n'
+        '<figure>\n'
+        '<img src="panel_b.png" />\n'
+        '<figcaption>Panel B</figcaption>\n'
+        '</figure>\n'
+        '<figcaption>Two panels.</figcaption>\n'
+        '</figure>\n'
+    )
+    out = postprocess.convert_html_figures(pandoc_out)
+    assert 'panel_a.png' in out
+    assert 'panel_b.png' in out
+    assert 'TikZ' not in out
+
+
 # ── Description lists (issue #19) ────────────────────────────────────────────
 
 
