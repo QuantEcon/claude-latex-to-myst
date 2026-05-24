@@ -939,6 +939,43 @@ def test_multiline_table_blank_lines_separate_rows():
     assert "  - a longer wrapped value" in out
 
 
+def test_multiline_table_bounded_by_fenced_div_closer():
+    """GH #24 — pandoc renders ``\\begin{center}\\begin{tabular}...`` as
+    a multiline_table inside a ``::: center`` fenced div, with an
+    *opening* dash-rule but no closing one. Before the fix, the forward
+    scan for a matching closing rule ran on past the table body, past
+    the ``:::`` close, past any intervening paragraphs, and only stopped
+    at the *next* table's opening rule — fusing two tables and the
+    prose between them into one mangled list-table."""
+    body = (
+        "::: center\n"
+        "  ----------  --------------------\n"
+        "  $\\alpha$    first letter\n"
+        "  $\\beta$     second letter\n"
+        ":::\n"
+        "\n"
+        "Paragraph that should NOT be consumed as a table row.\n"
+        "\n"
+        "::: center\n"
+        "  ----  ----------------------------------------\n"
+        "  Code  Description\n"
+        "  A     first\n"
+        "  B     second\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert out.count("```{list-table}") == 2, \
+        "both tables should convert independently, not fuse"
+    assert "* - $\\alpha$" in out
+    assert "* - $\\beta$" in out
+    assert "Paragraph that should NOT be consumed" in out
+    # The first table's rows must NOT include the paragraph or the
+    # second table's header line.
+    first_table = out.split("```{list-table}", 2)[1].split("```", 1)[0]
+    assert "Paragraph" not in first_table
+    assert "Description" not in first_table
+
+
 def test_frontmatter_does_not_steal_first_section_label():
     """Regression: when the chapter has its own explicit label folded into
     the heading auto-id (``\\chapter{Foo}\\label{c:foo}`` →

@@ -859,9 +859,16 @@ def convert_simple_tables(text: str) -> str:
 
         col2_start = dash_spans[1][0]
 
-        # Collect rows until the matching closing rule (same 2-group shape).
+        # Collect rows until the matching closing rule (same 2-group shape),
+        # or — for pandoc's multiline_table shape, which has no closing
+        # dash-rule — until the enclosing ``::: center`` fenced-div boundary.
+        # Without the fenced-div bound the scan would run on past the
+        # current table, consume intervening paragraphs and a *later*
+        # table's header, and only stop when it hit that later table's
+        # opening rule (GH #24).
         rows_raw: list[str] = []
         j = i + 1
+        stopped_on_rule = False
         while j < len(lines):
             cand = lines[j]
             if rule_re.match(cand):
@@ -869,7 +876,11 @@ def convert_simple_tables(text: str) -> str:
                     (m.start(), m.end()) for m in re.finditer(r'-+', cand)
                 ]
                 if len(cand_spans) == 2:
+                    stopped_on_rule = True
                     break
+            cand_stripped = cand.strip()
+            if cand_stripped == ':::' or cand_stripped.startswith('::: '):
+                break
             rows_raw.append(cand)
             j += 1
 
@@ -916,16 +927,20 @@ def convert_simple_tables(text: str) -> str:
             continue
 
         # Optional caption after the closing rule: ``  : caption text``.
-        next_i = j + 1
+        # When the scan stopped on a ``:::`` boundary (no closing rule),
+        # leave that line in place — it closes the wrapping fenced div
+        # and must not be eaten as if it were a caption.
+        next_i = j + 1 if stopped_on_rule else j
         caption = None
-        k = next_i
-        while k < len(lines) and not lines[k].strip():
-            k += 1
-        if k < len(lines):
-            cap_m = re.match(r'^\s*:\s+(.+)$', lines[k])
-            if cap_m:
-                caption = cap_m.group(1).strip()
-                next_i = k + 1
+        if stopped_on_rule:
+            k = next_i
+            while k < len(lines) and not lines[k].strip():
+                k += 1
+            if k < len(lines):
+                cap_m = re.match(r'^\s*:\s+(.+)$', lines[k])
+                if cap_m:
+                    caption = cap_m.group(1).strip()
+                    next_i = k + 1
 
         out.append('```{list-table}')
         out.append(':header-rows: 0')
