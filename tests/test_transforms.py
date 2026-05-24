@@ -1626,6 +1626,60 @@ def test_convert_equations_standalone_label_does_not_cross_paragraphs():
     assert "Unrelated prose between equations." in out
 
 
+def test_convert_equations_multirow_align_per_row_labels_emit_anchors():
+    """GH #30 — ``\\begin{align}`` with per-row ``\\label{}`` markers
+    (no leading label after ``\\begin{align}``). Each label must become
+    a ``(eq-X)=`` anchor above the math block; ``\\label{}`` must not
+    survive into the body (KaTeX silently drops it, leaving
+    ``\\eqref{}`` unresolved)."""
+    text = (
+        "$$\\begin{align}\n"
+        "a &= b, \\label{eq:row_a}\\\\\n"
+        "c &= d. \\label{eq:row_b}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert "(eq-row_a)=" in out
+    assert "(eq-row_b)=" in out
+    assert "\\label{" not in out
+    assert "\\begin{aligned}" in out
+    # Anchors precede the math block.
+    assert out.index("(eq-row_a)=") < out.index("$$")
+    assert out.index("(eq-row_b)=") < out.index("$$")
+
+
+def test_convert_equations_align_leading_plus_per_row_labels():
+    """A ``\\begin{align}\\label{X}`` (leading label) plus additional
+    per-row ``\\label{}``s: the leading label keeps the trailing
+    ``(X)`` form for backward compatibility, extras stack as anchors
+    above. All refs resolve to the same block — numbering collapses but
+    no cross-ref is broken."""
+    text = (
+        "$$\\begin{align}\\label{eq:lead}\n"
+        "a &= b, \\label{eq:row_a}\\\\\n"
+        "c &= d.\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert "(eq-row_a)=" in out
+    assert "$$ (eq-lead)" in out
+    assert "\\label{" not in out
+
+
+def test_convert_equations_align_no_labels_unchanged_shape():
+    """Regression guard: an unlabeled multi-row align still produces
+    just the ``\\begin{aligned}`` wrap with no spurious anchors."""
+    text = (
+        "$$\\begin{align}\n"
+        "a &= b,\\\\\n"
+        "c &= d.\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert "\\begin{aligned}" in out
+    assert "=" not in [line.strip() for line in out.splitlines() if line.strip().startswith("(")]
+
+
 # ── Labels: colons → hyphens (universal rule) ────────────────────────────────
 
 

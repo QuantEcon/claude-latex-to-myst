@@ -156,6 +156,17 @@ haven't validated. Everything below is on `main` and available now.
   `:`; the bracketed multi-cite branch was already colon-tolerant.
   5 sites across 3 chapters of the Deep-Learning book. Lesson [031].
   Closes [#32].
+- **Per-row `\label{}` inside multi-row `\begin{align}` lost**
+  ([#30]): a labelled derivation chain (each row carries its own
+  `\label{eq:X}`) survived pandoc untouched, then `convert_equations`
+  wrapped the body in `\begin{aligned}` and left the labels inside —
+  KaTeX silently drops them, so every `\eqref{}` to a per-row label
+  resolved to nothing. Both align branches now extract every
+  `\label{}` and emit each as a `(eq-X)=` anchor stacked above the
+  `$$ … $$` block. Numbering collapses (all anchors target the same
+  block) but cross-refs all resolve — preferable to broken refs.
+  18 labels → >30 broken `{eq}` references in the Deep-Learning
+  book. Lesson [032]. Closes [#30].
 - **Pipeline ordering: `convert_simple_tables` runs before
   `convert_environment_divs`** ([#27]): the GH #24 fix bounded the
   multiline-table forward scan on the `:::` fenced-div boundary, but
@@ -510,6 +521,7 @@ haven't validated. Everything below is on `main` and available now.
 [#27]: https://github.com/QuantEcon/claude-latex-to-myst/issues/27
 [#28]: https://github.com/QuantEcon/claude-latex-to-myst/issues/28
 [#29]: https://github.com/QuantEcon/claude-latex-to-myst/issues/29
+[#30]: https://github.com/QuantEcon/claude-latex-to-myst/issues/30
 [#32]: https://github.com/QuantEcon/claude-latex-to-myst/issues/32
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
@@ -524,6 +536,7 @@ haven't validated. Everything below is on `main` and available now.
 [029]: lessons/029-nested-list-item-markers-consumed-by-description-preprocess.md
 [030]: lessons/030-inline-itemsep-on-list-opener-cascades-pandoc.md
 [031]: lessons/031-textual-citation-regex-truncates-at-colon.md
+[032]: lessons/032-per-row-align-labels-lost-as-anchors.md
 
 ### Settled architectural decisions
 

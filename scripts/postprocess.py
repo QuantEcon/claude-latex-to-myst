@@ -408,24 +408,46 @@ def convert_equations(text: str) -> str:
         content = m.group(1).strip()
         return f'$$\n{content}\n$$'
     
+    def _extract_align_labels(content: str) -> tuple[str, list[str]]:
+        """Pull every ``\\label{...}`` out of an align body and return the
+        stripped body plus the list of labels in source order. Per-row
+        labels (closes #30) otherwise survive into MyST as bare
+        ``\\label{}`` tokens that KaTeX silently drops, leaving any
+        ``\\eqref{}`` to the row unresolved."""
+        labels = re.findall(r'\\label\{([^}]+)\}', content)
+        content = re.sub(r'\\label\{[^}]+\}', '', content).strip()
+        return content, labels
+
     # Pattern: $$\begin{align}\label{...} ... \end{align}$$
+    # The leading label becomes the trailing ``(label)`` for the block; any
+    # additional per-row labels in the body are emitted as stacked anchors
+    # above (multiple anchors targeting the same block — numbering
+    # collapses but cross-refs all resolve).
     def replace_labeled_align(m):
-        label = convert_label_colons(m.group(1))
-        content = m.group(2).strip()
-        return f'$$\n\\begin{{aligned}}\n{content}\n\\end{{aligned}}\n$$ ({label})'
-    
+        leading = convert_label_colons(m.group(1))
+        content, extra = _extract_align_labels(m.group(2).strip())
+        block = f'$$\n\\begin{{aligned}}\n{content}\n\\end{{aligned}}\n$$ ({leading})'
+        if extra:
+            anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in extra)
+            return f'{anchors}\n{block}'
+        return block
+
     text = re.sub(
         r'\$\$\\begin\{align\}\s*\\label\{([^}]+)\}\s*(.*?)\\end\{align\}\$\$',
         replace_labeled_align,
         text,
         flags=re.DOTALL
     )
-    
+
     # Pattern: $$\begin{align*} ... \end{align*}$$ (unlabeled)
     def replace_unlabeled_align(m):
-        content = m.group(1).strip()
-        return f'$$\n\\begin{{aligned}}\n{content}\n\\end{{aligned}}\n$$'
-    
+        content, labels = _extract_align_labels(m.group(1).strip())
+        block = f'$$\n\\begin{{aligned}}\n{content}\n\\end{{aligned}}\n$$'
+        if labels:
+            anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in labels)
+            return f'{anchors}\n{block}'
+        return block
+
     text = re.sub(
         r'\$\$\\begin\{align\*?\}\s*(.*?)\\end\{align\*?\}\$\$',
         replace_unlabeled_align,
