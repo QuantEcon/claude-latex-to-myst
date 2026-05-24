@@ -2708,6 +2708,15 @@ def process_file(input_path: Path, output_path: Path = None):
     text = strip_pandoc_html_separators(text)
     text = fix_text_dollar(text)
     text = convert_epigraphs(text)
+    # convert_simple_tables MUST run before convert_environment_divs (GH #27):
+    # tabulars wrapped in \begin{center}…\end{center} are rendered by pandoc
+    # as multiline_tables inside ``::: center`` fenced divs, and the #24
+    # bound-scan fix relies on the ``:::`` boundary to know where the table
+    # region ends. convert_environment_divs strips ``::: center`` (via
+    # ENV_SKIP), so once it has run the boundary is gone and the scan fuses
+    # adjacent tables again. Order the two passes so the boundary survives
+    # until the table pass has used it.
+    text = convert_simple_tables(text)
     text = convert_environment_divs(text)
     text = convert_description_lists(text)         # decode DESCITEM markers (lesson 022)
     text = convert_equations(text)
@@ -2721,7 +2730,6 @@ def process_file(input_path: Path, output_path: Path = None):
     text = convert_section_labels(text)
     text = convert_citations(text)
     text = convert_standalone_labels(text)
-    text = convert_simple_tables(text)              # 2-col tabular → list-table
     # Listings and algorithms run LATE so source-code bodies don't get
     # touched by the citation / cross-ref / typography transforms above
     # (Julia ``@views`` etc. would otherwise be eaten by convert_citations).

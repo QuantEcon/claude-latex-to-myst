@@ -976,6 +976,47 @@ def test_multiline_table_bounded_by_fenced_div_closer():
     assert "Description" not in first_table
 
 
+def test_simple_table_in_center_survives_pipeline_ordering():
+    """GH #27 — the GH #24 fix bounds the table scan on the ``:::``
+    fenced-div boundary, but ``convert_environment_divs`` strips
+    ``::: center`` wrappers (``ENV_SKIP`` at module top). If
+    ``convert_environment_divs`` runs *before* ``convert_simple_tables``,
+    the boundary disappears and the scan fuses adjacent tables again —
+    exactly the regression the #24 fix was meant to prevent. The
+    pipeline must order ``convert_simple_tables`` first.
+
+    Mirrors the real pipeline order (env-divs after tables) rather than
+    a direct call so a future re-ordering can't silently re-break this.
+    """
+    body = (
+        "::: center\n"
+        "  ----------  --------------------\n"
+        "  $\\alpha$    first letter\n"
+        "  $\\beta$     second letter\n"
+        ":::\n"
+        "\n"
+        "Paragraph between tables.\n"
+        "\n"
+        "::: center\n"
+        "  ----  ----------\n"
+        "  A     first\n"
+        "  B     second\n"
+        ":::\n"
+    )
+    # Pipeline order: tables first, then env-divs.
+    out = postprocess.convert_environment_divs(
+        postprocess.convert_simple_tables(body)
+    )
+    assert out.count("```{list-table}") == 2, \
+        "tables must convert independently before ::: center is stripped"
+    assert "Paragraph between tables." in out
+    # Confirm the bug shape if the order were reversed: env-divs first
+    # would strip the boundary, the scan would fuse, and only one
+    # list-table would appear. This isn't asserted (it's the bug we're
+    # avoiding) but documenting it here so a future reader sees what
+    # ordering matters and why.
+
+
 def test_frontmatter_does_not_steal_first_section_label():
     """Regression: when the chapter has its own explicit label folded into
     the heading auto-id (``\\chapter{Foo}\\label{c:foo}`` →

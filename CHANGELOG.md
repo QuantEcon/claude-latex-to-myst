@@ -148,6 +148,20 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **Pipeline ordering: `convert_simple_tables` runs before
+  `convert_environment_divs`** ([#27]): the GH #24 fix bounded the
+  multiline-table forward scan on the `:::` fenced-div boundary, but
+  `convert_environment_divs` strips `::: center` wrappers (via
+  `ENV_SKIP`). In the original ordering the boundary was already gone
+  by the time the table pass ran, so on books that wrap tabulars in
+  `\begin{center}` (the dominant convention) the #24 fix never fired
+  and adjacent tables fused again — identical symptom to the pre-#24
+  bug. Reordered `process_file` so the table pass runs first; added
+  `test_simple_table_in_center_survives_pipeline_ordering` that
+  composes both transforms in production order so the ordering
+  invariant is enforced in CI (the existing direct-call tests
+  couldn't see it). Lesson [025] extended with the followup. Closes
+  [#27].
 - **Inline `\itemsep<dim>` on a list opener confused pandoc inside
   nested lists** ([#28]): the common manuscript shorthand
   `\begin{itemize}\itemsep1pt` (no space between env-open and the
@@ -485,6 +499,7 @@ haven't validated. Everything below is on `main` and available now.
 [#24]: https://github.com/QuantEcon/claude-latex-to-myst/issues/24
 [#25]: https://github.com/QuantEcon/claude-latex-to-myst/issues/25
 [#26]: https://github.com/QuantEcon/claude-latex-to-myst/issues/26
+[#27]: https://github.com/QuantEcon/claude-latex-to-myst/issues/27
 [#28]: https://github.com/QuantEcon/claude-latex-to-myst/issues/28
 [#29]: https://github.com/QuantEcon/claude-latex-to-myst/issues/29
 [023]: lessons/023-algpseudocode-native-parser.md

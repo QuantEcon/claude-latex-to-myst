@@ -144,3 +144,35 @@ the silent-fusion bug it prevents is hours of debugging.
 This extends lesson [019] — that lesson handles the *row-parsing*
 mode-selection within a table region, this one handles correctly
 *identifying* the table region in the first place.
+
+## Followup: transform ordering matters as much as the scan itself (GH #27)
+
+Two months after the fenced-div bound landed, the same fused-tables
+symptom resurfaced on another book. The fix above was intact, but the
+boundary it relied on had been stripped before the table pass ran.
+
+`convert_environment_divs` (with `'center'` in `ENV_SKIP`) strips
+`::: center` wrappers. In the original pipeline ordering it ran
+*before* `convert_simple_tables`, so by the time the table pass
+looked for `:::` boundaries, they were already gone — `rows_raw`
+fused two tables and intervening prose again, identical to the
+pre-#24 bug. Issue #27 reordered to run `convert_simple_tables`
+*first*.
+
+**Generalisable rule (additional):** a fix that depends on a marker
+or boundary surviving into a downstream pass is fragile to pipeline
+reordering. When a transform A consumes a structural cue, and a
+later transform B strips that cue, the two are coupled in ordering
+even if they look independent. Document the dependency in a comment
+at the call site so a future reordering can't silently re-break it.
+
+**Test discipline:** direct-call unit tests (`convert_simple_tables(body)`
+with `:::` already in the input) pass even when the production
+ordering is broken. The pipeline-order regression test
+(`test_simple_table_in_center_survives_pipeline_ordering`) calls
+both passes in the production order — `convert_environment_divs ∘
+convert_simple_tables` — which is what would have caught #27 in CI.
+
+When you fix a bug whose repro depends on multi-step state, also add
+a test that mirrors the pipeline composition, not just the
+individual function in isolation.
