@@ -182,6 +182,101 @@ def test_resolve_listings_no_base_configured_emits_todo():
     assert "# TODO: source_code_base not configured" in out
 
 
+# ── lstlisting → {code-block} via pandoc attribute fences (closes #31) ───────
+
+
+def test_pandoc_attr_code_block_label_becomes_name():
+    """Pandoc emits ``\\begin{lstlisting}[label=lst:X]`` as a fenced
+    code block whose info string is a pandoc attribute block
+    ``{#lst:X .python ...}``. MyST silently drops the attributes
+    (renders as anchorless plain code), so ``\\ref{lst:X}`` elsewhere
+    fails to resolve. Convert to a ``{code-block}`` directive."""
+    src = (
+        '``` {#lst:demo .python caption="Demo caption" '
+        'label="lst:demo" language="Python"}\n'
+        'x = 1\n'
+        '```\n'
+    )
+    out = postprocess.convert_pandoc_attr_code_blocks(src)
+    assert '```{code-block} python' in out
+    assert ':name: lst-demo' in out
+    assert ':caption: Demo caption' in out
+    assert 'x = 1' in out
+    # The pandoc-attr block must not survive.
+    assert '#lst:demo' not in out
+    assert 'language="Python"' not in out
+
+
+def test_pandoc_attr_code_block_label_only_no_caption():
+    """Label without caption is the bare cross-ref case — emit name,
+    no :caption: line."""
+    src = (
+        '``` {#lst:demo .python}\n'
+        'x = 1\n'
+        '```\n'
+    )
+    out = postprocess.convert_pandoc_attr_code_blocks(src)
+    assert '```{code-block} python' in out
+    assert ':name: lst-demo' in out
+    assert ':caption:' not in out
+
+
+def test_pandoc_attr_code_block_lang_only_strips_attrs():
+    """No ``#id`` and no ``caption=`` → no semantic attrs to preserve.
+    Strip the pandoc-attr block; emit a plain fenced code block. The
+    info string would otherwise render as broken in MyST."""
+    src = (
+        '``` {.python language="Python"}\n'
+        'x = 1\n'
+        '```\n'
+    )
+    out = postprocess.convert_pandoc_attr_code_blocks(src)
+    assert '```python\n' in out
+    assert '{code-block}' not in out
+    assert 'language=' not in out
+
+
+def test_pandoc_attr_code_block_label_with_colon_chain():
+    """``label=lst:foo:bar`` should map to ``lst-foo-bar`` via the
+    standard colon→hyphen rule."""
+    src = (
+        '``` {#lst:foo:bar .julia caption="Multi colon" language="Julia"}\n'
+        'println("hi")\n'
+        '```\n'
+    )
+    out = postprocess.convert_pandoc_attr_code_blocks(src)
+    assert ':name: lst-foo-bar' in out
+
+
+def test_pandoc_attr_code_block_does_not_touch_myst_directive_fence():
+    """A genuine MyST directive fence (``\\`\\`\\`{code-block} python``)
+    must not be re-processed by this pass — MyST directives have no
+    space between the backticks and the brace, and the brace content
+    is a directive name, not pandoc attributes."""
+    src = (
+        '```{code-block} python\n'
+        ':name: list-demo\n'
+        '\n'
+        'x = 1\n'
+        '```\n'
+    )
+    out = postprocess.convert_pandoc_attr_code_blocks(src)
+    # Idempotent: unchanged.
+    assert out == src
+
+
+def test_pandoc_attr_code_block_idempotent():
+    """Re-running on already-converted output must be a no-op."""
+    src = (
+        '``` {#lst:demo .python caption="Demo" label="lst:demo"}\n'
+        'x = 1\n'
+        '```\n'
+    )
+    once = postprocess.convert_pandoc_attr_code_blocks(src)
+    twice = postprocess.convert_pandoc_attr_code_blocks(once)
+    assert once == twice
+
+
 # ── Doubled-prefix strips (lessons #011 + #016) ──────────────────────────────
 
 

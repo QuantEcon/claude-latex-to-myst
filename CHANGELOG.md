@@ -181,6 +181,20 @@ haven't validated. Everything below is on `main` and available now.
   (the project-level passes ran earlier in `process_file`). 10
   caption sites in the Deep-Learning book. Lesson [033]. Closes
   [#33].
+- **`lstlisting` `caption=` / `label=` dropped — no anchor, no
+  caption** ([#31]): pandoc handles `lstlisting` natively, emitting
+  a fenced code block with a pandoc-attribute info string
+  (`\`\`\` {#lst:X .python caption="…" label="lst:X"}`). MyST does
+  not honour pandoc's attribute syntax — the `{…}` is treated as an
+  arbitrary info string and dropped, so no anchor target is emitted
+  and any `\ref{lst:X}` resolves to nothing. New transform
+  `convert_pandoc_attr_code_blocks` parses the attribute block; if
+  an `#id` or `caption=` is present it emits a `{code-block}`
+  directive with `:name:` / `:caption:`; otherwise it strips the
+  attribute block to a plain fenced code block (avoiding the
+  broken-info-string render). Guarded against re-processing MyST's
+  own directive fences (different whitespace shape). Lesson [034].
+  Closes [#31].
 - **Pipeline ordering: `convert_simple_tables` runs before
   `convert_environment_divs`** ([#27]): the GH #24 fix bounded the
   multiline-table forward scan on the `:::` fenced-div boundary, but
@@ -536,6 +550,7 @@ haven't validated. Everything below is on `main` and available now.
 [#28]: https://github.com/QuantEcon/claude-latex-to-myst/issues/28
 [#29]: https://github.com/QuantEcon/claude-latex-to-myst/issues/29
 [#30]: https://github.com/QuantEcon/claude-latex-to-myst/issues/30
+[#31]: https://github.com/QuantEcon/claude-latex-to-myst/issues/31
 [#32]: https://github.com/QuantEcon/claude-latex-to-myst/issues/32
 [#33]: https://github.com/QuantEcon/claude-latex-to-myst/issues/33
 [023]: lessons/023-algpseudocode-native-parser.md
@@ -553,6 +568,7 @@ haven't validated. Everything below is on `main` and available now.
 [031]: lessons/031-textual-citation-regex-truncates-at-colon.md
 [032]: lessons/032-per-row-align-labels-lost-as-anchors.md
 [033]: lessons/033-pandoc-pre-resolves-ref-inside-caption-to-wrong-number.md
+[034]: lessons/034-pandoc-attr-fenced-code-blocks-need-myst-directive-conversion.md
 
 ### Settled architectural decisions
 

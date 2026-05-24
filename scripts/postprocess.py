@@ -2156,6 +2156,111 @@ def _algo_convert_body(body: str) -> str:
     return '\n'.join(out_lines).strip()
 
 
+def convert_pandoc_attr_code_blocks(text: str) -> str:
+    """Convert pandoc-attribute fenced code blocks to MyST ``{code-block}``.
+
+    Pandoc emits ``\\begin{lstlisting}[caption=…, label=lst:X]`` as a
+    fenced code block whose info string is a pandoc attribute block::
+
+        ``` {#lst:X .python caption="Foo" label="lst:X" language="Python"}
+        body
+        ```
+
+    MyST does not honour pandoc's attribute syntax — it treats the
+    whole ``{…}`` as the info string and drops it on the floor. The
+    block renders as plain (anchorless) code and any ``\\ref{lst:X}``
+    in body prose resolves to nothing.
+
+    Convert any such block that carries an ``#id`` or a ``caption=…``
+    into a MyST ``{code-block}`` directive with ``:name:`` /
+    ``:caption:`` set; downgrade the rest to plain ``\\`\\`\\`lang``
+    fences (closes #31).
+
+    Detection guard: this pass must NOT match MyST's own directive
+    fences (``\\`\\`\\`{code-block} python``). Pandoc always emits a
+    space between the ``\\`\\`\\`\\`` and the ``{``; MyST directives
+    do not. We use that to distinguish, plus a content-shape guard
+    (pandoc attrs contain ``#``, ``.``, or ``=``; MyST directive
+    names are single words).
+    """
+    fence_re = re.compile(
+        r'^```[ \t]+\{(?P<attrs>[^}\n]+)\}[ \t]*\n'
+        r'(?P<body>.*?)'
+        r'^```\s*$',
+        re.DOTALL | re.MULTILINE,
+    )
+
+    def parse_attrs(attr_str: str) -> dict:
+        out = {'id': '', 'classes': [], 'kv': {}}
+        i = 0
+        while i < len(attr_str):
+            if attr_str[i].isspace():
+                i += 1
+                continue
+            if attr_str[i] == '#':
+                m = re.match(r'#([^\s}]+)', attr_str[i:])
+                if m:
+                    out['id'] = m.group(1)
+                    i += m.end()
+                    continue
+            if attr_str[i] == '.':
+                m = re.match(r'\.([^\s}]+)', attr_str[i:])
+                if m:
+                    out['classes'].append(m.group(1))
+                    i += m.end()
+                    continue
+            m = re.match(
+                r'([a-zA-Z][a-zA-Z0-9_-]*)=("(?:[^"\\]|\\.)*"|[^\s}]+)',
+                attr_str[i:],
+            )
+            if m:
+                key = m.group(1)
+                val = m.group(2)
+                if val.startswith('"') and val.endswith('"'):
+                    val = val[1:-1]
+                out['kv'][key] = val
+                i += m.end()
+                continue
+            i += 1  # unknown token — skip one char
+        return out
+
+    def replace(m: re.Match) -> str:
+        attr_str = m.group('attrs')
+        body = m.group('body')
+        # Content-shape guard: must contain a pandoc-attr marker.
+        if not re.search(r'[#.=]', attr_str):
+            return m.group(0)
+        attrs = parse_attrs(attr_str)
+        label = attrs['id']
+        caption = attrs['kv'].get('caption', '')
+        lang = attrs['kv'].get('language', '').lower()
+        if not lang and attrs['classes']:
+            lang = attrs['classes'][0]
+        if not lang:
+            lang = 'text'
+
+        body = body.rstrip('\n')
+
+        if not label and not caption:
+            # No semantic attrs to preserve — strip the attribute block
+            # so MyST renders a normal fenced code block (rather than
+            # treating the whole pandoc attrs as a broken info string).
+            return f'```{lang}\n{body}\n```'
+
+        lines = [f'```{{code-block}} {lang}']
+        if label:
+            lines.append(f':name: {convert_label_colons(label)}')
+        if caption:
+            caption = re.sub(r'\s+', ' ', caption).strip()
+            lines.append(f':caption: {caption}')
+        lines.append('')
+        lines.append(body)
+        lines.append('```')
+        return '\n'.join(lines)
+
+    return fence_re.sub(replace, text)
+
+
 def convert_description_lists(text: str) -> str:
     """Decode ``<!--DESCRIPTION-START-->`` / ``<!--DESCITEM-->`` /
     ``<!--DESCRIPTION-END-->`` markers (emitted by
@@ -2759,6 +2864,7 @@ def process_file(input_path: Path, output_path: Path = None):
     # ENV_SKIP), so once it has run the boundary is gone and the scan fuses
     # adjacent tables again. Order the two passes so the boundary survives
     # until the table pass has used it.
+    text = convert_pandoc_attr_code_blocks(text)   # lstlisting → {code-block} (closes #31)
     text = convert_simple_tables(text)
     text = convert_environment_divs(text)
     text = convert_description_lists(text)         # decode DESCITEM markers (lesson 022)
