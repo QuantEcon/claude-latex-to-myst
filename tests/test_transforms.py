@@ -818,6 +818,43 @@ def test_citation_idempotent():
     assert once == twice
 
 
+# ── colon-bearing bib keys in textual @key form (closes #32) ─────────────────
+
+
+@pytest.mark.parametrize("key", [
+    "Bertsekas:2000:DPO:517430",
+    "Rasmussen:2005:GPM:1162254",
+    "Bilionis:2016wc",
+    "ECTA:ECTA1716",
+    "marcet_marshall:94",
+])
+def test_citation_textual_colon_bearing_keys(key):
+    """JabRef/Mendeley/ACM-style bib keys contain ``:`` — the textual
+    ``@key`` form must capture the whole key, not truncate at the first
+    colon."""
+    src = f"See @{key} for details."
+    out = postprocess.convert_citations(src)
+    assert f"{{cite:t}}`{key}`" in out
+    # The suffix must not leak as literal text.
+    assert ":" not in out.split(f"`{key}`", 1)[1].split(" ", 1)[0]
+
+
+def test_citation_textual_colon_key_at_end_of_sentence():
+    """Trailing period after a colon-bearing key is sentence punctuation,
+    not part of the key."""
+    src = "Per @Bertsekas:2000:DPO:517430."
+    out = postprocess.convert_citations(src)
+    assert "{cite:t}`Bertsekas:2000:DPO:517430`." in out
+
+
+def test_citation_textual_plain_key_trailing_period_unchanged():
+    """Regression guard: plain key followed by a period still captures
+    just the key — the period stays as sentence punctuation."""
+    src = "See @Smith2020. Next sentence."
+    out = postprocess.convert_citations(src)
+    assert "{cite:t}`Smith2020`. Next sentence." in out
+
+
 # ── simple_table → list-table (FIX Issue 1) ──────────────────────────────────
 
 

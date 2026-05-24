@@ -148,6 +148,14 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **Textual `@key` citation regex truncated colon-bearing bib keys**
+  ([#32]): JabRef / Mendeley / ACM-style keys (`Author:Year:Tag`)
+  were captured only up to the first `:`, leaving the suffix as
+  literal text after a broken `{cite:t}` role. Extended the key
+  character class (and its mirroring boundary lookahead) to allow
+  `:`; the bracketed multi-cite branch was already colon-tolerant.
+  5 sites across 3 chapters of the Deep-Learning book. Lesson [031].
+  Closes [#32].
 - **Pipeline ordering: `convert_simple_tables` runs before
   `convert_environment_divs`** ([#27]): the GH #24 fix bounded the
   multiline-table forward scan on the `:::` fenced-div boundary, but
@@ -502,6 +510,7 @@ haven't validated. Everything below is on `main` and available now.
 [#27]: https://github.com/QuantEcon/claude-latex-to-myst/issues/27
 [#28]: https://github.com/QuantEcon/claude-latex-to-myst/issues/28
 [#29]: https://github.com/QuantEcon/claude-latex-to-myst/issues/29
+[#32]: https://github.com/QuantEcon/claude-latex-to-myst/issues/32
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
@@ -514,6 +523,7 @@ haven't validated. Everything below is on `main` and available now.
 [028]: lessons/028-preamble-text-macros-pandoc-silently-drops.md
 [029]: lessons/029-nested-list-item-markers-consumed-by-description-preprocess.md
 [030]: lessons/030-inline-itemsep-on-list-opener-cascades-pandoc.md
+[031]: lessons/031-textual-citation-regex-truncates-at-colon.md
 
 ### Settled architectural decisions
 
