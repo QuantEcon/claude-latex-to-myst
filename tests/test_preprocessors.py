@@ -18,6 +18,7 @@ import _apply_chapter_splits as split
 import _apply_description_markers as desc
 import _apply_listing_markers as lst
 import _apply_rewrites as rew
+import _warn_dropped_text_macros as wdtm
 
 
 def _apply_natbib(text: str) -> str:
@@ -501,3 +502,74 @@ def test_algorithmic_marker_leaves_algorithm_wrapped_block_alone():
         "Some prose with no algorithmic env at the top level.\n"
     )
     assert algic.process_text(pre_encoded) == pre_encoded
+
+
+# ── Dropped-text-macro warning (issue #22) ───────────────────────────────────
+
+
+def test_warn_declare_url_command_detected_with_suggestion():
+    """GH #22 — pandoc has no handler for ``\\DeclareUrlCommand``, so
+    every ``\\tpath{…}`` in the body would be dropped along with its
+    argument. Always flag and suggest ``\\texttt``."""
+    preamble = r"\DeclareUrlCommand\tpath{\urlstyle{tt}}"
+    found = wdtm.find_custom_text_macros(preamble)
+    assert found == {"tpath": r"\texttt"}
+
+
+def test_warn_newcommand_textcolor_textbf_suggests_textbf():
+    src = (
+        r"\newcommand{\emphc}[1]{\textcolor{harvardcrimson}{\textbf{#1}}}"
+    )
+    found = wdtm.find_custom_text_macros(src)
+    assert found == {"emphc": r"\textbf"}
+
+
+def test_warn_newcommand_math_only_not_flagged():
+    """A math-only macro (no ``#1`` in body, or body purely math) is
+    not at risk of the silent-drop bug — pandoc passes it into math
+    mode untouched. Don't waste warning noise on it."""
+    src = r"\newcommand{\R}{\mathbb{R}}"
+    assert wdtm.find_custom_text_macros(src) == {}
+    src2 = r"\newcommand{\norm}[1]{\|#1\|}"
+    assert wdtm.find_custom_text_macros(src2) == {}
+
+
+def test_warn_count_usages_skips_definitions():
+    """Definitions should be subtracted before counting body uses;
+    otherwise a single ``\\newcommand{\\X}…`` would always self-count."""
+    src = (
+        r"\newcommand{\foo}[1]{\textbf{#1}}" "\n"
+        r"Body uses \foo{first} and \foo{second}." "\n"
+    )
+    assert wdtm.count_usages(src, "foo") == 2
+
+
+def test_warn_scan_end_to_end(tmp_path):
+    """Wire-up smoke test: a preamble file + chapter file, scanned
+    together, produce a non-empty warning block referencing the
+    chapter by name."""
+    src = tmp_path
+    (src / "preamble.tex").write_text(
+        r"\DeclareUrlCommand\tpath{\urlstyle{tt}}" + "\n",
+        encoding="utf-8",
+    )
+    ch = src / "ch01.tex"
+    ch.write_text(
+        r"The notebook \tpath{lecture_03.ipynb} shows convergence." + "\n",
+        encoding="utf-8",
+    )
+    usage = wdtm.scan(src, [ch])
+    assert "tpath" in usage
+    assert usage["tpath"]["count"] == 1
+    assert "ch01.tex" in usage["tpath"]["files"]
+    msg = wdtm.format_warning(usage)
+    assert "\\tpath" in msg
+    assert "preprocess.rewrites" in msg
+
+
+def test_warn_scan_no_macros_is_quiet(tmp_path):
+    src = tmp_path
+    (src / "ch01.tex").write_text("Plain prose, no macros.\n", encoding="utf-8")
+    usage = wdtm.scan(src, [src / "ch01.tex"])
+    assert usage == {}
+    assert wdtm.format_warning(usage) == ""

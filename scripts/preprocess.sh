@@ -122,6 +122,23 @@ for ch in "${CHAPTER_STEMS[@]}"; do
   echo "  Preprocessed: ${ch}.tex"
 done
 
+# Warn about custom text macros pandoc will silently drop (GH #22).
+# Scans the source preamble(s) for \DeclareUrlCommand / \newcommand
+# text-formatting macros, counts usages across the chapters, and
+# prints a single warning with a suggested config.yaml rewrite block.
+# Non-fatal — never blocks the pipeline. No-op when no such macros
+# exist or none are used.
+CHAPTER_PATHS=()
+for ch in "${CHAPTER_STEMS[@]}"; do
+  if [[ -f "$TMP_DIR/${ch}.tex" ]]; then
+    CHAPTER_PATHS+=("$TMP_DIR/${ch}.tex")
+  fi
+done
+if [[ ${#CHAPTER_PATHS[@]} -gt 0 ]]; then
+  python3 "$SCRIPT_DIR/_warn_dropped_text_macros.py" \
+    "$SOURCE_DIR" "${CHAPTER_PATHS[@]}" || true
+fi
+
 echo ""
 echo "Wrote preprocessed sources to: $TMP_DIR"
 echo "Total: ${#CHAPTER_STEMS[@]} files"
