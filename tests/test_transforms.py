@@ -1427,6 +1427,57 @@ def test_convert_equations_separates_inline_close_from_display_open():
     assert lines[open_idx - 1] == ""
 
 
+def test_convert_equations_label_after_body_in_equation_env():
+    """GH #26 — the standard ``\\begin{equation} body \\label{eq:foo}
+    \\end{equation}`` convention. The label must be extracted in the
+    equation-env pass; if it leaks into the document body, the
+    standalone-label cleanup regex can match it against a far-away
+    ``$$math$$`` and swallow everything in between."""
+    text = (
+        "We use the mean squared error: $$\\begin{equation}\n"
+        "    J(\\theta) = \\frac{1}{m}\\sum_i (h(x_i) - y_i)^2.\n"
+        "    \\label{eq:mse}\n"
+        "\\end{equation}$$ This loss is not arbitrary.\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert "$$ (eq-mse)" in out
+    # \label must be consumed, not stranded in the body
+    assert "\\label{eq:mse}" not in out
+
+
+def test_convert_equations_standalone_label_does_not_cross_paragraphs():
+    """GH #26 — an orphan ``\\label{}`` in a multi-line ``$$ … $$`` block
+    must not pair with the nearest *prior* inline ``$$math$$`` from a
+    paragraph far above. Before the fix, the catch-all regex used
+    ``DOTALL`` with ``(.*?)`` and would happily span paragraphs, fusing
+    figures and prose into the body of a single math block."""
+    text = (
+        "The regression formula is $$h(x) = \\theta_0 + \\theta_1 x.$$ "
+        "It illustrates the simple linear case.\n"
+        "\n"
+        "```{figure} figures/regression.png\n"
+        ":name: fig-regression\n"
+        "\n"
+        "Caption.\n"
+        "```\n"
+        "\n"
+        "Unrelated prose between equations.\n"
+        "\n"
+        "Now the MSE:\n"
+        "$$\n"
+        "J(\\theta) = \\sum_i \\ell_i.\n"
+        "\\label{eq:mse}\n"
+        "$$\n"
+        "Done.\n"
+    )
+    out = postprocess.convert_equations(text)
+    # The inline display formula must remain inline (untouched).
+    assert "$$h(x) = \\theta_0 + \\theta_1 x.$$" in out
+    # The figure between the two equations must survive.
+    assert "```{figure} figures/regression.png" in out
+    assert "Unrelated prose between equations." in out
+
+
 # ── Labels: colons → hyphens (universal rule) ────────────────────────────────
 
 

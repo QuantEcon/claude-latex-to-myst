@@ -365,38 +365,30 @@ def convert_equations(text: str) -> str:
     - $$\\begin{align} ... \\end{align}$$
       → $$ \\begin{aligned} ... \\end{aligned} $$ (label)
     """
-    # Pattern: $$\begin{equation}\label{...} ... \end{equation}$$ (on one line)
-    def replace_labeled_equation(m):
-        label = convert_label_colons(m.group(1))
-        content = m.group(2).strip()
-        return f'$$\n{content}\n$$ ({label})'
-    
+    # Pattern: $$\begin{equation} ... \end{equation}$$ with optional \label.
+    # The label may appear before, after, or interleaved with the body —
+    # all three conventions exist in real LaTeX manuscripts. Extracting the
+    # label here is what keeps any orphan `\label{}` from surviving into
+    # the document body, where the catch-all standalone-label regex
+    # (further down) could otherwise span paragraphs and swallow content.
+    def replace_equation(m):
+        body = m.group(1).strip()
+        lbl = re.search(r'\\label\{([^}]+)\}', body)
+        if lbl:
+            body = (body[:lbl.start()] + body[lbl.end():]).strip()
+            return f'$$\n{body}\n$$ ({convert_label_colons(lbl.group(1))})'
+        return f'$$\n{body}\n$$'
+
     text = re.sub(
-        r'\$\$\\begin\{equation\}\s*\\label\{([^}]+)\}\s*(.*?)\\end\{equation\}\$\$',
-        replace_labeled_equation,
+        r'\$\$\\begin\{equation\*?\}\s*(.*?)\\end\{equation\*?\}\$\$',
+        replace_equation,
         text,
         flags=re.DOTALL
     )
-    
-    # Pattern: $$\begin{equation*} ... \end{equation*}$$ (unlabeled)
+
     def replace_unlabeled_equation(m):
         content = m.group(1).strip()
         return f'$$\n{content}\n$$'
-    
-    text = re.sub(
-        r'\$\$\\begin\{equation\*\}\s*(.*?)\\end\{equation\*\}\$\$',
-        replace_unlabeled_equation,
-        text,
-        flags=re.DOTALL
-    )
-    
-    # Pattern: $$\begin{equation} ... \end{equation}$$ (unlabeled, no *)
-    text = re.sub(
-        r'\$\$\\begin\{equation\}\s*(.*?)\\end\{equation\}\$\$',
-        replace_unlabeled_equation,
-        text,
-        flags=re.DOTALL
-    )
     
     # Pattern: $$\begin{align}\label{...} ... \end{align}$$
     def replace_labeled_align(m):
@@ -470,12 +462,14 @@ def convert_equations(text: str) -> str:
         content = content.strip()
         return f'{content}\n$$ ({label})'
     
-    # Standalone $$ blocks with \label inside
+    # Standalone $$math\label{eq:foo}$$ on a single line. Must stay
+    # single-line: a DOTALL match here would pair the nearest preceding $$
+    # with the orphan \label{}, regardless of how many paragraphs (and
+    # {figure}/{prf:remark}/… directives) sit between them. See GH #26.
     text = re.sub(
-        r'\$\$(.*?)\\label\{([^}]+)\}(.*?)\$\$',
+        r'\$\$([^\n]*?)\\label\{([^}]+)\}([^\n]*?)\$\$',
         lambda m: f'$$\n{(m.group(1) + m.group(3)).strip()}\n$$ ({convert_label_colons(m.group(2))})',
         text,
-        flags=re.DOTALL
     )
     
     # Ensure $$ (label) is on its own line — pandoc's --wrap=none can leave
