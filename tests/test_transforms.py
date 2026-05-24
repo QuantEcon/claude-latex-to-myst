@@ -1443,6 +1443,39 @@ def test_validate_config_accepts_full_example():
         postprocess.validate_config(config)
 
 
+# ── Pandoc HTML-comment separator artifacts (issue #23) ─────────────────────
+
+
+def test_strip_pandoc_html_separators_inline_math_followed_by_digit():
+    """GH #23 — pandoc inserts ``\\`<!-- -->\\`{=html}`` between an
+    inline ``$math$`` and a following digit (its CommonMark
+    lexer-defeat trick). MyST doesn't need the separator, so it
+    surfaces as raw text in the rendered HTML."""
+    src = "Took ($\\sim$`<!-- -->`{=html}30 s, sanity check) on this run."
+    out = postprocess.strip_pandoc_html_separators(src)
+    assert out == "Took ($\\sim$30 s, sanity check) on this run."
+
+
+def test_strip_pandoc_html_separators_multiple_occurrences():
+    src = (
+        "Use $c$`<!-- -->`{=html}9 collocation points; "
+        "convergence took $\\sim$`<!-- -->`{=html}5 min.\n"
+    )
+    out = postprocess.strip_pandoc_html_separators(src)
+    assert "<!-- -->" not in out
+    assert "{=html}" not in out
+    assert "Use $c$9 collocation points" in out
+    assert "$\\sim$5 min" in out
+
+
+def test_strip_pandoc_html_separators_does_not_touch_real_html_comments():
+    """A comment that carries content is a genuine HTML comment, not
+    pandoc's empty separator artifact — leave it alone."""
+    src = "<!-- TODO: cite this --> The result follows."
+    out = postprocess.strip_pandoc_html_separators(src)
+    assert out == src
+
+
 # ── Equation regex safety (lesson #002 + the dp1 `$\Xsf$ $$` regression) ─────
 
 

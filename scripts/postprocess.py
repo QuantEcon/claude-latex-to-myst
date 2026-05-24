@@ -296,6 +296,24 @@ def convert_environment_divs(text: str) -> str:
     return '\n'.join(result)
 
 
+def strip_pandoc_html_separators(text: str) -> str:
+    r"""Strip pandoc's empty-HTML-comment lexer-defeat artifacts.
+
+    Pandoc inserts ``\`<!-- -->\`{=html}`` between adjacent inline
+    elements when it needs to keep CommonMark's lexer from
+    greedy-merging the surrounding tokens — typically between an
+    inline ``$math$`` and a following digit, or between two adjacent
+    code spans (``$\sim$\`<!-- -->\`{=html}30 s``).
+
+    MyST's tokenizer is stricter and doesn't need the separator, so the
+    artifact otherwise survives into the rendered HTML as raw text.
+    The pattern is pandoc-specific syntax (raw ``{=html}`` attribute on
+    an empty comment) — Markdown authors don't write it by hand, so
+    stripping it unconditionally is safe. GH #23.
+    """
+    return re.sub(r'`<!-- -->`\{=html\}', '', text)
+
+
 def fix_text_dollar(text: str) -> str:
     r"""Fix \text{...$...$...} for KaTeX compatibility.
     
@@ -2687,6 +2705,7 @@ def process_file(input_path: Path, output_path: Path = None):
     #  - environments before labels (directive labels handled in context)
     #  - equations before cross-refs (so labels are extracted first)
     #  - cross-refs before figures (captions may contain cross-refs)
+    text = strip_pandoc_html_separators(text)
     text = fix_text_dollar(text)
     text = convert_epigraphs(text)
     text = convert_environment_divs(text)
