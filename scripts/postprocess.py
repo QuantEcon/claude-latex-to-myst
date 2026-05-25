@@ -290,6 +290,11 @@ from transforms.code import (  # noqa: E402  (re-exports for P3a)
     convert_pandoc_attr_code_blocks,
     resolve_listings,
 )
+from transforms.figures import (  # noqa: E402  (re-exports for P3a)
+    convert_figures,
+    convert_html_figures,
+    resolve_tikz_figures,
+)
 
 # _DEFAULT_CROSS_REF_ROUTING moved to transforms/refs.py (P3a)
 
@@ -310,67 +315,7 @@ _EXTRA_CROSS_REF_ROUTING: list[tuple[tuple[str, ...], str]] = []
 
 # convert_citations moved to transforms/cite.py (P3a)
 
-def convert_figures(text: str) -> str:
-    """Convert pandoc image syntax to MyST figure directives.
-    
-    ![caption []{#label}](path){#id width="X%"} →
-    ```{figure} figures/path
-    :name: label
-    :width: X%
-    caption
-    ```
-    """
-    def replace_figure(m):
-        full_match = m.group(0)
-        caption = m.group(1)
-        path = m.group(2)
-        attrs = m.group(3) if m.group(3) else ''
-        
-        # Extract label from caption: []{#label label="label"}
-        label = None
-        label_match = re.search(r'\[\]\{#([^\s}]+)(?:\s+label="[^"]*")?\}', caption)
-        if label_match:
-            label = convert_label_colons(label_match.group(1))
-            caption = re.sub(r'\[\]\{#[^}]+\}\s*', '', caption).strip()
-        
-        # Extract label from attrs: {#id ...}
-        if not label:
-            id_match = re.search(r'#([^\s}]+)', attrs)
-            if id_match:
-                label = convert_label_colons(id_match.group(1))
-        
-        # Extract width from attrs
-        width = None
-        width_match = re.search(r'width="?([^"\s}]+)"?', attrs)
-        if width_match:
-            width = width_match.group(1)
-        
-        # Ensure path starts with figures/
-        if not path.startswith('figures/'):
-            path = 'figures/' + path
-        
-        lines = [f'```{{figure}} {path}']
-        if label:
-            lines.append(f':name: {label}')
-        if width:
-            lines.append(f':width: {width}')
-        lines.append('')
-        if caption:
-            lines.append(caption)
-        lines.append('```')
-        
-        return '\n'.join(lines)
-    
-    # Match ![caption](path){attrs} or ![caption](path)
-    # Caption may contain nested brackets like []{#label label="label"}
-    text = re.sub(
-        r'!\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)]+)\)(?:\{([^}]*)\})?',
-        replace_figure,
-        text
-    )
-    
-    return text
-
+# convert_figures moved to transforms/figures.py (P3a)
 
 def convert_section_labels(text: str) -> str:
     """Convert pandoc section header IDs to MyST label syntax.
@@ -436,175 +381,7 @@ def convert_standalone_labels(text: str) -> str:
 # convert_epigraphs moved to transforms/typography.py (P3a)
 
 
-def convert_html_figures(text: str) -> str:
-    """Convert HTML figure blocks (from TikZ placeholders) to MyST admonitions.
-
-    <figure id="..."> ... <figcaption>...</figcaption> </figure>
-    → ```{figure} #placeholder
-      :name: ...
-      Caption text (TikZ diagram — needs manual conversion)
-      ```
-
-    Also handles the nested subfigure pattern that pandoc emits for
-    ``\\begin{subfigure}`` environments:
-
-        <figure id="parent">
-          <figure id="child_a"> ... <figcaption>cap_a</figcaption> </figure>
-          <figure id="child_b"> ... <figcaption>cap_b</figcaption> </figure>
-          <figcaption>parent_caption</figcaption>
-        </figure>
-
-    For nested patterns the parent label becomes a section anchor and each
-    labelled subfigure becomes its own admonition placeholder.
-    """
-    def make_admonition(label, caption):
-        lines = ['```{admonition} Figure (TikZ — needs manual conversion)']
-        if label:
-            lines.append(f':name: {label}')
-        lines.append('')
-        lines.append(caption or '*(TikZ diagram — needs manual conversion)*')
-        lines.append('```')
-        return '\n'.join(lines)
-
-    def extract_caption(block):
-        cap_match = re.search(
-            r'<figcaption>(?:<[^>]*>)*\s*(.*?)\s*</figcaption>',
-            block,
-            re.DOTALL,
-        )
-        if not cap_match:
-            return ''
-        cap = cap_match.group(1)
-        # Convert pandoc-resolved HTML ref anchors into MyST ``{ref}``
-        # directives BEFORE stripping HTML. The pre-resolved number in
-        # the ``<a>`` body is chapter-unaware (pandoc only sees the
-        # split-per-chapter file, not the book), but the
-        # ``data-reference`` attribute preserves the original label —
-        # MyST can resolve it with full project context (closes #33).
-        cap = re.sub(
-            r'<a[^>]*data-reference="([^"]+)"[^>]*>[^<]*</a>',
-            lambda m: '{ref}`' + convert_label_colons(m.group(1)) + '`',
-            cap,
-        )
-        cap = re.sub(r'<[^>]+>', '', cap).strip()
-        # The doubled-noun strippers ran earlier in ``process_file``;
-        # any ``§ Section`` / ``Chapter Chapter`` produced *here* by
-        # the ref-conversion above would otherwise survive into the
-        # final caption. Re-run them locally on the caption string.
-        cap = strip_doubled_noun_refs(cap)
-        cap = strip_doubled_section_symbol(cap)
-        return cap
-
-    # Determine which labels are actually referenced by {numref} elsewhere in
-    # the chapter so that nested-subfigure handling can choose the right
-    # :name: for each emitted figure. MyST collapses adjacent
-    # ``(parent)=`` anchors into the following figure's name, so we cannot
-    # emit both a parent anchor *and* a child :name: — we must pick one per
-    # figure based on actual cross-references.
-    referenced_labels = set(re.findall(r'\{numref\}`([^`]+)`', text))
-
-    # Pandoc emits ``<embed src=...>`` for ``\input{tikz/...}`` figures and
-    # ``<img src=...>`` for ordinary ``\includegraphics`` references. Both
-    # shapes signal a real image source — without a unified match, plain
-    # ``\includegraphics`` figures get mis-classified as TikZ admonitions
-    # (GH #25).
-    _figure_src_re = re.compile(r'<(?:embed|img)[^>]*src="([^"]+)"')
-
-    # Pass 1: nested subfigure pattern (parent with one or more labelled inner figures).
-    # Each inner figure carries its own id; the outer figure has its own id and trailing caption.
-    nested_pattern = re.compile(
-        r'<figure[^>]*id="(?P<outer_id>[^"]+)"[^>]*>\s*'
-        r'(?P<inner>(?:<figure[^>]*>.*?</figure>\s*)+)'
-        r'<figcaption>(?P<outer_cap>.*?)</figcaption>\s*'
-        r'</figure>',
-        re.DOTALL,
-    )
-
-    def make_figure(label, src, caption):
-        if '/' not in src:
-            src = 'figures/' + src
-        lines = ['```{figure} ' + src]
-        if label:
-            lines.append(f':name: {label}')
-        lines.append('')
-        if caption:
-            lines.append(caption)
-        lines.append('```')
-        return '\n'.join(lines)
-
-    def replace_nested(m):
-        outer_label = convert_label_colons(m.group('outer_id'))
-        inner_blob = m.group('inner')
-        inner_matches = list(
-            re.finditer(r'<figure[^>]*>.*?</figure>', inner_blob, re.DOTALL)
-        )
-        parts = []
-        outer_assigned = False
-        for idx, inner_match in enumerate(inner_matches):
-            inner_block = inner_match.group(0)
-            id_match = re.search(r'<figure[^>]*id="([^"]+)"', inner_block)
-            child_label = (
-                convert_label_colons(id_match.group(1)) if id_match else None
-            )
-            # Pick the :name: per figure: prefer a label that is actually
-            # referenced. The parent label can only attach to one figure, so
-            # we give it to the first child that is itself unreferenced.
-            chosen = child_label
-            if (
-                not outer_assigned
-                and outer_label
-                and outer_label in referenced_labels
-                and (child_label is None or child_label not in referenced_labels)
-            ):
-                chosen = outer_label
-                outer_assigned = True
-            # Fallback: an unlabeled subfigure that didn't inherit the outer
-            # label would otherwise vanish in `resolve_tikz_figures` (no
-            # :name: → "orphaned" branch). Auto-generate ``{outer}-{a,b,…}``
-            # so each subfigure survives with a distinct, cross-refable
-            # label. GH #17.
-            if chosen is None and outer_label:
-                chosen = f"{outer_label}-{chr(ord('a') + idx)}"
-
-            embed_match = _figure_src_re.search(inner_block)
-            caption = extract_caption(inner_block)
-            if embed_match:
-                # Real raster/vector image — emit a {figure} directly
-                # from the embed src. Skips the TikZ-placeholder round
-                # trip, which would silently drop unlabeled subfigures
-                # whose label isn't in TIKZ_FIGURE_MAP. GH #17.
-                parts.append(make_figure(chosen, embed_match.group(1), caption))
-            else:
-                # No image source (e.g. \input{tikz/...}) — keep the
-                # admonition placeholder so TIKZ_FIGURE_MAP can resolve it.
-                parts.append(make_admonition(chosen, caption))
-        return '\n'.join(parts)
-
-    text = nested_pattern.sub(replace_nested, text)
-
-    # Pass 2: any remaining (non-nested) figure blocks. Mirror Pass 1's
-    # image-source check — when a real ``<img>``/``<embed>`` src is
-    # present (the common ``\includegraphics`` case), emit a ``{figure}``
-    # directly; only fall back to the TikZ admonition when no image
-    # source is found. GH #25.
-    def replace_html_figure(m):
-        block = m.group(0)
-        id_match = re.search(r'<figure[^>]*id="([^"]+)"', block)
-        label = convert_label_colons(id_match.group(1)) if id_match else None
-        caption = extract_caption(block)
-        embed_match = _figure_src_re.search(block)
-        if embed_match:
-            return make_figure(label, embed_match.group(1), caption)
-        return make_admonition(label, caption)
-
-    text = re.sub(
-        r'<figure[^>]*>.*?</figure>',
-        replace_html_figure,
-        text,
-        flags=re.DOTALL,
-    )
-    return text
-
+# convert_html_figures moved to transforms/figures.py (P3a)
 
 # ── TikZ figure resolution ───────────────────────────────────────────────────
 
@@ -624,92 +401,7 @@ TIKZ_FIGURE_MAP: dict = {}
 TIKZCD_INLINE_MAP: dict = {}
 
 
-def resolve_tikz_figures(text: str, stem: str) -> str:
-    """Replace TikZ admonition placeholders with actual figure directives.
-
-    Also handles:
-    - Stray HTML remnants from subfigure environments
-    - Unlabeled TikZ admonition blocks (orphaned sub-panels)
-    - Inline tikzcd math blocks → {image} directives
-    """
-    lines = text.split('\n')
-    result = []
-    i = 0
-
-    while i < len(lines):
-        line = lines[i]
-
-        # Match TikZ admonition placeholder
-        if line.strip() == '```{admonition} Figure (TikZ — needs manual conversion)':
-            i += 1
-            label = None
-            caption_lines = []
-            while i < len(lines) and lines[i].strip() != '```':
-                if lines[i].startswith(':name:'):
-                    label = lines[i].split(':name:')[1].strip()
-                elif lines[i].strip():
-                    caption_lines.append(lines[i].strip())
-                i += 1
-            if i < len(lines):
-                i += 1  # skip closing ```
-
-            if label and label in TIKZ_FIGURE_MAP:
-                path, caption_override = TIKZ_FIGURE_MAP[label]
-                caption = caption_override or ' '.join(caption_lines)
-                result.append(f'```{{figure}} {path}')
-                result.append(f':name: {label}')
-                result.append('')
-                if caption:
-                    result.append(caption)
-                result.append('```')
-            elif label:
-                # Unknown label — keep as placeholder
-                result.append('```{admonition} Figure (TikZ — needs manual conversion)')
-                result.append(f':name: {label}')
-                result.append('')
-                for cl in caption_lines:
-                    result.append(cl)
-                result.append('```')
-            else:
-                # Unlabeled — orphaned sub-panel from subfigure, skip
-                pass
-            continue
-
-        # Remove stray HTML figcaption remnants from subfigure environments
-        if '<figcaption>' in line:
-            # Consume until closing tag (may span multiple lines)
-            while i < len(lines) and '</figcaption>' not in lines[i]:
-                i += 1
-            i += 1
-            continue
-        if line.strip() == '</figure>':
-            i += 1
-            continue
-
-        result.append(line)
-        i += 1
-
-    text = '\n'.join(result)
-
-    # Handle inline tikzcd math blocks. The replacement is wrapped in a
-    # lambda so ``re.sub`` treats it as a literal string — authors write
-    # LaTeX-flavoured Markdown in these override entries (``\hat``,
-    # ``\Phi``, ``\beta``, …) and Python 3.13 hardened the regex parser
-    # to reject those as bad escapes when passed as a replacement string
-    # (issue #7). The lambda form bypasses escape parsing entirely.
-    # Backreferences (``\1``, ``\g<name>``) are not supported in this
-    # form; no current consumer uses them.
-    if stem in TIKZCD_INLINE_MAP:
-        for entry in TIKZCD_INLINE_MAP[stem]:
-            text = re.sub(
-                entry['pattern'],
-                lambda m, r=entry['replacement']: r,
-                text,
-                flags=re.DOTALL,
-            )
-
-    return text
-
+# resolve_tikz_figures moved to transforms/figures.py (P3a)
 
 # join_split_inline_math moved to transforms/math.py (P3a)
 
