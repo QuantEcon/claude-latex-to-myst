@@ -4,7 +4,9 @@ title: "Table Simple Two Col"
 
 # Notation
 
-```{list-table} Common symbols used throughout.
+````{table} Common symbols used throughout.
+
+```{list-table}
 :header-rows: 1
 
 * - Symbol
@@ -16,5 +18,6 @@ title: "Table Simple Two Col"
 * - $\pi$
   - Policy
 ```
+````
 
 Body prose continues.

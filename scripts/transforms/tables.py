@@ -347,24 +347,56 @@ def convert_simple_tables(text: str) -> str:
                     caption = cap_m.group(1).strip()
                     next_i = m + 1
 
-        # Caption goes on the directive opener as the argument — MyST's
-        # canonical form. MyST's ``{list-table}`` does NOT accept a
-        # ``:caption:`` option (the docutils-style we previously emitted
-        # produced "unexpected option caption" warnings and the caption
-        # text was dropped from the rendered HTML).
-        opener = '```{list-table}'
-        if caption:
-            opener = f'{opener} {caption}'
-        out.append(opener)
         header_rows_count = len(parsed_blocks[0]) if has_header else 0
-        out.append(f':header-rows: {header_rows_count}')
-        out.append('')
         all_rows = [row for rows in parsed_blocks for row in rows]
-        for row in all_rows:
-            out.append(f'* - {row[0]}')
-            for cell in row[1:]:
-                out.append(f'  - {cell}')
-        out.append('```')
+
+        # Captioned tables: wrap ``{list-table}`` inside ``{table}``.
+        # Rationale (regression from caption-as-argument form, PR #41 v4):
+        #
+        # MyST's ``{list-table}`` does NOT accept ``:caption:`` as an
+        # option (the docutils-style emits "unexpected option caption"
+        # and drops the caption text). The caption-as-argument form
+        # ``\`\`\`{list-table} Long caption with $math$...`` works for
+        # short ASCII captions but breaks MyST's parser when the
+        # argument is long or contains inline math/refs — the
+        # subsequent ``:header-rows:`` line and bullet rows are
+        # mis-attributed and docutils' ``list-table`` body validator
+        # fires "list-table directive must have a list of lists".
+        #
+        # ``{table}`` accepts a caption as its argument too, but its
+        # body has NO docutils body-validation constraint (it wraps
+        # arbitrary markdown / nested directives). Even if MyST's
+        # argument parser has the same long-content quirk, the failure
+        # mode degrades from "explicit error + 0 AST nodes" to at worst
+        # "caption text bleeds into body" — the directive still
+        # produces a table AST node and cross-refs resolve.
+        #
+        # 4-backtick outer fence so the inner 3-backtick ``{list-table}``
+        # closes cleanly inside it. ``(label)=`` anchors emitted by
+        # ``convert_environment_divs`` (downstream) attach to the next
+        # block — ``{table}`` is enumerable, so ``{numref}`tab-X``
+        # renders as "Table N" via the wrapper's auto-counter.
+        if caption:
+            out.append(f'````{{table}} {caption}')
+            out.append('')
+            out.append('```{list-table}')
+            out.append(f':header-rows: {header_rows_count}')
+            out.append('')
+            for row in all_rows:
+                out.append(f'* - {row[0]}')
+                for cell in row[1:]:
+                    out.append(f'  - {cell}')
+            out.append('```')
+            out.append('````')
+        else:
+            out.append('```{list-table}')
+            out.append(f':header-rows: {header_rows_count}')
+            out.append('')
+            for row in all_rows:
+                out.append(f'* - {row[0]}')
+                for cell in row[1:]:
+                    out.append(f'  - {cell}')
+            out.append('```')
 
         i = next_i
 

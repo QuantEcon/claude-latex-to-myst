@@ -6,7 +6,9 @@ title: "Table Simple N Col"
 
 The lineage from plain SGD to AdamW is summarised below.
 
-```{list-table} Lineage from plain SGD to AdamW.
+````{table} Lineage from plain SGD to AdamW.
+
+```{list-table}
 :header-rows: 1
 
 * - Optimizer
@@ -25,5 +27,6 @@ The lineage from plain SGD to AdamW is summarised below.
   - decoupled weight decay
   - current default
 ```
+````
 
 See {numref}`tab-optimizer-family` for the full table.
