@@ -96,15 +96,30 @@ def _parse_block(
 
 
 def _collect_header_above(
-    lines: list[str], rule_idx: int, opener_indent: int
+    lines: list[str],
+    rule_idx: int,
+    opener_indent: int,
+    col_starts: list[int],
 ) -> list[str]:
-    """Look back from ``rule_idx`` for non-blank, same-indent, non-rule
-    lines. These are header rows of a Shape-B table (pandoc emits this
-    for ``\\begin{table}`` floats with no ``\\toprule`` / ``\\bottomrule``).
+    """Look back from ``rule_idx`` for non-blank lines whose first
+    non-whitespace character falls within the rule's first column.
+    These are header rows of a Shape-B table (pandoc emits this for
+    ``\\begin{table}`` floats with no ``\\toprule`` / ``\\bottomrule``).
 
-    Stops at: a blank line, start of file, different indent, or
-    another rule line.
+    The indent check is ``opener_indent <= prev_indent < col_starts[1]``
+    rather than equality: pandoc column-aligns header cells by character
+    position, not by leading-whitespace count, so a header at indent 3
+    on a rule at indent 2 is still column-aligned if the first column
+    spans positions [2, 12). Equality would miss this shape (Deep-
+    Learning book's ``execution_map`` table, 1-col-table-shape case).
+
+    Stops at: a blank line, start of file, indent outside the first
+    column's range, or another rule line.
     """
+    # The first column's right edge. When there's only one dash group
+    # (we shouldn't get called in that case — ``_rule_columns`` requires
+    # 2+), fall back to a permissive upper bound.
+    first_col_end = col_starts[1] if len(col_starts) > 1 else len(lines[rule_idx])
     header: list[str] = []
     k = rule_idx - 1
     while k >= 0:
@@ -112,7 +127,7 @@ def _collect_header_above(
         if not prev.strip():
             break
         prev_indent = len(prev) - len(prev.lstrip())
-        if prev_indent != opener_indent:
+        if prev_indent < opener_indent or prev_indent >= first_col_end:
             break
         if _rule_columns(prev) is not None:
             break
@@ -173,7 +188,7 @@ def convert_simple_tables(text: str) -> str:
 
         # Shape-B header rows above (popped off ``out`` below if we
         # actually emit a list-table).
-        header_above = _collect_header_above(lines, i, opener_indent)
+        header_above = _collect_header_above(lines, i, opener_indent, col_starts)
 
         # Forward scan. Three possible terminators (mutually exclusive):
         rule_positions: list[int] = []
@@ -332,11 +347,17 @@ def convert_simple_tables(text: str) -> str:
                     caption = cap_m.group(1).strip()
                     next_i = m + 1
 
-        out.append('```{list-table}')
+        # Caption goes on the directive opener as the argument — MyST's
+        # canonical form. MyST's ``{list-table}`` does NOT accept a
+        # ``:caption:`` option (the docutils-style we previously emitted
+        # produced "unexpected option caption" warnings and the caption
+        # text was dropped from the rendered HTML).
+        opener = '```{list-table}'
+        if caption:
+            opener = f'{opener} {caption}'
+        out.append(opener)
         header_rows_count = len(parsed_blocks[0]) if has_header else 0
         out.append(f':header-rows: {header_rows_count}')
-        if caption:
-            out.append(f':caption: {caption}')
         out.append('')
         all_rows = [row for rows in parsed_blocks for row in rows]
         for row in all_rows:

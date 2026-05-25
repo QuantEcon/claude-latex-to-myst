@@ -1182,9 +1182,15 @@ def test_simple_table_preserves_math_and_refs_in_cells():
 
 
 def test_simple_table_with_caption():
+    """Caption is emitted as the directive ARGUMENT (MyST-canonical
+    form), not as a ``:caption:`` option. mystmd's ``{list-table}``
+    rejects the docutils-style option with "unexpected option caption"
+    and drops the caption text from the rendered HTML."""
     body = _table("A | B") + "\n  : My caption\n"
     out = postprocess.convert_simple_tables(body)
-    assert ":caption: My caption" in out
+    assert "```{list-table} My caption" in out
+    # The docutils-style option form must NOT appear.
+    assert ":caption:" not in out
     # Caption line should be consumed, not left behind.
     assert "  : My caption" not in out
 
@@ -1236,8 +1242,9 @@ def test_simple_table_three_column_with_header():
 
 
 def test_simple_table_three_column_with_caption():
-    """N-col tables with caption: caption migrates to ``:caption:``
-    option, header detected via interior rule."""
+    """N-col tables with caption: caption goes on the directive opener
+    as the MyST argument (``\\`\\`\\`{list-table} Caption``), not as a
+    ``:caption:`` option."""
     body = (
         "  -------- ---------- ----------\n"
         "  Item     Value      Notes\n"
@@ -1249,8 +1256,10 @@ def test_simple_table_three_column_with_caption():
         "  : Lineage from plain SGD to AdamW.\n"
     )
     out = postprocess.convert_simple_tables(body)
-    assert ":caption: Lineage from plain SGD to AdamW." in out
+    assert "```{list-table} Lineage from plain SGD to AdamW." in out
     assert ":header-rows: 1" in out
+    # Docutils-style option form must NOT appear.
+    assert ":caption:" not in out
     # Caption line should be consumed.
     assert "  : Lineage" not in out
 
@@ -1403,9 +1412,9 @@ def test_simple_table_shape_b_header_above_single_rule():
         "  : Lineage from plain SGD to AdamW.\n"
     )
     out = postprocess.convert_simple_tables(body)
-    assert "```{list-table}" in out
+    assert "```{list-table} Lineage from plain SGD to AdamW." in out
     assert ":header-rows: 1" in out
-    assert ":caption: Lineage from plain SGD to AdamW." in out
+    assert ":caption:" not in out
     # Header row absorbed (popped from `out`, not duplicated).
     assert out.count("Optimizer") == 1
     assert "* - Optimizer" in out
@@ -1441,6 +1450,44 @@ def test_simple_table_shape_b_no_caption_eof():
     assert "Name    Value" not in out
 
 
+def test_simple_table_shape_b_header_indent_within_first_column():
+    """Pandoc column-aligns header cells by character position, not by
+    leading-whitespace count. A header row at indent 3 on a rule at
+    indent 2 is still column-aligned if the first column spans
+    positions [2, N) — the header's first non-blank char sits inside
+    the first column.
+
+    Surfaced by the Deep-Learning book's ``execution_map`` table
+    where the indent-mismatch caused ``_collect_header_above`` to
+    return empty, leaving the header line outside the emitted
+    ``{list-table}`` and producing a "list-table directive must have
+    a list of lists" MyST build error.
+
+    The relaxed indent check
+    (``opener_indent <= prev_indent < col_starts[1]``) absorbs this
+    case correctly."""
+    body = (
+        "   **Ch.**  **Topic**               **Notebooks**\n"
+        "  --------- ----------------------- ------------------------\n"
+        "      1     Intro to ML & DL        01_Intro_to_DL.ipynb\n"
+        "      2     Linear regression       02_LinReg.ipynb\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert ":header-rows: 1" in out
+    # Header row absorbed.
+    assert "* - **Ch.**" in out
+    assert "  - **Topic**" in out
+    assert "  - **Notebooks**" in out
+    # Body rows present.
+    assert "* - 1" in out
+    assert "  - Intro to ML & DL" in out
+    assert "* - 2" in out
+    # Header line and dash rule must NOT survive as raw text.
+    assert out.count("**Ch.**") == 1
+    assert "---------" not in out
+
+
 def test_simple_table_shape_b_preceded_by_prose_with_blank_separator():
     """Shape-B header detection must NOT absorb preceding paragraphs.
     The blank line between prose and the header bounds the look-back."""
@@ -1458,9 +1505,9 @@ def test_simple_table_shape_b_preceded_by_prose_with_blank_separator():
     # The intro paragraph survives.
     assert "An introductory paragraph at indent zero." in out
     assert out.count("introductory paragraph") == 1
-    # Table converted with caption.
-    assert "```{list-table}" in out
-    assert ":caption: Caption text." in out
+    # Table converted with caption as directive argument.
+    assert "```{list-table} Caption text." in out
+    assert ":caption:" not in out
     assert "* - Item" in out
     assert "  - Value" in out
 
@@ -1489,8 +1536,9 @@ def test_simple_table_header_plus_caption_inside_center():
     )
     out = postprocess.convert_simple_tables(body)
     assert out.count("```{list-table}") == 1
+    assert "```{list-table} Common symbols used throughout." in out
     assert ":header-rows: 1" in out
-    assert ":caption: Common symbols used throughout." in out
+    assert ":caption:" not in out
     assert "* - Symbol" in out
     assert "  - Meaning" in out
     assert "* - $X$" in out
