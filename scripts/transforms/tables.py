@@ -1,9 +1,18 @@
 """Pandoc simple_tables → MyST {list-table} directives (closes #19, #34).
 
 Converts pandoc's fixed-width simple_tables and multiline_tables of any
-column count (2+) to MyST ``{list-table}`` directives. An interior
-dash-rule is treated as a header/body separator and triggers
-``:header-rows: 1`` in the emitted directive.
+column count (2+) to MyST ``{list-table}`` directives. Handles three
+shapes:
+
+- **Shape A** (top rule + body + bottom rule): the classic
+  ``\\begin{center}\\begin{tabular}…`` layout. An interior dash-rule
+  with the same column count is treated as a header/body separator.
+- **Shape B** (header row + single dash-rule + body, no top/bottom
+  rule): pandoc's output for ``\\begin{table}\\begin{tabular}…`` floats
+  with no ``\\toprule`` / ``\\bottomrule``. The header is detected as
+  same-indent non-blank lines immediately above the rule.
+- **Fenced-div bounded**: tables wrapped in ``::: center`` may omit
+  the closing rule; the ``:::`` line bounds the scan.
 
 Alignment encoding from dash-rule column widths is deliberately NOT
 implemented — ``{list-table}`` defaults (left-aligned) cover the
@@ -15,11 +24,12 @@ from __future__ import annotations
 import re
 
 
-# ── Module-level regexes ──────────────────────────────────────────────────────
-
 # A pandoc dash-rule line: indented, then 2+ dash groups separated by
 # single-or-more spaces.
 _RULE_RE = re.compile(r'^(\s+)(-+(?: +-+)+)\s*$')
+
+# A pandoc table caption line: indented, then ``: text``.
+_CAPTION_RE = re.compile(r'^\s*:\s+\S')
 
 
 def _rule_columns(line: str) -> list[tuple[int, int]] | None:
@@ -28,6 +38,11 @@ def _rule_columns(line: str) -> list[tuple[int, int]] | None:
     if not _RULE_RE.match(line):
         return None
     return [(m.start(), m.end()) for m in re.finditer(r'-+', line)]
+
+
+def _is_fence_boundary(line: str) -> bool:
+    s = line.strip()
+    return s == ':::' or s.startswith('::: ')
 
 
 def _split_row(line: str, col_starts: list[int]) -> list[str]:
@@ -80,35 +95,53 @@ def _parse_block(
     return rows
 
 
+def _collect_header_above(
+    lines: list[str], rule_idx: int, opener_indent: int
+) -> list[str]:
+    """Look back from ``rule_idx`` for non-blank, same-indent, non-rule
+    lines. These are header rows of a Shape-B table (pandoc emits this
+    for ``\\begin{table}`` floats with no ``\\toprule`` / ``\\bottomrule``).
+
+    Stops at: a blank line, start of file, different indent, or
+    another rule line.
+    """
+    header: list[str] = []
+    k = rule_idx - 1
+    while k >= 0:
+        prev = lines[k]
+        if not prev.strip():
+            break
+        prev_indent = len(prev) - len(prev.lstrip())
+        if prev_indent != opener_indent:
+            break
+        if _rule_columns(prev) is not None:
+            break
+        header.insert(0, prev)
+        k -= 1
+    return header
+
+
 def convert_simple_tables(text: str) -> str:
     """Convert pandoc simple_tables / multiline_tables to MyST ``{list-table}``.
 
-    Pandoc renders LaTeX ``tabular`` as fixed-width dash-bordered blocks::
+    Forward-scan terminator decision:
 
-          ----------    -----------------------
-          $\\1\\{P\\}$  indicator function...
-          $\\alpha$     defined as 1
-          ----------    -----------------------
+    - A matching same-column-count rule is the **closer** if the next
+      non-blank line is the fenced-div boundary, a caption (``  : …``),
+      EOF, or content at a different indent than the opener. It is an
+      **interior rule** (header separator) if the next non-blank line is
+      a row at the same indent as the opener — in that case scanning
+      continues looking for the real closer.
+    - A ``:::`` line is the fenced-div boundary.
+    - A blank line whose following non-blank line is a caption or
+      content at a different indent is the **implicit end** of a Shape-B
+      table (no closing rule). Multiline_table row-separator blank
+      lines are distinguished by the next non-blank being a row at the
+      same indent.
 
-    which is hostile to manual edits and renders poorly. The right MyST
-    target is ``{list-table}``.
-
-    Header detection: an interior dash-rule with the same column count as
-    the opener marks the header/body boundary. Tables with such a
-    separator emit ``:header-rows: 1``; bare tables (no interior rule)
-    emit ``:header-rows: 0``.
-
-    Column-count guard: the closing rule must have the SAME column count
-    as the opener. A 3-col opener followed downstream by a 2-col rule is
-    not a match — preserves us against fusing two adjacent tables of
-    different shapes.
-
-    Caption: ``  : caption text`` after the closing rule is migrated to
-    the directive's ``:caption:`` option.
-
-    Bounding: when no closing rule exists (e.g. multiline_tables wrapped
-    in ``::: center``), the scan stops at the ``:::`` fenced-div
-    boundary rather than running on into the next table (issue #24).
+    Column-count guard: the closing rule must have the same column
+    count as the opener — a 3-col opener and a 5-col rule downstream
+    are not the same table.
     """
     lines = text.split('\n')
     out: list[str] = []
@@ -135,73 +168,130 @@ def convert_simple_tables(text: str) -> str:
             continue
 
         ncols = len(dash_spans)
-        # ``col_starts[k]`` is the horizontal position of column k's
-        # left edge in the rule. The first column slice starts at 0
-        # so leading indent is captured and stripped (matches the
-        # historical 2-col behavior).
         col_starts = [s for s, _ in dash_spans]
+        opener_indent = len(line) - len(line.lstrip())
 
-        # Forward-scan: collect interior matching rules and the boundary
-        # (either a same-column-count closing rule or a ``:::`` fenced-div
-        # marker). Rules that do NOT match the opener's column count are
-        # ignored — they belong to a different table.
+        # Shape-B header rows above (popped off ``out`` below if we
+        # actually emit a list-table).
+        header_above = _collect_header_above(lines, i, opener_indent)
+
+        # Forward scan. Three possible terminators (mutually exclusive):
         rule_positions: list[int] = []
+        closer_idx: int | None = None
         boundary_idx: int | None = None
+        implicit_end_idx: int | None = None
+
         j = i + 1
         while j < len(lines):
             cand = lines[j]
-            cand_stripped = cand.strip()
-            if cand_stripped == ':::' or cand_stripped.startswith('::: '):
+            if _is_fence_boundary(cand):
                 boundary_idx = j
                 break
+
             cand_spans = _rule_columns(cand)
             if cand_spans is not None and len(cand_spans) == ncols:
                 rule_positions.append(j)
+                # Closer vs. interior decision via next non-blank line.
+                m = j + 1
+                while m < len(lines) and not lines[m].strip():
+                    m += 1
+                if m >= len(lines):
+                    closer_idx = j
+                    break
+                nxt = lines[m]
+                if _is_fence_boundary(nxt) or _CAPTION_RE.match(nxt):
+                    closer_idx = j
+                    break
+                nxt_indent = len(nxt) - len(nxt.lstrip())
+                if nxt_indent != opener_indent:
+                    closer_idx = j
+                    break
+                # Otherwise this rule is interior (header separator).
+                j += 1
+                continue
+
+            # Blank-line termination is only meaningful for Shape-B
+            # tables (no closing rule; body ends at blank + caption /
+            # different-indent content / EOF). For Shape A, an unclosed
+            # opener should bail at the outer level — letting blanks
+            # implicitly terminate would convert malformed tables that
+            # the old 2-col code (and current callers) expect to leave
+            # untouched.
+            if not cand.strip() and header_above:
+                m = j + 1
+                while m < len(lines) and not lines[m].strip():
+                    m += 1
+                if m >= len(lines):
+                    implicit_end_idx = j
+                    break
+                nxt = lines[m]
+                if _is_fence_boundary(nxt):
+                    # Let the outer loop's boundary check handle it.
+                    j += 1
+                    continue
+                if _CAPTION_RE.match(nxt):
+                    implicit_end_idx = j
+                    break
+                nxt_spans = _rule_columns(nxt)
+                if nxt_spans is not None and len(nxt_spans) == ncols:
+                    # Next is a same-shape rule (within-table separator
+                    # in a multiline_table). Continue scanning.
+                    j += 1
+                    continue
+                nxt_indent = len(nxt) - len(nxt.lstrip())
+                if nxt_indent != opener_indent:
+                    implicit_end_idx = j
+                    break
+                # Same-indent row → continuation. Continue.
             j += 1
 
-        # No closing rule and no fenced-div boundary → unclosed opener,
-        # leave it alone (defensive: don't swallow rest of file).
-        if not rule_positions and boundary_idx is None:
+        # Shape B running to EOF without any explicit terminator.
+        if (closer_idx is None and boundary_idx is None
+                and implicit_end_idx is None and header_above):
+            implicit_end_idx = len(lines)
+
+        if (closer_idx is None and boundary_idx is None
+                and implicit_end_idx is None):
             out.append(line)
             i += 1
             continue
 
-        # Segment row-content into "blocks" delimited by interior rules
-        # and the boundary. A simple_table with header has one interior
-        # rule (between header and body) plus a closing rule → two
-        # blocks. A headerless table has only a closing rule → one
-        # block. Fenced-div bounded tables may have 0 or 1 interior
-        # rules depending on whether a header is present.
+        end_for_blocks = (
+            closer_idx if closer_idx is not None
+            else (boundary_idx if boundary_idx is not None else implicit_end_idx)
+        )
+
+        # Rules inside the table body: all collected positions minus the
+        # closer (if any). These slice the body into header/body blocks.
+        interior_rules = (
+            rule_positions[:-1] if closer_idx is not None
+            else list(rule_positions)
+        )
+
         blocks: list[list[str]] = []
         last_rule = i
-        for r in rule_positions:
+        for r in interior_rules:
             blocks.append(lines[last_rule + 1 : r])
             last_rule = r
-        # The "trailing" block: content between the last rule and the
-        # boundary (when fenced-div bounded). If there's a closing rule
-        # at the end with nothing after it before the boundary, the
-        # trailing block is empty and we don't add it.
-        if boundary_idx is not None and last_rule < boundary_idx:
-            trailing = lines[last_rule + 1 : boundary_idx]
-            if any(rl.strip() for rl in trailing):
-                blocks.append(trailing)
+        trailing = lines[last_rule + 1 : end_for_blocks]
+        if any(rl.strip() for rl in trailing):
+            blocks.append(trailing)
 
-        # Caption inside a fenced div: pandoc emits captions on their
-        # own line as ``^\s*:\s+TEXT``. When a table is wrapped in
-        # ``::: center`` and has a caption between the closing rule and
-        # the ``:::`` boundary, that caption ends up as the last block.
-        # Peel it off so caption-detection below picks it up from
-        # ``next_i`` — otherwise it would either inflate the block count
-        # (bail) or render as a fake table row.
+        # Defensive caption-peel: in the rare fenced-div case with a
+        # caption that wasn't separated from the body by a blank line,
+        # the caption can show up as the last block. Drop it so it's
+        # not parsed as a row; caption-detection below will find it
+        # again via ``next_i``.
         if len(blocks) >= 2:
             last = blocks[-1]
             nonblank = [rl for rl in last if rl.strip()]
-            if nonblank and all(re.match(r'^\s*:\s+\S', rl) for rl in nonblank):
+            if nonblank and all(_CAPTION_RE.match(rl) for rl in nonblank):
                 blocks.pop()
 
-        # 1 block → headerless. 2 blocks → header + body. 3+ blocks
-        # (multiple interior rules → multi-section table) is rare and
-        # ambiguous; leave alone.
+        # Shape-B header rows become blocks[0].
+        if header_above:
+            blocks.insert(0, header_above)
+
         if not blocks or len(blocks) > 2:
             out.append(line)
             i += 1
@@ -213,38 +303,38 @@ def convert_simple_tables(text: str) -> str:
             for block in blocks
             for rl in block
         )
-
         parsed_blocks = [_parse_block(b, col_starts, multiline) for b in blocks]
-        # A block that yields zero rows (e.g. only blank lines) makes the
-        # table degenerate — bail to passthrough rather than emit a
-        # malformed list-table.
         if any(not rows for rows in parsed_blocks):
             out.append(line)
             i += 1
             continue
 
-        # Determine where to resume after the table and whether a
-        # caption follows. A caption only appears after a real closing
-        # rule, not after a fenced-div boundary (the ``:::`` line itself
-        # must be preserved).
-        stopped_on_rule = bool(rule_positions) and (
-            boundary_idx is None or rule_positions[-1] < boundary_idx
-        )
-        next_i = (rule_positions[-1] + 1) if stopped_on_rule else (boundary_idx or j)
+        # Pop Shape-B header rows from ``out`` (they were appended in
+        # earlier iterations as ordinary non-rule lines).
+        if header_above:
+            del out[-len(header_above):]
+
+        if closer_idx is not None:
+            next_i = closer_idx + 1
+        elif implicit_end_idx is not None:
+            next_i = implicit_end_idx
+        else:  # boundary_idx is not None
+            next_i = boundary_idx
 
         caption = None
-        if stopped_on_rule:
-            k = next_i
-            while k < len(lines) and not lines[k].strip():
-                k += 1
-            if k < len(lines):
-                cap_m = re.match(r'^\s*:\s+(.+)$', lines[k])
+        if closer_idx is not None or implicit_end_idx is not None:
+            m = next_i
+            while m < len(lines) and not lines[m].strip():
+                m += 1
+            if m < len(lines):
+                cap_m = re.match(r'^\s*:\s+(.+)$', lines[m])
                 if cap_m:
                     caption = cap_m.group(1).strip()
-                    next_i = k + 1
+                    next_i = m + 1
 
         out.append('```{list-table}')
-        out.append(f':header-rows: {1 if has_header else 0}')
+        header_rows_count = len(parsed_blocks[0]) if has_header else 0
+        out.append(f':header-rows: {header_rows_count}')
         if caption:
             out.append(f':caption: {caption}')
         out.append('')

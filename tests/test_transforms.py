@@ -1312,7 +1312,15 @@ def test_simple_table_mismatched_column_count_not_fused():
 
 def test_simple_table_three_column_in_center():
     """3-col multiline-style table bounded by ``::: center`` (no closing
-    rule). The boundary-stop logic generalizes from 2-col (#34)."""
+    rule). The boundary-stop logic generalizes from 2-col (#34).
+
+    Also pins the Copilot-review fix: the fenced-div + with-header
+    shape used to leave the raw body rows in the output (``next_i``
+    landed inside the table body, re-emitting the rows after the
+    generated ``{list-table}``). The "raw rows absent" assertions
+    below are the regression lock — they failed before the
+    closer-vs-interior look-ahead and ``next_i = boundary_idx`` fix.
+    """
     body = (
         "::: center\n"
         "  ----  ----  ----------\n"
@@ -1333,6 +1341,128 @@ def test_simple_table_three_column_in_center():
     assert "  - first" in out
     # ``:::`` boundary must NOT be eaten.
     assert ":::" in out
+    # Raw body rows must NOT survive after the list-table.
+    assert "  A     int" not in out
+    assert "  B     str" not in out
+    # Dash-rule lines must be gone too.
+    assert "----  ----  ----------" not in out
+
+
+def test_simple_table_same_column_count_tables_separated_by_prose():
+    """Bug pinned by Copilot review: two same-column-count tables in
+    the same doc, NOT inside ``::: center``, must convert independently.
+
+    Pre-fix the forward scan greedily collected ALL same-N rules until
+    EOF, inflating the block count past 2. The first opener bailed,
+    then its *closing rule* was re-tried as a new opener — fusing the
+    intervening prose into the second table as if it were row content
+    (with the prose sliced at column boundaries).
+
+    The closer-vs-interior look-ahead fix stops the scan at the first
+    same-N rule whose next non-blank line is out-of-table content
+    (different indent, EOF, caption, fence boundary)."""
+    body = (
+        "  ----  ----\n"
+        "  A     B\n"
+        "  ----  ----\n"
+        "\n"
+        "Some prose.\n"
+        "\n"
+        "  ----  ----\n"
+        "  X     Y\n"
+        "  ----  ----\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert out.count("```{list-table}") == 2
+    assert "Some prose." in out
+    # Prose must NOT be sliced into cells.
+    assert "* - Some pro" not in out
+    assert "  - se." not in out
+    # Both tables' rows present.
+    assert "* - A" in out
+    assert "  - B" in out
+    assert "* - X" in out
+    assert "  - Y" in out
+
+
+def test_simple_table_shape_b_header_above_single_rule():
+    """Pandoc's ``\\begin{table}\\begin{tabular}...\\end{tabular}
+    \\caption{...}\\end{table}`` (no ``\\toprule`` / ``\\bottomrule``)
+    produces a single dash-rule with the header row above it and no
+    closing rule. The Deep-Learning book has ~37 tables in this shape
+    that the original Shape-A-only logic left as raw text (#34). Now
+    handled via header-above detection + blank-line/caption implicit
+    termination."""
+    body = (
+        "  Optimizer            Update rule          Reference\n"
+        "  -------------------- -------------------- --------------------------\n"
+        "  SGD                  plain SGD            standard\n"
+        "  Adam                 per-param adaptive   widely used\n"
+        "  AdamW                Adam plus decay      current default\n"
+        "\n"
+        "  : Lineage from plain SGD to AdamW.\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert ":header-rows: 1" in out
+    assert ":caption: Lineage from plain SGD to AdamW." in out
+    # Header row absorbed (popped from `out`, not duplicated).
+    assert out.count("Optimizer") == 1
+    assert "* - Optimizer" in out
+    assert "  - Update rule" in out
+    assert "  - Reference" in out
+    # Body rows present, exactly once each.
+    assert "* - SGD" in out
+    assert "* - Adam" in out
+    assert "* - AdamW" in out
+    # Dash-rule and caption-as-line must be gone.
+    assert "--------------------" not in out
+    assert "  : Lineage" not in out
+
+
+def test_simple_table_shape_b_no_caption_eof():
+    """Shape B without a caption — body runs to EOF. The Shape-B
+    EOF fallback (header_above non-empty + no other terminator →
+    implicit_end_idx = len(lines)) handles this."""
+    body = (
+        "  Name    Value\n"
+        "  ------- -------\n"
+        "  alpha   1.0\n"
+        "  beta    2.5\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert ":header-rows: 1" in out
+    assert "* - Name" in out
+    assert "  - Value" in out
+    assert "* - alpha" in out
+    assert "* - beta" in out
+    # Header line must be absorbed, not left as raw text.
+    assert "Name    Value" not in out
+
+
+def test_simple_table_shape_b_preceded_by_prose_with_blank_separator():
+    """Shape-B header detection must NOT absorb preceding paragraphs.
+    The blank line between prose and the header bounds the look-back."""
+    body = (
+        "An introductory paragraph at indent zero.\n"
+        "\n"
+        "  Item     Value\n"
+        "  -------- -------\n"
+        "  alpha    1.0\n"
+        "  beta     2.5\n"
+        "\n"
+        "  : Caption text.\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # The intro paragraph survives.
+    assert "An introductory paragraph at indent zero." in out
+    assert out.count("introductory paragraph") == 1
+    # Table converted with caption.
+    assert "```{list-table}" in out
+    assert ":caption: Caption text." in out
+    assert "* - Item" in out
+    assert "  - Value" in out
 
 
 def test_simple_table_header_plus_caption_inside_center():
