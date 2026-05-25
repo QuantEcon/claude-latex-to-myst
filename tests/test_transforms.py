@@ -602,6 +602,126 @@ def test_frontmatter_per_call_style_override_to_absorbed():
     assert "label: c-foo" in out
 
 
+def test_cross_ref_routing_default_unchanged_when_no_config():
+    """Regression guard: an empty/no config preserves the default
+    routing table (every existing book continues to work)."""
+    postprocess.apply_config({"source_dir": "."})
+    # Defaults: eq → {eq}, fig → {numref}, sec → {ref}, thm → {prf:ref}.
+    out = postprocess.convert_cross_references(
+        '[X](#eq:foo){reference-type="ref" reference="eq:foo"} '
+        '[Y](#fig:bar){reference-type="ref" reference="fig:bar"} '
+        '[Z](#sec:baz){reference-type="ref" reference="sec:baz"} '
+        '[W](#thm:qux){reference-type="ref" reference="thm:qux"}'
+    )
+    assert '{eq}`eq-foo`' in out
+    assert '{numref}`fig-bar`' in out
+    assert '{ref}`sec-baz`' in out
+    assert '{prf:ref}`thm-qux`' in out
+    postprocess._EXTRA_CROSS_REF_ROUTING = []
+
+
+def test_cross_ref_routing_string_prefix_expands_to_both_forms():
+    """``prefix: "lst"`` should match both ``lst:foo`` (raw label) and
+    ``lst-foo`` (post-colon-to-hyphen). The string form is the
+    book-friendly shorthand for the common case."""
+    postprocess.apply_config({
+        "source_dir": ".",
+        "cross_ref_routing": [
+            {"prefix": "lst", "role": "numref"},
+        ],
+    })
+    out = postprocess.convert_cross_references(
+        '[X](#lst:demo){reference-type="ref" reference="lst:demo"}'
+    )
+    assert '{numref}`lst-demo`' in out
+    postprocess._EXTRA_CROSS_REF_ROUTING = []
+
+
+def test_cross_ref_routing_explicit_prefix_list():
+    """A list of prefixes lets a book route multiple distinct prefixes
+    to the same role without repeating themselves."""
+    postprocess.apply_config({
+        "source_dir": ".",
+        "cross_ref_routing": [
+            {"prefix": ["prog-", "snippet-"], "role": "numref"},
+        ],
+    })
+    out = postprocess.convert_cross_references(
+        '[X](#prog-foo){reference-type="ref" reference="prog-foo"} '
+        '[Y](#snippet-bar){reference-type="ref" reference="snippet-bar"}'
+    )
+    assert '{numref}`prog-foo`' in out
+    assert '{numref}`snippet-bar`' in out
+    postprocess._EXTRA_CROSS_REF_ROUTING = []
+
+
+def test_cross_ref_routing_extras_take_precedence_over_defaults():
+    """Per-book entry can override a default. ``eq:`` defaults to
+    ``{eq}``; a book that wants ``{numref}`` for equations gets it."""
+    postprocess.apply_config({
+        "source_dir": ".",
+        "cross_ref_routing": [
+            {"prefix": "eq", "role": "numref"},
+        ],
+    })
+    out = postprocess.convert_cross_references(
+        '[X](#eq:foo){reference-type="ref" reference="eq:foo"}'
+    )
+    assert '{numref}`eq-foo`' in out
+    postprocess._EXTRA_CROSS_REF_ROUTING = []
+
+
+def test_cross_ref_routing_validation_rejects_missing_role():
+    """Bad config: entry without role key."""
+    with pytest.raises(SystemExit, match="requires 'prefix' and 'role'"):
+        postprocess.apply_config({
+            "source_dir": ".",
+            "cross_ref_routing": [{"prefix": "lst"}],
+        })
+
+
+def test_doubled_noun_refs_default_unchanged_when_no_config():
+    """Regression guard: empty config preserves default doubled-noun
+    strips (Theorem, Lemma, Listing, …)."""
+    postprocess.apply_config({"source_dir": "."})
+    out = postprocess.strip_doubled_noun_refs(
+        "Theorem {prf:ref}`t-main` proves it."
+    )
+    assert out == "{prf:ref}`t-main` proves it."
+    postprocess._EXTRA_DOUBLED_NOUN_REFS = []
+
+
+def test_doubled_noun_refs_config_extension():
+    """Books with custom theorem-class nouns ("Claim", "Conjecture")
+    extend the strip list via config."""
+    postprocess.apply_config({
+        "source_dir": ".",
+        "doubled_noun_refs": [
+            {"noun": "Claim",      "prefix": "claim-"},
+            {"noun": "Conjecture", "prefix": "conj-"},
+        ],
+    })
+    out = postprocess.strip_doubled_noun_refs(
+        "Claim {prf:ref}`claim-foo` and Conjecture {prf:ref}`conj-bar`."
+    )
+    assert out == "{prf:ref}`claim-foo` and {prf:ref}`conj-bar`."
+    # Defaults still apply.
+    out2 = postprocess.strip_doubled_noun_refs(
+        "Theorem {prf:ref}`t-main`."
+    )
+    assert out2 == "{prf:ref}`t-main`."
+    postprocess._EXTRA_DOUBLED_NOUN_REFS = []
+
+
+def test_doubled_noun_refs_validation_rejects_missing_prefix():
+    """Bad config: entry without prefix key."""
+    with pytest.raises(SystemExit, match="string 'noun' and 'prefix'"):
+        postprocess.apply_config({
+            "source_dir": ".",
+            "doubled_noun_refs": [{"noun": "Claim"}],
+        })
+
+
 def test_chapter_styles_populated_from_config():
     """apply_config should pick up per-stem `frontmatter_style` from
     chapters[] and extra_files[] entries, and leave unspecified stems

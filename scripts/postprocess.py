@@ -578,45 +578,53 @@ def convert_equations(text: str) -> str:
     return text
 
 
+_DEFAULT_CROSS_REF_ROUTING: list[tuple[tuple[str, ...], str]] = [
+    (('eq:', 'eq-'),                                'eq'),
+    (('f:', 'fig:'),                                'numref'),
+    (('tab:', 'tbl:'),                              'numref'),
+    # Code-block listings (``{code-block}`` with ``:name: list-…``) are
+    # enumerable; ``{numref}`` lets MyST render the auto-counter (default
+    # "Program N") rather than dumping the caption inline (issue #8).
+    (('list:', 'list-'),                            'numref'),
+    # Theorem-like family. ``alg:`` / ``algo:`` target ``prf:algorithm``
+    # (book-dp1 convention `\label{algo:foo}` → `algo-foo`). ``eg:``
+    # targets ``prf:example``. Both full-word forms were missed by the
+    # original short-form abbreviations — issue #9.
+    (('t:', 'thm:', 'l:', 'lem:', 'p:', 'pr:', 'prop:',
+      'd:', 'def:', 'c:', 'cor:', 'ex:', 'r:', 'rem:',
+      'a:', 'as:',
+      'alg:', 'algo:', 'algo-',
+      'eg:', 'eg-'),                                'prf:ref'),
+    (('s:', 'ss:', 'sss:', 'sec:', 'ch:', 'c-', 'c:'), 'ref'),
+]
+
+# Per-book extension of the routing table. Populated by ``apply_config``
+# from ``cross_ref_routing`` in config.yaml. Extras take precedence over
+# defaults so a book can override the role for a prefix the defaults
+# already match.
+_EXTRA_CROSS_REF_ROUTING: list[tuple[tuple[str, ...], str]] = []
+
+
 def convert_cross_references(text: str) -> str:
     """Convert pandoc cross-reference syntax to MyST.
-    
+
     Patterns:
     - [display](#target){reference-type="eqref" reference="target"} → {eq}`target`
     - [display](#target){reference-type="ref+label" reference="target"} → {ref/numref/prf:ref}`target`
     - [display](#target){reference-type="ref" reference="target"} → {ref}`target`
     """
     def make_ref(target):
-        """Generate the appropriate MyST ref role for a single target."""
+        """Generate the appropriate MyST ref role for a single target.
+
+        Routing rules come from ``_EXTRA_CROSS_REF_ROUTING`` (per-book
+        config) merged with ``_DEFAULT_CROSS_REF_ROUTING`` (built-ins).
+        First match wins; falls back to ``{ref}`` for unrecognised
+        prefixes."""
         target_converted = convert_label_colons(target)
-        if target.startswith(('eq:', 'eq-')):
-            return '{eq}`' + target_converted + '`'
-        elif target.startswith(('f:', 'fig:')):
-            return '{numref}`' + target_converted + '`'
-        elif target.startswith(('tab:', 'tbl:')):
-            return '{numref}`' + target_converted + '`'
-        elif target.startswith(('list:', 'list-')):
-            # Code-block listings (``{code-block}`` with ``:name: list-…``)
-            # are enumerable; ``{numref}`` lets MyST render the auto-
-            # counter (default "Program N") rather than dumping the
-            # caption inline as ``{ref}`` would. See issue #8.
-            return '{numref}`' + target_converted + '`'
-        elif target.startswith(('t:', 'thm:', 'l:', 'lem:', 'p:', 'pr:', 'prop:',
-                                 'd:', 'def:', 'c:', 'cor:', 'ex:', 'r:', 'rem:',
-                                 'a:', 'as:',
-                                 'alg:', 'algo:', 'algo-',
-                                 'eg:', 'eg-')):
-            # alg:/algo: target prf:algorithm directives (book-dp1 uses
-            # `\label{algo:foo}` → `algo-foo` after colon→hyphen).
-            # eg:  targets prf:example directives (the ENV_MAP maps
-            # `\begin{example}` → `prf:example`). Both full-word forms
-            # were missed by the original short-form abbreviations
-            # (`alg:` / `ex:`) — issue #9.
-            return '{prf:ref}`' + target_converted + '`'
-        elif target.startswith(('s:', 'ss:', 'sss:', 'sec:', 'ch:', 'c-', 'c:')):
-            return '{ref}`' + target_converted + '`'
-        else:
-            return '{ref}`' + target_converted + '`'
+        for prefixes, role in _EXTRA_CROSS_REF_ROUTING + _DEFAULT_CROSS_REF_ROUTING:
+            if target.startswith(prefixes):
+                return '{' + role + '}`' + target_converted + '`'
+        return '{ref}`' + target_converted + '`'
     
     def replace_ref(m):
         display = m.group(1)  # not used — MyST generates its own display
@@ -1364,7 +1372,9 @@ def strip_doubled_noun_refs(text: str) -> str:
     Matches either a regular space or a non-breaking space (U+00A0) between
     the noun and the ref, since pandoc emits NBSP for LaTeX ``~`` ties.
     """
-    for noun, prefix in _DOUBLED_NOUN_REFS:
+    # Per-book extras prepend so a book can add nouns specific to its
+    # custom theorem-classes (``Claim``, ``Fact``) without forking.
+    for noun, prefix in _EXTRA_DOUBLED_NOUN_REFS + _DOUBLED_NOUN_REFS:
         # Negative lookbehind on a word char so we don't strip inside a longer
         # word (e.g. avoid touching a hypothetical "Subtheorem").
         text = re.sub(
@@ -1374,6 +1384,12 @@ def strip_doubled_noun_refs(text: str) -> str:
             text,
         )
     return text
+
+
+# Per-book extension of the doubled-noun list. Populated by
+# ``apply_config`` from ``doubled_noun_refs`` in config.yaml. Books
+# with custom theorem-class nouns extend without forking.
+_EXTRA_DOUBLED_NOUN_REFS: list[tuple[str, str]] = []
 
 
 # Label-prefix families for which qe-v5 auto-renders a noun ("Section
@@ -2677,6 +2693,8 @@ _CONFIG_SCHEMA: dict = {
     'whitespace_compression': ((str,),               False),
     'extra_environments':     ((dict, type(None)),   False),
     'skip_environments':      ((list, type(None)),   False),
+    'cross_ref_routing':      ((list, type(None)),   False),
+    'doubled_noun_refs':      ((list, type(None)),   False),
     'preprocess':             ((dict, type(None)),   False),
     'postprocess':            ((dict, type(None)),   False),
     'tikz_overrides':         ((str, type(None)),    False),
@@ -2783,6 +2801,62 @@ def apply_config(config: dict, base_dir: Path | None = None) -> None:
             f"config.skip_environments must be a list, got {type(skip_envs).__name__}"
         )
     ENV_SKIP = ENV_SKIP | set(skip_envs)
+
+    # Per-book extension of the label-prefix → role routing used by
+    # ``convert_cross_references.make_ref``. Each entry: ``{prefix: "X",
+    # role: "numref|ref|eq|prf:ref"}``. ``prefix`` may be a string
+    # ("lst" expands to ("lst:", "lst-")) or an explicit list. Useful
+    # when a book uses a non-default label convention (e.g. ``lst:`` for
+    # listings instead of the QuantEcon default ``list:``).
+    global _EXTRA_CROSS_REF_ROUTING
+    _EXTRA_CROSS_REF_ROUTING = []
+    for i, rule in enumerate(config.get('cross_ref_routing') or []):
+        if not isinstance(rule, dict):
+            raise SystemExit(
+                f"config.cross_ref_routing[{i}] must be a mapping"
+            )
+        if 'prefix' not in rule or 'role' not in rule:
+            raise SystemExit(
+                f"config.cross_ref_routing[{i}] requires 'prefix' and 'role'"
+            )
+        role = rule['role']
+        if not isinstance(role, str):
+            raise SystemExit(
+                f"config.cross_ref_routing[{i}].role must be a string"
+            )
+        raw = rule['prefix']
+        if isinstance(raw, str):
+            # ``"lst"`` expands to both colon- and hyphen-bearing forms,
+            # mirroring how labels arrive after ``convert_label_colons``.
+            prefixes = (f'{raw}:', f'{raw}-')
+        elif isinstance(raw, list) and all(isinstance(p, str) for p in raw):
+            prefixes = tuple(raw)
+        else:
+            raise SystemExit(
+                f"config.cross_ref_routing[{i}].prefix must be a string "
+                "or list of strings"
+            )
+        _EXTRA_CROSS_REF_ROUTING.append((prefixes, role))
+
+    # Per-book extension of the doubled-noun list used by
+    # ``strip_doubled_noun_refs``. Each entry: ``{noun: "X", prefix: "x-"}``.
+    # Useful when a book defines custom theorem classes with their own
+    # display nouns ("Claim", "Conjecture", "Fact" …).
+    global _EXTRA_DOUBLED_NOUN_REFS
+    _EXTRA_DOUBLED_NOUN_REFS = []
+    for i, rule in enumerate(config.get('doubled_noun_refs') or []):
+        if not isinstance(rule, dict):
+            raise SystemExit(
+                f"config.doubled_noun_refs[{i}] must be a mapping"
+            )
+        noun = rule.get('noun')
+        prefix = rule.get('prefix')
+        if not isinstance(noun, str) or not isinstance(prefix, str):
+            raise SystemExit(
+                f"config.doubled_noun_refs[{i}] requires string 'noun' "
+                "and 'prefix' keys"
+            )
+        _EXTRA_DOUBLED_NOUN_REFS.append((noun, prefix))
 
     style = config.get('frontmatter_style', 'absorbed')
     if style not in ('absorbed', 'standalone'):
