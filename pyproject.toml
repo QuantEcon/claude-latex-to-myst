@@ -18,6 +18,7 @@ package = false   # this is a tool repo, not a distributable library
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "pytest-cov>=5.0",
 ]
 
 [tool.pytest.ini_options]

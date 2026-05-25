@@ -12,3 +12,4 @@ tmp/
 # duplicated text whose canonical home is the upstream book-dp1 / book-dp2
 # repos). See reports/README.md for the verification workflow.
 fixtures/
+.coverage
