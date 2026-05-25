@@ -2186,8 +2186,18 @@ def convert_pandoc_attr_code_blocks(text: str) -> str:
     (pandoc attrs contain ``#``, ``.``, or ``=``; MyST directive
     names are single words).
     """
+    # The attribute group must accept ``}`` inside quoted attribute
+    # values (LaTeX caption text frequently contains ``\\texttt{Pi}``,
+    # ``\\textbf{X}``, math fragments, etc. — each carries a literal
+    # ``}``). Allow either a non-``}``/non-``"``/non-newline char, OR a
+    # complete double-quoted string (where ``}`` is fair game inside
+    # the quotes). The outer closing ``}`` is matched outside the
+    # alternation, so it still terminates the attribute block
+    # unambiguously (closes #35).
     fence_re = re.compile(
-        r'^```[ \t]+\{(?P<attrs>[^}\n]+)\}[ \t]*\n'
+        r'^```[ \t]+\{'
+        r'(?P<attrs>(?:[^}"\n]|"(?:[^"\\]|\\.)*")+)'
+        r'\}[ \t]*\n'
         r'(?P<body>.*?)'
         r'^```\s*$',
         re.DOTALL | re.MULTILINE,

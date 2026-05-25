@@ -277,6 +277,43 @@ def test_pandoc_attr_code_block_idempotent():
     assert once == twice
 
 
+def test_pandoc_attr_code_block_caption_with_braces_in_value():
+    """GH #35 — LaTeX captions with ``\\texttt{X}``, ``\\textbf{X}``,
+    math fragments etc. embed literal ``}`` inside the quoted
+    ``caption="..."`` value. The original attribute group
+    ``[^}\\n]+`` terminated at the first ``}``, so the block was
+    skipped and the pandoc-attr fence survived into MyST unconverted
+    (anchorless code, ``\\ref{lst:X}`` broken)."""
+    src = (
+        '``` {#lst:demo caption="Autodiff Euler for \\texttt{Pi}; see '
+        '\\texttt{02_Brock.ipynb}." label="lst:demo" language="Python"}\n'
+        'def loss(): pass\n'
+        '```\n'
+    )
+    out = postprocess.convert_pandoc_attr_code_blocks(src)
+    assert '```{code-block} python' in out
+    assert ':name: lst-demo' in out
+    # Caption survives end-to-end including the embedded braces.
+    assert 'Autodiff Euler for \\texttt{Pi}' in out
+    assert '\\texttt{02_Brock.ipynb}' in out
+
+
+def test_pandoc_attr_code_block_multiple_braced_macros_in_caption():
+    """Regression guard: more than one brace-bearing macro in the
+    same caption still parses correctly."""
+    src = (
+        '``` {#lst:demo caption="Use \\texttt{a}, \\textbf{b}, '
+        'and $\\mathbb{R}$." label="lst:demo"}\n'
+        'x = 1\n'
+        '```\n'
+    )
+    out = postprocess.convert_pandoc_attr_code_blocks(src)
+    assert ':name: lst-demo' in out
+    assert '\\texttt{a}' in out
+    assert '\\textbf{b}' in out
+    assert '$\\mathbb{R}$' in out
+
+
 # ── Doubled-prefix strips (lessons #011 + #016) ──────────────────────────────
 
 

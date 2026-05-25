@@ -148,6 +148,16 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **Pandoc-attr fence regex stopped at the first `}` inside a quoted
+  caption value** ([#35]): direct regression from the [#31]
+  ``convert_pandoc_attr_code_blocks`` introduction — the attribute
+  group ``[^}\n]+`` terminated at the first ``}`` from
+  ``\texttt{X}`` / ``\textbf{X}`` / math etc., so any lstlisting
+  with a styled caption was silently skipped. Rewrote the attribute
+  group as quote-aware: ``[^}"\n]`` outside quotes OR a complete
+  ``"..."`` run where ``}`` is permitted. The outer closing ``}``
+  still unambiguously terminates the block. Lesson [036]. Closes
+  [#35].
 - **Textual `@key` citation regex swallowed trailing `:` from prose**
   ([#36]): direct regression from the [#32] widening — adding `:`
   to the boundary lookahead meant ``\citet{key}: explanation`` had
@@ -564,6 +574,7 @@ haven't validated. Everything below is on `main` and available now.
 [#31]: https://github.com/QuantEcon/claude-latex-to-myst/issues/31
 [#32]: https://github.com/QuantEcon/claude-latex-to-myst/issues/32
 [#33]: https://github.com/QuantEcon/claude-latex-to-myst/issues/33
+[#35]: https://github.com/QuantEcon/claude-latex-to-myst/issues/35
 [#36]: https://github.com/QuantEcon/claude-latex-to-myst/issues/36
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
@@ -582,6 +593,7 @@ haven't validated. Everything below is on `main` and available now.
 [033]: lessons/033-pandoc-pre-resolves-ref-inside-caption-to-wrong-number.md
 [034]: lessons/034-pandoc-attr-fenced-code-blocks-need-myst-directive-conversion.md
 [035]: lessons/035-citation-regex-trailing-colon-swallowed-into-key.md
+[036]: lessons/036-attr-fence-regex-chokes-on-braces-in-caption-values.md
 
 ### Settled architectural decisions
 
