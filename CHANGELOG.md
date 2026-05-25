@@ -105,6 +105,14 @@ haven't validated. Everything below is on `main` and available now.
   #33, #35, #37 — name-mismatches where counts pass but the
   rendered output silently breaks. Opt out with
   `validate.cross_ref_resolution: false`.
+- **Directive-type compatibility check** (P1a-prime, prompted by
+  [#38]): for every resolved cross-reference, the role must match
+  the routing-role for the target label's prefix. ``{ref}`eq-foo``
+  flagged as needing ``{eq}``; ``{ref}`alg-young`` flagged as
+  needing ``{prf:ref}``; etc. Opt out with
+  `validate.cross_ref_type_compatibility: false`. ``main()`` calls
+  ``apply_config`` up-front so per-book ``cross_ref_routing:``
+  overrides apply.
 - **`validate.broken_inline_math`** ([af44cb5]) — flags inline math
   whose continuation line opens with `>` (silently parsed as a
   blockquote marker by MyST). Folds in book-dp1's standalone
@@ -192,6 +200,34 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **Algorithm `\label{}` as sibling of `\caption{}` not preserved**
+  ([#39]): the algorithm preprocessor recognised
+  ``\caption{\label{algo:foo} Title}`` but not the dominant LaTeX
+  shape ``\caption{Title}\n\label{alg:foo}`` (sibling). Sibling
+  labels fell through to an auto-generated name and every body
+  ``\ref{alg:X}`` was broken (3 sites in the Deep-Learning book).
+  ``_extract_caption`` now scans three positions: inside the caption,
+  after it (sibling), or anywhere in the body before it. Audited
+  ``_apply_algorithmic_markers.py`` — that preprocessor has no
+  caption/label layer so it's unaffected.
+- **HTML entities inside caption math** ([#40]): pandoc HTML-encodes
+  ``<`` / ``>`` / ``&`` inside ``<figcaption>``. Inside prose the
+  browser decodes them; inside ``$...$`` KaTeX sees the entity as
+  literal chars and fails to parse (``$\mu+I&gt;0$`` → KaTeX parse
+  error). ``extract_caption`` now runs ``html.unescape`` on the
+  whole caption — idempotent on plain text, source-readable, PDF-
+  build-safe. Closes [#40].
+- **Caption refs to typed targets emitted generic `{ref}`** ([#38]):
+  the [#33] caption-ref converter emitted ``{ref}`` for every
+  pandoc-resolved ref. MyST cannot resolve ``{ref}`` to equation
+  anchors (``$$ ... $$ (eq-X)``), figure anchors, or
+  ``{prf:algorithm}`` directives — those need ``{eq}`` /
+  ``{numref}`` / ``{prf:ref}`` respectively. 12 broken caption refs
+  in the Deep-Learning book. ``extract_caption`` now dispatches by
+  label prefix via ``routing_role`` (refactored out of
+  ``convert_cross_references.make_ref`` as a module-level helper
+  in ``transforms/refs.py`` — single source of truth for label
+  taxonomy across body and caption refs). Closes [#38].
 - **`\label{}` extraction not applied to `multline` / `gather`**
   ([#37]): incompleteness from [#30]. That fix unified the
   ``align`` handlers to scan the body for any ``\label{}``, but
@@ -633,6 +669,9 @@ haven't validated. Everything below is on `main` and available now.
 [#35]: https://github.com/QuantEcon/claude-latex-to-myst/issues/35
 [#36]: https://github.com/QuantEcon/claude-latex-to-myst/issues/36
 [#37]: https://github.com/QuantEcon/claude-latex-to-myst/issues/37
+[#38]: https://github.com/QuantEcon/claude-latex-to-myst/issues/38
+[#39]: https://github.com/QuantEcon/claude-latex-to-myst/issues/39
+[#40]: https://github.com/QuantEcon/claude-latex-to-myst/issues/40
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
