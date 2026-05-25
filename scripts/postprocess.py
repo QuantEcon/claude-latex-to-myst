@@ -79,12 +79,8 @@ ENV_SKIP = {'multicols', 'minipage', 'center'}
 # (range/list separators) don't need extra handling: only the leading
 # plural-noun token is redundant; the refs between separators have no
 # intervening noun for sphinx-proof to collide with.
-# _DOUBLED_NOUN_REFS moved to transforms/refs.py (P3a)
-
 from transforms._helpers import convert_label_colons  # re-export (P3a)
 
-
-# convert_environment_divs moved to transforms/envs.py (P3a)
 
 from transforms.typography import (  # noqa: E402  (re-exports for P3a)
     strip_pandoc_html_separators,
@@ -140,8 +136,6 @@ from transforms.frontmatter import (  # noqa: E402  (re-exports for P3a)
     add_frontmatter,
 )
 
-# _DEFAULT_CROSS_REF_ROUTING moved to transforms/refs.py (P3a)
-
 # Per-book extension of the routing table. Populated by ``apply_config``
 # from ``cross_ref_routing`` in config.yaml. Extras take precedence over
 # defaults so a book can override the role for a prefix the defaults
@@ -149,28 +143,8 @@ from transforms.frontmatter import (  # noqa: E402  (re-exports for P3a)
 _EXTRA_CROSS_REF_ROUTING: list[tuple[tuple[str, ...], str]] = []
 
 
-# convert_cross_references moved to transforms/refs.py (P3a)
-
-# _NATBIB_MARKER_ROLE moved to transforms/cite.py (P3a)
 
 
-
-# decode_natbib_markers moved to transforms/cite.py (P3a)
-
-# convert_citations moved to transforms/cite.py (P3a)
-
-# convert_figures moved to transforms/figures.py (P3a)
-
-# convert_section_labels moved to transforms/frontmatter.py (P3a)
-
-# convert_standalone_labels moved to transforms/frontmatter.py (P3a)
-
-# convert_simple_tables moved to transforms/tables.py (P3a)
-
-# convert_epigraphs moved to transforms/typography.py (P3a)
-
-
-# convert_html_figures moved to transforms/figures.py (P3a)
 
 # ── TikZ figure resolution ───────────────────────────────────────────────────
 
@@ -190,12 +164,6 @@ TIKZ_FIGURE_MAP: dict = {}
 TIKZCD_INLINE_MAP: dict = {}
 
 
-# resolve_tikz_figures moved to transforms/figures.py (P3a)
-
-# join_split_inline_math moved to transforms/math.py (P3a)
-
-# strip_doubled_noun_refs moved to transforms/refs.py (P3a)
-
 # Per-book extension of the doubled-noun list. Populated by
 # ``apply_config`` from ``doubled_noun_refs`` in config.yaml. Books
 # with custom theorem-class nouns extend without forking.
@@ -211,18 +179,6 @@ _EXTRA_DOUBLED_NOUN_REFS: list[tuple[str, str]] = []
 # Mostly section-style prefixes, plus ``eg-`` after a dp2 instance of
 # the author writing ``\S\ref{eg:foo}`` (semantic mismatch — `\S` is the
 # section symbol, but they pointed it at an example). See lesson 016.
-# _DOUBLED_SECTION_SYMBOL_PREFIXES moved to transforms/refs.py (P3a)
-
-# strip_doubled_section_symbol moved to transforms/refs.py (P3a)
-
-# strip_footnote_refs moved to transforms/refs.py (P3a)
-
-# strip_blank_lines_in_math moved to transforms/math.py (P3a)
-
-# ensure_blank_after_display_math moved to transforms/math.py (P3a)
-
-# cleanup_typography moved to transforms/typography.py (P3a)
-
 
 # ── minted listings → {code-block} ───────────────────────────────────────────
 #
@@ -240,8 +196,6 @@ _EXTRA_DOUBLED_NOUN_REFS: list[tuple[str, str]] = []
 _LISTING_SOURCE_BASE: Path | None = None
 
 
-# resolve_listings moved to transforms/code.py (P3a)
-
 # ── algorithm2e → {prf:algorithm} ────────────────────────────────────────────
 #
 # Algorithm bodies are intercepted before pandoc by
@@ -257,12 +211,6 @@ _LISTING_SOURCE_BASE: Path | None = None
 #  _algpseudo_tokenize, _algpseudo_inline, _algpseudo_convert_body,
 #  _algo_convert_body, resolve_algorithms, resolve_algorithmics
 
-# compress_directive_whitespace moved to transforms/typography.py (P3a)
-
-
-# apply_postprocess_rewrites moved to transforms/frontmatter.py (P3a)
-
-# add_frontmatter moved to transforms/frontmatter.py (P3a)
 
 # Book-specific Markdown rewrites applied after the generic transforms.
 # Each entry is ``(compiled_regex, replacement, stems_or_None)``.
