@@ -974,6 +974,21 @@ constraints are satisfied by `process_text`'s call sequence.
 
 ---
 
+### Execution status
+
+| ID  | Status     | Commit     | Notes |
+|-----|------------|------------|-------|
+| P0a | ✅ done    | `d29dca0`  | Baseline 69% total, 70% postprocess.py |
+| P0b | ✅ done    | `34f28bf`  | Pipeline-order test parses `process_text` source |
+| P0c | ✅ done    | `bb48f20`  | 12 golden fixtures + `process_text` extraction. Mutation-tested. |
+| P1a | ✅ done    | `54f6db5`  | Cross-ref resolution check. 21 new tests. |
+| P1b | ✅ done    | `ad4a8e0`  | `cross_ref_routing` + `doubled_noun_refs` config hooks. 8 new tests. natbib extension deferred. |
+| P2a | ✅ done    | `1334749`  | 88 new tests (19 math env × shape + 58 cite × boundary + 11 figure). Mutation-tested: bug-in-one-env catches across all 4. |
+| P3a | ⏸ pending  | —          | `postprocess.py` module split. Plan section below intact. |
+| P3b | ⏸ pending  | —          | Per-transform `before/after` annotations. Partially redundant with P0b. |
+
+**Tests:** 251 → 383 (+132). All passing.
+
 ### Recommended execution order
 
 1. **P0a** (15min) — coverage baseline. Cheap visibility before
