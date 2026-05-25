@@ -27,6 +27,18 @@ import re
 import sys
 from pathlib import Path
 
+# When invoked as ``python3 postprocess.py …`` this module loads under the
+# name ``__main__``. Transforms in ``scripts/transforms/`` late-import via
+# ``import postprocess`` to read module-level state (TIKZ_FIGURE_MAP,
+# ENV_MAP, CHAPTER_TITLES, …) populated by apply_config / load_overrides.
+# Without this alias, that import loads a *second* copy of the module
+# under the name ``postprocess`` with the defaults frozen and every
+# mutation done in ``__main__`` invisible — TikZ figures, extra env
+# mappings, custom cross-ref routing all silently no-op. See lesson 038
+# and GH issue #42.
+if __name__ == '__main__':
+    sys.modules['postprocess'] = sys.modules[__name__]
+
 # ── Environment mapping ──────────────────────────────────────────────────────
 
 # Default mapping from pandoc-emitted ``::: envname`` divs to MyST directive

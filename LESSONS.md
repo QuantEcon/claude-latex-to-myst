@@ -44,6 +44,7 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 035 | [Citation regex trailing-`:` swallowed into key after the #32 widening](lessons/035-citation-regex-trailing-colon-swallowed-into-key.md) | regex-safety | 🟡 | codified |
 | 036 | [Pandoc-attr fence regex stops at the first `}` inside a quoted caption value](lessons/036-attr-fence-regex-chokes-on-braces-in-caption-values.md) | regex-safety | 🟡 | codified |
 | 037 | [`\label{}` extraction not applied to `multline` / `gather` (incompleteness from #30)](lessons/037-multline-gather-label-extraction-incomplete.md) | post-processing | 🟢 | codified |
+| 038 | [Late-import of `postprocess` from transform modules loads a second copy when run as `__main__`](lessons/038-postprocess-main-module-double-load.md) | tooling | 🔴 | codified |
 
 ## By category
 
@@ -53,7 +54,7 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 - **preprocess:** 028, 029, 030
 - **katex:** 003, 006
 - **myst:** 013
-- **tooling:** 009, 010
+- **tooling:** 009, 010, 038
 
 ## Open (gaps to close on the next book)
 

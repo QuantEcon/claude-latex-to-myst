@@ -200,6 +200,33 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **Transform-side late-import of `postprocess` loaded a second module
+  copy under script invocation, silently dropping every config
+  extension and override** ([#42], P3a regression): the P3a refactor
+  moved transforms into ``scripts/transforms/*.py`` modules that read
+  module-level state (``TIKZ_FIGURE_MAP``, ``ENV_MAP``,
+  ``CHAPTER_TITLES``, the ``_EXTRA_*`` config-extension lists,
+  ``POSTPROCESS_REWRITES``, per-stem frontmatter / whitespace flags)
+  via late ``import postprocess`` inside their functions. When
+  ``convert.sh`` runs ``python3 postprocess.py``, Python loads the
+  module under the name ``__main__`` — and ``main()``'s mutations to
+  ``TIKZ_FIGURE_MAP`` etc. land in the ``__main__`` namespace. The
+  late-import inside the transform then triggered a *second* load of
+  the file under the name ``postprocess``, returning a fresh module
+  with the defaults frozen and every override invisible. Most visible
+  symptom: every consumer book using ``tikz_overrides.py`` had **0
+  of N figures resolved** (88/88 broken in the Deep-Learning book —
+  zero error output, just placeholder admonitions in the rendered
+  HTML). Same shape silently affected ``extra_environments:``,
+  ``cross_ref_routing:``, ``doubled_noun_refs:``, custom chapter
+  titles, and ``postprocess.rewrites:``. Three-line fix at the top of
+  ``postprocess.py``: when running as ``__main__``, alias
+  ``sys.modules['postprocess']`` to the current module so every
+  late-import resolves to the same instance. Existing tests are
+  invisible to the bug because they ``import postprocess`` directly
+  (so it loads under the name ``postprocess`` from the start); new
+  ``tests/test_main_invocation.py`` shells out via ``subprocess`` to
+  exercise the ``__main__`` path. Lesson [038]. Closes [#42].
 - **Algorithm `\label{}` as sibling of `\caption{}` not preserved**
   ([#39]): the algorithm preprocessor recognised
   ``\caption{\label{algo:foo} Title}`` but not the dominant LaTeX
@@ -672,6 +699,7 @@ haven't validated. Everything below is on `main` and available now.
 [#38]: https://github.com/QuantEcon/claude-latex-to-myst/issues/38
 [#39]: https://github.com/QuantEcon/claude-latex-to-myst/issues/39
 [#40]: https://github.com/QuantEcon/claude-latex-to-myst/issues/40
+[#42]: https://github.com/QuantEcon/claude-latex-to-myst/issues/42
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
@@ -691,6 +719,7 @@ haven't validated. Everything below is on `main` and available now.
 [035]: lessons/035-citation-regex-trailing-colon-swallowed-into-key.md
 [036]: lessons/036-attr-fence-regex-chokes-on-braces-in-caption-values.md
 [037]: lessons/037-multline-gather-label-extraction-incomplete.md
+[038]: lessons/038-postprocess-main-module-double-load.md
 
 ### Settled architectural decisions
 
