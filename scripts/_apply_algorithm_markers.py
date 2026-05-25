@@ -48,9 +48,10 @@ def _extract_caption(body: str) -> tuple[str, str, str]:
     """Strip a trailing ``\\caption{...}`` from the body and return
     ``(stripped_body, label, title)``. Either label or title may be empty.
 
-    Recognises two forms:
-        \\caption{\\label{algo:foo} Title text}
-        \\caption{Title text}
+    Recognises three forms (closes #39):
+        \\caption{\\label{algo:foo} Title text}        # label inside caption
+        \\caption{Title text}\\n\\label{algo:foo}      # sibling label
+        \\caption{Title text}                          # no label
     """
     # Match the LAST \caption{...} in the body using balanced-brace search.
     label = ''
@@ -58,34 +59,60 @@ def _extract_caption(body: str) -> tuple[str, str, str]:
 
     # Find the last occurrence of \caption{
     last_idx = body.rfind('\\caption{')
-    if last_idx == -1:
-        return body.rstrip(), label, title
 
-    brace_open = last_idx + len('\\caption')  # position of '{'
-    brace_close = _find_balanced_end(body, brace_open, '{', '}')
-    if brace_close == -1:
-        return body.rstrip(), label, title
+    # Pre-trailing body section for the sibling-label scan. Includes
+    # everything before the \caption{} when one exists, else the whole
+    # body (in case an author writes ``\label{}`` without a caption).
+    pre_caption = body if last_idx == -1 else body[:last_idx]
+    post_caption_trailing = ''
 
-    # Confirm only whitespace follows the \caption{...}; otherwise this isn't
-    # a trailing caption.
-    trailing = body[brace_close + 1 :]
-    if trailing.strip():
-        return body.rstrip(), label, title
+    if last_idx != -1:
+        brace_open = last_idx + len('\\caption')  # position of '{'
+        brace_close = _find_balanced_end(body, brace_open, '{', '}')
+        if brace_close == -1:
+            return body.rstrip(), label, title
 
-    inner = body[brace_open + 1 : brace_close]
+        # Material after the closing brace of \caption{...}: must be
+        # only whitespace plus an optional sibling ``\label{}`` for
+        # this to qualify as a "trailing caption".
+        post_caption_trailing = body[brace_close + 1 :]
+        # Sibling-label scan in the trailing region.
+        sibling = re.match(
+            r'\s*\\label\{([^}]+)\}\s*\Z', post_caption_trailing, re.DOTALL
+        )
+        if sibling:
+            label = sibling.group(1)
+            post_caption_trailing = ''  # consumed
+        elif post_caption_trailing.strip():
+            # Something other than a sibling label follows the caption;
+            # this isn't a trailing caption.
+            return body.rstrip(), label, title
 
-    # Inside the caption: optional leading \label{...} then the title text.
-    m = re.match(r'\s*\\label\{([^}]+)\}\s*(.*)\s*$', inner, re.DOTALL)
-    if m:
-        label = m.group(1)
-        title = m.group(2)
-    else:
-        title = inner
+        inner = body[brace_open + 1 : brace_close]
 
-    # Collapse whitespace in title.
-    title = re.sub(r'\s+', ' ', title).strip()
+        # Inside the caption: optional leading \label{...} then the title text.
+        # Inside-caption label takes precedence over sibling label if both
+        # somehow exist (vanishingly unlikely; lock for determinism).
+        m = re.match(r'\s*\\label\{([^}]+)\}\s*(.*)\s*$', inner, re.DOTALL)
+        if m:
+            label = m.group(1)
+            title = m.group(2)
+        else:
+            title = inner
 
-    stripped = body[:last_idx].rstrip()
+        # Collapse whitespace in title.
+        title = re.sub(r'\s+', ' ', title).strip()
+
+    # Fallback sibling-label scan: \label{} on its own line BEFORE the
+    # \caption (or in a body with no \caption at all). Common shape
+    # for algorithms whose label is at the top of the body.
+    if not label:
+        m = re.search(r'\\label\{([^}]+)\}', pre_caption)
+        if m:
+            label = m.group(1)
+            pre_caption = (pre_caption[:m.start()] + pre_caption[m.end():])
+
+    stripped = pre_caption.rstrip()
     return stripped, label, title
 
 

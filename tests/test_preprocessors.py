@@ -62,6 +62,72 @@ def test_algorithm_marker_with_caption_label():
     assert "\\caption" not in m["body"]
 
 
+def test_algorithm_marker_sibling_label_after_caption():
+    """GH #39 — the dominant LaTeX convention places ``\\label{}`` as a
+    sibling AFTER ``\\caption{}`` rather than inside it. Pre-fix the
+    preprocessor only recognised the inside-caption form and fell back
+    to an auto-generated label, breaking every body cross-reference."""
+    tex = (
+        "\\begin{algorithm}\n"
+        "    body \\;\n"
+        "    \\caption{Young's histogram update}\n"
+        "    \\label{alg:young}\n"
+        "\\end{algorithm}\n"
+    )
+    out = alg.process_text(tex, auto_prefix="ch")
+    m = _extract_marker(out)
+    assert m["name"] == "alg-young"  # NOT algo-ch-auto-1
+    assert m["title"] == "Young's histogram update"
+    assert "\\label" not in m["body"]
+
+
+def test_algorithm_marker_sibling_label_before_caption():
+    """Some authors write ``\\label{}`` BEFORE the caption. Same rule:
+    extract the label, strip it from the body, keep the title."""
+    tex = (
+        "\\begin{algorithm}\n"
+        "    \\label{alg:eminn}\n"
+        "    body \\;\n"
+        "    \\caption{EMINN procedure}\n"
+        "\\end{algorithm}\n"
+    )
+    out = alg.process_text(tex, auto_prefix="ch")
+    m = _extract_marker(out)
+    assert m["name"] == "alg-eminn"
+    assert m["title"] == "EMINN procedure"
+    assert "\\label" not in m["body"]
+
+
+def test_algorithm_marker_inside_caption_label_still_works():
+    """Regression guard — the legacy inside-caption form continues
+    to extract the label correctly."""
+    tex = (
+        "\\begin{algorithm}\n"
+        "    body \\;\n"
+        "    \\caption{\\label{algo:demo} Inside-caption form}\n"
+        "\\end{algorithm}\n"
+    )
+    out = alg.process_text(tex, auto_prefix="ch")
+    m = _extract_marker(out)
+    assert m["name"] == "algo-demo"
+    assert m["title"] == "Inside-caption form"
+
+
+def test_algorithm_marker_inside_caption_takes_precedence_over_sibling():
+    """Vanishingly unlikely shape (both forms present), but lock the
+    precedence: inside-caption wins so behaviour is deterministic."""
+    tex = (
+        "\\begin{algorithm}\n"
+        "    body \\;\n"
+        "    \\caption{\\label{algo:inner} Title}\n"
+        "    \\label{alg:sibling}\n"
+        "\\end{algorithm}\n"
+    )
+    out = alg.process_text(tex, auto_prefix="ch")
+    m = _extract_marker(out)
+    assert m["name"] == "algo-inner"
+
+
 def test_algorithm_marker_caption_without_label():
     tex = (
         "\\begin{algorithm}\n"
