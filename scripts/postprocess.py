@@ -104,6 +104,7 @@ from transforms.refs import (  # noqa: E402  (re-exports for P3a)
     strip_doubled_noun_refs,
     strip_doubled_section_symbol,
     strip_footnote_refs,
+    routing_role,
 )
 from transforms.tables import convert_simple_tables  # noqa: E402  (P3a)
 from transforms.code import (  # noqa: E402  (re-exports for P3a)

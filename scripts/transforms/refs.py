@@ -97,6 +97,31 @@ _DEFAULT_CROSS_REF_ROUTING: list[tuple[tuple[str, ...], str]] = [
 _DOUBLED_SECTION_SYMBOL_PREFIXES = ('s-', 'ss-', 'sss-', 'sec-', 'eg-')
 
 
+def routing_role(target: str) -> str:
+    """Return the MyST role name (``eq`` / ``numref`` / ``prf:ref`` /
+    ``ref``) for a label, honouring per-book extras from
+    ``postprocess._EXTRA_CROSS_REF_ROUTING``.
+
+    Single source of truth for label-prefix → role mapping. Callers
+    compose the role name with the directive syntax themselves —
+    e.g. ``'{' + routing_role(label) + '}`' + label + '`'``. Used by
+    ``convert_cross_references`` for body refs and by
+    ``transforms.figures.extract_caption`` for HTML caption refs
+    (closes the directive-type-mismatch class of bugs, GH #38).
+
+    The target string may carry either the source ``thm:foo`` shape
+    or the converted ``thm-foo`` shape — both are recognised by the
+    default routing table.
+    """
+    # Late-import the mutable extras (populated by apply_config).
+    import postprocess
+    extras = postprocess._EXTRA_CROSS_REF_ROUTING
+    for prefixes, role in extras + _DEFAULT_CROSS_REF_ROUTING:
+        if target.startswith(prefixes):
+            return role
+    return 'ref'
+
+
 def convert_cross_references(text: str) -> str:
     """Convert pandoc cross-reference syntax to MyST.
 
@@ -105,22 +130,12 @@ def convert_cross_references(text: str) -> str:
     - [display](#target){reference-type="ref+label" reference="target"} → {ref/numref/prf:ref}`target`
     - [display](#target){reference-type="ref" reference="target"} → {ref}`target`
     """
-    # Late-import the mutable extras (populated by apply_config).
-    import postprocess
-    extras = postprocess._EXTRA_CROSS_REF_ROUTING
-
     def make_ref(target):
         """Generate the appropriate MyST ref role for a single target.
-
-        Routing rules come from ``_EXTRA_CROSS_REF_ROUTING`` (per-book
-        config) merged with ``_DEFAULT_CROSS_REF_ROUTING`` (built-ins).
-        First match wins; falls back to ``{ref}`` for unrecognised
-        prefixes."""
+        Routing is delegated to ``routing_role`` (module-level) so the
+        same prefix→role table services both body and caption refs."""
         target_converted = convert_label_colons(target)
-        for prefixes, role in extras + _DEFAULT_CROSS_REF_ROUTING:
-            if target.startswith(prefixes):
-                return '{' + role + '}`' + target_converted + '`'
-        return '{ref}`' + target_converted + '`'
+        return '{' + routing_role(target) + '}`' + target_converted + '`'
 
     def replace_ref(m):
         display = m.group(1)  # not used — MyST generates its own display
