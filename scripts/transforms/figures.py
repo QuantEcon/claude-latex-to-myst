@@ -24,10 +24,11 @@ to avoid the circular import at module load (P3a).
 
 from __future__ import annotations
 
+import html
 import re
 
 from ._helpers import convert_label_colons
-from .refs import strip_doubled_noun_refs, strip_doubled_section_symbol
+from .refs import routing_role, strip_doubled_noun_refs, strip_doubled_section_symbol
 
 
 def convert_figures(text: str) -> str:
@@ -131,18 +132,41 @@ def convert_html_figures(text: str) -> str:
         if not cap_match:
             return ''
         cap = cap_match.group(1)
-        # Convert pandoc-resolved HTML ref anchors into MyST ``{ref}``
-        # directives BEFORE stripping HTML. The pre-resolved number in
-        # the ``<a>`` body is chapter-unaware (pandoc only sees the
-        # split-per-chapter file, not the book), but the
-        # ``data-reference`` attribute preserves the original label —
-        # MyST can resolve it with full project context (closes #33).
+        # Convert pandoc-resolved HTML ref anchors into MyST directives
+        # BEFORE stripping HTML. The pre-resolved number in the ``<a>``
+        # body is chapter-unaware (pandoc only sees the split-per-
+        # chapter file, not the book), but the ``data-reference``
+        # attribute preserves the original label — MyST can resolve it
+        # with full project context (closes #33).
+        #
+        # Dispatch the directive type via ``routing_role`` so equation
+        # refs become ``{eq}``, figure/table refs become ``{numref}``,
+        # theorem-family refs become ``{prf:ref}`` — generic ``{ref}``
+        # can't resolve to those anchor types in MyST (closes #38).
+        def _replace_ref(m):
+            # ``data-reference="X"`` carries the raw (colon-form) label
+            # pandoc preserved from the source ``\ref{X}``. Route on
+            # that — the default table is keyed on colon-form for the
+            # theorem family — and emit the converted (hyphen-form)
+            # inside the directive.
+            raw = m.group(1)
+            label = convert_label_colons(raw)
+            return '{' + routing_role(raw) + '}`' + label + '`'
         cap = re.sub(
             r'<a[^>]*data-reference="([^"]+)"[^>]*>[^<]*</a>',
-            lambda m: '{ref}`' + convert_label_colons(m.group(1)) + '`',
+            _replace_ref,
             cap,
         )
         cap = re.sub(r'<[^>]+>', '', cap).strip()
+        # Pandoc HTML-encodes ``<`` / ``>`` / ``&`` inside figcaption
+        # content. Inside prose the browser decodes them on render, but
+        # inside ``$...$`` math regions KaTeX sees the entities as
+        # literal chars and fails to parse (``$\mu+I&gt;0$`` → KaTeX
+        # parse error). Unescape the whole caption: ``html.unescape``
+        # is idempotent on plain text, source readability improves,
+        # PDF builds that don't run an HTML decoder also work (closes
+        # #40).
+        cap = html.unescape(cap)
         # The doubled-noun strippers ran earlier in ``process_file``;
         # any ``§ Section`` / ``Chapter Chapter`` produced *here* by
         # the ref-conversion above would otherwise survive into the

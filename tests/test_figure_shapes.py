@@ -106,22 +106,81 @@ def test_html_figure_caption_with_section_ref_becomes_myst_ref():
     assert '§ 2' not in out
 
 
-def test_html_figure_caption_with_eq_ref():
-    """Caption referring to an equation should also become a MyST
-    role; the routing should pick ``{eq}`` for ``eq:`` prefixes."""
+@pytest.mark.parametrize("target_label,expected_role", [
+    ('eq:foo',         'eq'),         # equation → {eq}
+    ('fig:bar',        'numref'),     # figure   → {numref}
+    ('tab:loss',       'numref'),     # table    → {numref}
+    ('thm:main',       'prf:ref'),    # theorem  → {prf:ref}
+    ('alg:young',      'prf:ref'),    # algorithm
+    ('lem:contraction','prf:ref'),    # lemma
+    ('sec:intro',      'ref'),        # section  → {ref}
+    ('ch:climate',     'ref'),        # chapter
+])
+def test_html_figure_caption_ref_dispatches_by_target_type(target_label, expected_role):
+    """GH #38 — captions cross-referencing typed targets (equations,
+    figures, theorems, algorithms) need typed directives. Generic
+    ``{ref}`` cannot resolve to a trailing-paren ``$$ (eq-X)`` anchor
+    or a ``{prf:theorem}`` directive. Route by label prefix via
+    ``routing_role`` (single source of truth in
+    ``transforms.refs``)."""
     src = HTML_BASE.replace(
         '{caption}',
-        'See <a href="#eq:foo" data-reference-type="ref" '
-        'data-reference="eq:foo">3</a> below.'
+        f'See <a href="#{target_label}" data-reference-type="ref" '
+        f'data-reference="{target_label}">N</a> below.'
     )
     out = postprocess.convert_html_figures(src)
-    # Today's extract_caption emits {ref} for everything (the prefix
-    # routing isn't applied inside the caption). Lock that — it's
-    # acceptable because MyST resolves either way (P1a's validator
-    # confirms anchor exists).
-    assert 'eq-foo' in out
-    # The pre-resolved number must not leak.
-    assert re.search(r'>\s*3\s*<', out) is None
+    label_kebab = target_label.replace(':', '-')
+    expected_directive = '{' + expected_role + '}`' + label_kebab + '`'
+    assert expected_directive in out, (
+        f'caption ref to {target_label!r} should produce {expected_directive!r}\n'
+        f'  actual output:\n{out}'
+    )
+    # Pre-resolved ``N`` text must not leak.
+    assert '>N</a>' not in out
+
+
+# ── #40 — HTML entities inside caption ───────────────────────────────────────
+
+
+def test_caption_unescapes_html_entities_inside_math():
+    """GH #40 — pandoc HTML-encodes ``<`` / ``>`` / ``&`` in figcaption
+    content (``$\\mu+I&gt;0$``). Inside prose the browser decodes them;
+    inside ``$...$`` KaTeX sees the entities as literal chars and
+    fails to parse. Unescape the whole caption (``html.unescape`` is
+    idempotent)."""
+    src = HTML_BASE.replace(
+        '{caption}',
+        'For positive ($\\mu+I&gt;\\sqrt{\\mu^2+I^2}$).'
+    )
+    out = postprocess.convert_html_figures(src)
+    assert '$\\mu+I>\\sqrt{\\mu^2+I^2}$' in out
+    assert '&gt;' not in out
+
+
+def test_caption_unescapes_html_entities_in_prose_too():
+    """The whole caption is unescaped (not just math regions) so
+    source readability is preserved and PDF builds that don't decode
+    HTML entities also work."""
+    src = HTML_BASE.replace(
+        '{caption}',
+        'When I &gt; 0 and $x &lt; y$, then $A &amp; B$.'
+    )
+    out = postprocess.convert_html_figures(src)
+    assert 'I > 0' in out
+    assert '$x < y$' in out
+    assert '$A & B$' in out
+    assert '&gt;' not in out and '&lt;' not in out and '&amp;' not in out
+
+
+def test_caption_unescape_is_idempotent_on_plain_text():
+    """A caption that never had entities round-trips unchanged
+    through ``html.unescape``."""
+    src = HTML_BASE.replace(
+        '{caption}',
+        'Plain caption with $x > 0$ already literal.'
+    )
+    out = postprocess.convert_html_figures(src)
+    assert 'Plain caption with $x > 0$ already literal.' in out
 
 
 # ── HTML nested subfigure shape ─────────────────────────────────────────────
