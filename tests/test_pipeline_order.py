@@ -77,10 +77,14 @@ def _extract_call_sequence(func) -> list[str]:
     return _CALL_RE.findall(src)
 
 
-def test_process_file_call_order_matches_expected():
+def test_process_text_call_order_matches_expected():
     """Reorder guard: every reorder must explicitly update
-    ``EXPECTED_PIPELINE_ORDER``. Lesson 008."""
-    actual = _extract_call_sequence(postprocess.process_file)
+    ``EXPECTED_PIPELINE_ORDER``. Lesson 008.
+
+    Inspects ``process_text`` (the pure in-memory pipeline extracted
+    in P0c). ``process_file`` is a thin I/O wrapper that delegates
+    to ``process_text`` for the actual transform sequence."""
+    actual = _extract_call_sequence(postprocess.process_text)
     assert actual == EXPECTED_PIPELINE_ORDER, (
         "Pipeline order drift detected.\n"
         f"  expected: {EXPECTED_PIPELINE_ORDER}\n"

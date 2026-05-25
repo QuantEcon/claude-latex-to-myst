@@ -2851,23 +2851,28 @@ def apply_config(config: dict, base_dir: Path | None = None) -> None:
         _LISTING_SOURCE_BASE = (base_dir / src_base).resolve()
 
 
-def process_file(input_path: Path, output_path: Path = None):
-    """Process a single pandoc markdown file into MyST."""
+def process_text(text: str, stem: str, title: str | None = None,
+                 *, style: str | None = None) -> str:
+    """Pure in-memory transform pipeline. Same order as ``process_file``;
+    no file I/O. Extracted so golden-file tests can exercise the full
+    pipeline against checked-in fixtures (P0c).
+
+    Order matters:
+      - fix_text_dollar first (before eq conversion changes $$ structure)
+      - epigraphs (removes ::: blocks before env conversion)
+      - environments before labels (directive labels handled in context)
+      - equations before cross-refs (so labels are extracted first)
+      - cross-refs before figures (captions may contain cross-refs)
+
+    The canonical sequence is locked in ``tests/test_pipeline_order.py``
+    (lesson 008). Update both places together if you intentionally reorder.
+    """
     global _last_exercise_label, _exercise_counter, _chapter_prefix
     _last_exercise_label = None
     _exercise_counter = 0
     # Chapter prefix for auto-generated labels: strip leading 'ch_' if present.
-    stem = input_path.stem
     _chapter_prefix = stem[3:] if stem.startswith('ch_') else stem
 
-    text = input_path.read_text(encoding='utf-8')
-
-    # Order matters:
-    #  - fix_text_dollar first (before eq conversion changes $$ structure)
-    #  - epigraphs (removes ::: blocks before env conversion)
-    #  - environments before labels (directive labels handled in context)
-    #  - equations before cross-refs (so labels are extracted first)
-    #  - cross-refs before figures (captions may contain cross-refs)
     text = strip_pandoc_html_separators(text)
     text = fix_text_dollar(text)
     text = convert_epigraphs(text)
@@ -2907,9 +2912,19 @@ def process_file(input_path: Path, output_path: Path = None):
     text = strip_footnote_refs(text)               # operates on cleaned text
     text = compress_directive_whitespace(text)     # opt-in (compact mode)
 
-    title = CHAPTER_TITLES.get(stem, stem)
-    text = add_frontmatter(text, title, style=CHAPTER_STYLES.get(stem))
+    resolved_title = title if title is not None else stem
+    text = add_frontmatter(text, resolved_title, style=style)
     text = apply_postprocess_rewrites(text, stem)
+    return text
+
+
+def process_file(input_path: Path, output_path: Path = None):
+    """Process a single pandoc markdown file into MyST."""
+    stem = input_path.stem
+    text = input_path.read_text(encoding='utf-8')
+    title = CHAPTER_TITLES.get(stem, stem)
+    style = CHAPTER_STYLES.get(stem)
+    text = process_text(text, stem, title, style=style)
 
     out = output_path or input_path
     out.write_text(text, encoding='utf-8')
