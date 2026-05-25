@@ -1241,6 +1241,129 @@ def test_simple_table_caption_with_inline_math_and_refs_wraps():
     assert "  - Memory" in out
 
 
+def test_simple_table_inside_id_fence_emits_explicit_name():
+    """Mode B fix for PR #41 silent failures: when a table is wrapped
+    in ``::: {#tab:foo}`` (pandoc's emit for ``\\begin{table}\\label{tab:foo}``),
+    extract the id and emit ``:name: tab-foo`` on the directive
+    directly. This ensures the table AST node carries the identifier
+    even when MyST's standalone-anchor attachment misfires through
+    the 4-backtick ``{table}`` wrapper.
+
+    Without this fix, the cross-reference resolver falls back to
+    "next non-table node with this label" and ``{numref}`tab-foo``
+    resolves to a paragraph instead of a table (confirmed in the
+    Deep-Learning book's ``tab-relobralo_hp`` case)."""
+    body = (
+        "::: {#tab:nas_methods}\n"
+        "  ---- ----\n"
+        "  H1   H2\n"
+        "  ---- ----\n"
+        "  a    b\n"
+        "  ---- ----\n"
+        "\n"
+        "  : Caption text.\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # The ::: opener and closer are preserved (convert_environment_divs
+    # will turn the opener into a (tab-nas_methods)= standalone anchor
+    # downstream); convert_simple_tables also emits :name: on the
+    # directive directly so the identifier propagates to the AST.
+    assert "````{table} Caption text." in out
+    assert ":name: tab-nas_methods" in out
+    # The {table} :name: comes BEFORE the blank line and inner directive.
+    assert out.index(":name: tab-nas_methods") < out.index("```{list-table}")
+
+
+def test_simple_table_inside_id_fence_no_caption_uses_list_table_name():
+    """Mode B for un-captioned tables: ``:name:`` lands on the bare
+    ``{list-table}`` directly (no ``{table}`` wrapper, since no
+    caption)."""
+    body = (
+        "::: {#tab:simple}\n"
+        "  ---- ----\n"
+        "  H1   H2\n"
+        "  ---- ----\n"
+        "  a    b\n"
+        "  ---- ----\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert ":name: tab-simple" in out
+    # No wrapper for the un-captioned case.
+    assert "{table}" not in out
+
+
+def test_simple_table_no_enclosing_fence_no_name_emitted():
+    """Regression guard: bare tables (no enclosing ``::: {#id}`` fence)
+    don't get a spurious ``:name:`` from leftover stack state. The
+    div-id stack is reset per-table-iteration; this test pins that
+    contract."""
+    body = (
+        "::: {#tab:first}\n"
+        "  ---- ----\n"
+        "  a    b\n"
+        "  ---- ----\n"
+        ":::\n"
+        "\n"
+        "Plain prose.\n"
+        "\n"
+        "  ---- ----\n"
+        "  c    d\n"
+        "  ---- ----\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # First table inside #tab:first → has :name:
+    assert ":name: tab-first" in out
+    # Second table is bare — no :name: should be emitted.
+    # Count :name: occurrences to confirm only one.
+    assert out.count(":name:") == 1
+
+
+def test_simple_table_shape_b_wide_indent_header_accepted():
+    """Mode A fix for PR #41 silent failures: pandoc aligns header
+    text by data-column position, not by leading-whitespace count.
+    Wide tables emit headers at indent 26+ over a rule at indent 2 —
+    v5's upper-bound check rejected these, breaking ``tab-seq_compare``
+    and similar.
+
+    With the v6 indent-relaxation, ``_collect_header_above`` accepts
+    any non-blank line at indent >= opener_indent (no upper bound)."""
+    # Synthesised after Deep-Learning ``ch01_intro.md:838``: header at
+    # wide indent, dash-rule at indent 2, body rows at indent 2,
+    # fewer header cells than rule columns (the first column has no
+    # header — it's the row-label column).
+    body = (
+        "::: {#tab:seq_compare}\n"
+        "                          **RNN**            **LSTM**           **Transformer**\n"
+        "  ----------------------- ------------------ ------------------ ------------------------\n"
+        "  Hidden state            single $\\h_t$      $\\h_t$ and $C_t$   none per step\n"
+        "  Path length             $\\mathcal{O}(T)$   $\\mathcal{O}(T)$   $\\mathcal{O}(1)$\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # Header is absorbed into the directive — should appear as the
+    # first row inside the list-table, NOT as raw text outside.
+    assert "```{list-table}" in out
+    assert ":header-rows: 1" in out
+    # Bold header tokens survived and landed in the bullet rows.
+    assert "**RNN**" in out
+    assert "**LSTM**" in out
+    assert "**Transformer**" in out
+    # The original wide-indent header line should NOT appear in the
+    # output (it was absorbed into the directive). Check the actual
+    # `**RNN**` line is rendered as a list-table cell, not as a raw
+    # leading paragraph.
+    lines = out.split('\n')
+    # Find where the directive starts and ends.
+    list_table_start = next(j for j, l in enumerate(lines) if '```{list-table}' in l)
+    # Everything before list-table opener should be the ::: opener and blank.
+    before = '\n'.join(lines[:list_table_start])
+    # The bold header tokens must NOT appear before the directive opens.
+    assert "**RNN**" not in before
+
+
 def test_simple_table_with_caption():
     """Captioned tables wrap a ``{list-table}`` inside a ``{table}``
     directive. Rationale: MyST's ``{list-table}`` rejects ``:caption:``

@@ -8,6 +8,7 @@ Some intro prose.
 
 (tab-curse_of_dim)=
 ````{table} Size of an $n = 10$ Cartesian grid and the 64-bit memory required to store one floating-point value per grid point, as a function of state-space dimension $d$. Grid-based methods are comfortable only at low dimension; by $d = 10$ even storing one scalar per grid point is borderline.
+:name: tab-curse_of_dim
 
 ```{list-table}
 :header-rows: 1

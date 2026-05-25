@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import re
 
+from ._helpers import convert_label_colons
+
 
 # A pandoc dash-rule line: indented, then 2+ dash groups separated by
 # single-or-more spaces.
@@ -101,25 +103,39 @@ def _collect_header_above(
     opener_indent: int,
     col_starts: list[int],
 ) -> list[str]:
-    """Look back from ``rule_idx`` for non-blank lines whose first
-    non-whitespace character falls within the rule's first column.
-    These are header rows of a Shape-B table (pandoc emits this for
-    ``\\begin{table}`` floats with no ``\\toprule`` / ``\\bottomrule``).
+    """Look back from ``rule_idx`` for non-blank, non-rule lines that
+    belong to the header. These are header rows of a Shape-B table
+    (pandoc emits this for ``\\begin{table}`` floats with no
+    ``\\toprule`` / ``\\bottomrule``).
 
-    The indent check is ``opener_indent <= prev_indent < col_starts[1]``
-    rather than equality: pandoc column-aligns header cells by character
-    position, not by leading-whitespace count, so a header at indent 3
-    on a rule at indent 2 is still column-aligned if the first column
-    spans positions [2, 12). Equality would miss this shape (Deep-
-    Learning book's ``execution_map`` table, 1-col-table-shape case).
+    Pandoc aligns header text by *data-column position*, not by
+    leading-whitespace count. Wide tables routinely have headers at
+    indent 26+ over a rule at indent 2 — the data columns start where
+    the header text appears, not where the rule's leftmost dash sits.
+    Tables with a "row-label" first column may also have FEWER header
+    cells than rule columns (the row-label column has no header).
 
-    Stops at: a blank line, start of file, indent outside the first
-    column's range, or another rule line.
+    Original v4: required exact indent match — broke ``execution_map``
+    (1-col table, header at different indent than rule).
+
+    v5 (PR #41): relaxed to ``opener_indent <= prev_indent < col_starts[1]``
+    — fixed ``execution_map`` but rejected ``tab-seq_compare`` and
+    similar wide tables where headers sit at indent 26+ above a rule
+    starting at indent 2 (col_starts[1] would be ~24).
+
+    Current (v6): drop the upper-bound check entirely. The lower bound
+    (``prev_indent >= opener_indent``) is enough to exclude prose at
+    column 0; cell-position alignment is enforced by the downstream
+    ``_split_row`` parser using the rule's ``col_starts`` (Mode A fix
+    for PR #41 silent failures).
+
+    Stops at: blank line, start of file, indent left of the rule
+    opener, or another rule line.
+
+    ``col_starts`` is unused in the current implementation but kept in
+    the signature for compatibility with existing callers.
     """
-    # The first column's right edge. When there's only one dash group
-    # (we shouldn't get called in that case — ``_rule_columns`` requires
-    # 2+), fall back to a permissive upper bound.
-    first_col_end = col_starts[1] if len(col_starts) > 1 else len(lines[rule_idx])
+    del col_starts  # unused — see docstring
     header: list[str] = []
     k = rule_idx - 1
     while k >= 0:
@@ -127,7 +143,7 @@ def _collect_header_above(
         if not prev.strip():
             break
         prev_indent = len(prev) - len(prev.lstrip())
-        if prev_indent < opener_indent or prev_indent >= first_col_end:
+        if prev_indent < opener_indent:
             break
         if _rule_columns(prev) is not None:
             break
@@ -161,7 +177,19 @@ def convert_simple_tables(text: str) -> str:
     lines = text.split('\n')
     out: list[str] = []
     in_fence = False
+    # Stack of enclosing ``::: {#id}`` div ids. When we emit a table
+    # directive, the top of the stack is the table's containing div id
+    # — used as ``:name:`` on the directive so MyST attaches the table
+    # AST node's identifier canonically (Mode B fix for PR #41 silent
+    # failures). The ``(tab-X)=`` standalone anchor emitted downstream
+    # by ``convert_environment_divs`` is redundant in this case but
+    # harmless — both point to the same label.
+    div_id_stack: list[str] = []
     i = 0
+
+    # Matches ``::: {#id}`` (id-only fence opener) only — not
+    # ``::: env_name`` (which ``_is_fence_boundary`` doesn't match).
+    _id_div_open_re = re.compile(r'^\s*:{3,}\s+\{#([^}\s]+)')
 
     while i < len(lines):
         line = lines[i]
@@ -172,6 +200,20 @@ def convert_simple_tables(text: str) -> str:
             i += 1
             continue
         if in_fence:
+            out.append(line)
+            i += 1
+            continue
+
+        # Track ``::: {#id}`` ... ``:::`` div nesting so the table
+        # directive emitted below carries the correct ``:name:``.
+        if _is_fence_boundary(line):
+            id_m = _id_div_open_re.match(line)
+            if id_m:
+                div_id_stack.append(id_m.group(1))
+            elif div_id_stack and line.strip() == ':::':
+                div_id_stack.pop()
+            # Other shapes (``::: {.class}`` etc.) don't carry an id;
+            # leave the stack alone.
             out.append(line)
             i += 1
             continue
@@ -376,8 +418,19 @@ def convert_simple_tables(text: str) -> str:
         # ``convert_environment_divs`` (downstream) attach to the next
         # block — ``{table}`` is enumerable, so ``{numref}`tab-X``
         # renders as "Table N" via the wrapper's auto-counter.
+        # ``:name:`` from the enclosing ``::: {#id}`` div fence, if
+        # any. Explicit name on the directive ensures the table AST
+        # node carries the identifier even when standalone-anchor
+        # attachment misfires (Mode B fix). Wrapped in ``convert_label_colons``
+        # for the colon→hyphen normalisation MyST expects.
+        directive_name = (
+            convert_label_colons(div_id_stack[-1]) if div_id_stack else None
+        )
+
         if caption:
             out.append(f'````{{table}} {caption}')
+            if directive_name:
+                out.append(f':name: {directive_name}')
             out.append('')
             out.append('```{list-table}')
             out.append(f':header-rows: {header_rows_count}')
@@ -390,6 +443,8 @@ def convert_simple_tables(text: str) -> str:
             out.append('````')
         else:
             out.append('```{list-table}')
+            if directive_name:
+                out.append(f':name: {directive_name}')
             out.append(f':header-rows: {header_rows_count}')
             out.append('')
             for row in all_rows:
