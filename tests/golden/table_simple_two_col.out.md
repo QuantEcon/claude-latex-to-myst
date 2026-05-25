@@ -5,19 +5,17 @@ title: "Table Simple Two Col"
 # Notation
 
 ```{list-table}
-:header-rows: 0
+:header-rows: 1
+:caption: Common symbols used throughout.
 
 * - Symbol
   - Meaning
-```
-  $X$      State space
-  $A$      Action space
-  $\pi$    Policy
-```{list-table}
-:header-rows: 0
-
-* - : Common
-  - symbols used throughout.
+* - $X$
+  - State space
+* - $A$
+  - Action space
+* - $\pi$
+  - Policy
 ```
 
 Body prose continues.

@@ -1189,9 +1189,10 @@ def test_simple_table_with_caption():
     assert "  : My caption" not in out
 
 
-def test_simple_table_three_column_left_alone():
-    """3+ column tables stay as raw simple_tables. Out of scope per FIX
-    Issue 1's "first cut" — wider tables have more layout nuance."""
+def test_simple_table_three_column_basic():
+    """3-col tables convert to {list-table} (#34). Headerless shape
+    (top rule + rows + bottom rule, no interior separator) emits
+    ``:header-rows: 0``."""
     body = (
         "  ----  ----  ----\n"
         "  A     B     C\n"
@@ -1199,9 +1200,202 @@ def test_simple_table_three_column_left_alone():
         "  ----  ----  ----\n"
     )
     out = postprocess.convert_simple_tables(body)
-    # Untouched.
-    assert "```{list-table}" not in out
-    assert "----  ----  ----" in out
+    assert "```{list-table}" in out
+    assert ":header-rows: 0" in out
+    assert "* - A" in out
+    assert "  - B" in out
+    assert "  - C" in out
+    assert "* - D" in out
+    assert "  - E" in out
+    assert "  - F" in out
+    assert "----  ----  ----" not in out
+
+
+def test_simple_table_three_column_with_header():
+    """An interior dash-rule with the same column count as the opener
+    marks the header/body boundary and triggers ``:header-rows: 1``
+    (#34). This is pandoc's standard simple_tables-with-header shape."""
+    body = (
+        "  -------- ---------- ----------\n"
+        "  Item     Value      Notes\n"
+        "  -------- ---------- ----------\n"
+        "  alpha    1.0        first\n"
+        "  beta     2.5        second\n"
+        "  -------- ---------- ----------\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert ":header-rows: 1" in out
+    # Header row present.
+    assert "* - Item" in out
+    assert "  - Value" in out
+    assert "  - Notes" in out
+    # Data rows present.
+    assert "* - alpha" in out
+    assert "* - beta" in out
+
+
+def test_simple_table_three_column_with_caption():
+    """N-col tables with caption: caption migrates to ``:caption:``
+    option, header detected via interior rule."""
+    body = (
+        "  -------- ---------- ----------\n"
+        "  Item     Value      Notes\n"
+        "  -------- ---------- ----------\n"
+        "  alpha    1.0        first\n"
+        "  beta     2.5        second\n"
+        "  -------- ---------- ----------\n"
+        "\n"
+        "  : Lineage from plain SGD to AdamW.\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert ":caption: Lineage from plain SGD to AdamW." in out
+    assert ":header-rows: 1" in out
+    # Caption line should be consumed.
+    assert "  : Lineage" not in out
+
+
+def test_simple_table_five_column():
+    """Tables with 5 columns convert correctly — the column-start
+    detection generalizes to any N (#34)."""
+    body = (
+        "  ----  ----  ----  ----  ----\n"
+        "  v     w     x     y     z\n"
+        "  ----  ----  ----  ----  ----\n"
+        "  1     2     3     4     5\n"
+        "  6     7     8     9     10\n"
+        "  ----  ----  ----  ----  ----\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert ":header-rows: 1" in out
+    assert "* - v" in out
+    assert "  - w" in out
+    assert "  - z" in out
+    assert "* - 1" in out
+    assert "  - 5" in out
+    assert "* - 6" in out
+    assert "  - 10" in out
+
+
+def test_simple_table_mismatched_column_count_not_fused():
+    """A 3-col opener must NOT close on a downstream 2-col rule —
+    different column count = different table. Without the guard
+    [tables.py:61, :85 — historical line refs], the scan would fuse
+    adjacent tables of different shapes into one mangled list-table."""
+    body = (
+        "  ----  ----  ----\n"
+        "  A     B     C\n"
+        "  D     E     F\n"
+        "  ----  ----  ----\n"
+        "\n"
+        "Some prose.\n"
+        "\n"
+        "  ----------  --------------------\n"
+        "  alpha       first\n"
+        "  beta        second\n"
+        "  ----------  --------------------\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # Both tables convert independently — two list-tables.
+    assert out.count("```{list-table}") == 2
+    # Prose between is preserved.
+    assert "Some prose." in out
+    # First list-table has 3 columns (3 cells per row).
+    first_block = out.split("```{list-table}", 2)[1].split("```", 1)[0]
+    # Three "* - " starts (one per row) plus two "  - " per row.
+    assert first_block.count("* - ") == 2  # 2 data rows after header
+    # Confirm the third column from the first table is present.
+    assert "  - C" in first_block
+    assert "  - F" in first_block
+
+
+def test_simple_table_three_column_in_center():
+    """3-col multiline-style table bounded by ``::: center`` (no closing
+    rule). The boundary-stop logic generalizes from 2-col (#34)."""
+    body = (
+        "::: center\n"
+        "  ----  ----  ----------\n"
+        "  Code  Type  Description\n"
+        "  ----  ----  ----------\n"
+        "  A     int   first\n"
+        "  B     str   second\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert ":header-rows: 1" in out
+    assert "* - Code" in out
+    assert "  - Type" in out
+    assert "  - Description" in out
+    assert "* - A" in out
+    assert "  - int" in out
+    assert "  - first" in out
+    # ``:::`` boundary must NOT be eaten.
+    assert ":::" in out
+
+
+def test_simple_table_header_plus_caption_inside_center():
+    """The combination that #34 originally broke: ``::: center``-wrapped
+    table with BOTH a header (interior dash-rule) and a caption between
+    the closer and ``:::``. Pre-fix, the caption inflated the block
+    count to 3 (header / body / caption), the converter bailed, the
+    header-separator rule was then re-tried as an opener, and the
+    output was a cascade of fragmented partial conversions. The
+    caption-peel logic (last block all caption-shape → drop, let
+    caption-detection pick it up) is what fixes this."""
+    body = (
+        "::: center\n"
+        "  -------- --------------------------------\n"
+        "  Symbol   Meaning\n"
+        "  -------- --------------------------------\n"
+        "  $X$      State space\n"
+        "  $A$      Action space\n"
+        "  $\\pi$    Policy\n"
+        "  -------- --------------------------------\n"
+        "\n"
+        "  : Common symbols used throughout.\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert out.count("```{list-table}") == 1
+    assert ":header-rows: 1" in out
+    assert ":caption: Common symbols used throughout." in out
+    assert "* - Symbol" in out
+    assert "  - Meaning" in out
+    assert "* - $X$" in out
+    assert "  - State space" in out
+    # The opening fenced-div line and its closer must survive intact.
+    assert "::: center" in out
+    assert ":::" in out
+    # No dash-rule leftovers and no caption-as-row leakage.
+    assert "----" not in out
+    assert "* - : Common" not in out
+
+
+def test_simple_table_three_column_multiline_cells():
+    """Multiline-table shape with N=3: blank-line-separated rows whose
+    cells span multiple lines join with single spaces."""
+    body = (
+        "  ----  ----  --------------------\n"
+        "  A     1     first item\n"
+        "\n"
+        "  B     2     a longer\n"
+        "              wrapped value\n"
+        "\n"
+        "  ----  ----  --------------------\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert "* - A" in out
+    assert "  - 1" in out
+    assert "  - first item" in out
+    assert "* - B" in out
+    assert "  - 2" in out
+    assert "  - a longer wrapped value" in out
+
+
+
 
 
 def test_simple_table_skipped_inside_code_fence():

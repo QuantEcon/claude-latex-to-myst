@@ -27,12 +27,13 @@ haven't validated. Everything below is on `main` and available now.
   conversion is lossy and the user should opt in. Surfaced converting
   a book that used `\tpath{…}` 160 times and got every occurrence
   silently dropped along with its argument. Lesson [028]. Closes [#22].
-- **`convert_simple_tables`** ([d6dcbe7]): pandoc 2-column `simple_tables`
-  (the common glossary shape) become MyST `{list-table}` directives.
-  3+ column tables pass through untouched. Captions migrate to the
-  directive's `:caption:` option. Handles both `simple_tables` (one row
-  per line) and `multiline_tables` (blank-line-separated rows).
-  Closes FIX Issue 1 / lesson 019.
+- **`convert_simple_tables`** ([d6dcbe7], extended in [#34]): pandoc
+  `simple_tables` and `multiline_tables` of any column count (2+)
+  become MyST `{list-table}` directives. Captions migrate to the
+  directive's `:caption:` option. An interior dash-rule with the same
+  column count as the opener is treated as a header/body separator
+  and emits `:header-rows: 1`. Closes FIX Issue 1 / lesson 019 and
+  [#34].
 - **Class-attribute stripping in `convert_section_labels`** ([5a17cb6]):
   pandoc's `# Title {#slug .unnumbered}` attribute blocks no longer leak
   class tokens into MyST labels. Lesson 017.
@@ -197,6 +198,16 @@ haven't validated. Everything below is on `main` and available now.
   `resolve_algorithms` now run AFTER `convert_citations` so inlined
   source code isn't mangled (e.g. Julia `@views` was being eaten as
   a textual cite). Lesson 015.
+- **`convert_simple_tables` extended to N columns** ([#34]): tables
+  with 3+ columns are now converted (previously left as raw pandoc
+  dash-rule text). Adds header-row detection from interior
+  dash-rules; closing-rule match requires the same column count as
+  the opener so adjacent tables of different shapes can't fuse. The
+  surveyed downstream impact was ~37 previously-unconverted tables
+  in a single book (`Deep_Learning_for_Solving_And_Estimating_
+  Dynamic_Economic_Models`). Alignment encoding from dash-rule
+  widths is deliberately NOT included — `{list-table}` defaults
+  cover the prose-heavy book cases.
 
 ### Fixed
 
@@ -227,6 +238,16 @@ haven't validated. Everything below is on `main` and available now.
   (so it loads under the name ``postprocess`` from the start); new
   ``tests/test_main_invocation.py`` shells out via ``subprocess`` to
   exercise the ``__main__`` path. Lesson [038]. Closes [#42].
+- **2-col tables with header rule mangled inside `::: center`**
+  ([#34], side effect of the N-col rewrite): pandoc's
+  `simple_tables`-with-header shape (top rule + header row +
+  separator rule + body + closing rule) was being parsed as if the
+  top rule opened a 1-row table containing just the header, then
+  the separator was retried as a fresh opener, producing a cascade
+  of fragmented partial conversions. The N-col rewrite handles the
+  three-rule shape end-to-end and peels trailing caption-shape
+  blocks so a caption inside the fenced-div doesn't inflate the
+  block count.
 - **Algorithm `\label{}` as sibling of `\caption{}` not preserved**
   ([#39]): the algorithm preprocessor recognised
   ``\caption{\label{algo:foo} Title}`` but not the dominant LaTeX
@@ -693,6 +714,7 @@ haven't validated. Everything below is on `main` and available now.
 [#31]: https://github.com/QuantEcon/claude-latex-to-myst/issues/31
 [#32]: https://github.com/QuantEcon/claude-latex-to-myst/issues/32
 [#33]: https://github.com/QuantEcon/claude-latex-to-myst/issues/33
+[#34]: https://github.com/QuantEcon/claude-latex-to-myst/issues/34
 [#35]: https://github.com/QuantEcon/claude-latex-to-myst/issues/35
 [#36]: https://github.com/QuantEcon/claude-latex-to-myst/issues/36
 [#37]: https://github.com/QuantEcon/claude-latex-to-myst/issues/37
