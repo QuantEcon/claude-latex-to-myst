@@ -9,6 +9,32 @@ A reusable LaTeX → MyST Markdown conversion pipeline. The hard work has been
 done — see `scripts/postprocess.py`, `scripts/preprocess.sh`, `scripts/convert.sh`.
 **Do not re-derive these from scratch.** Adapt them via `config.yaml`.
 
+### Code layout
+
+- `scripts/postprocess.py` — orchestrator. Defines `process_text` (the
+  in-memory pipeline) and `process_file` (the I/O wrapper). Owns the
+  module-level mutable state populated by `apply_config`: `ENV_MAP`,
+  `CHAPTER_TITLES`, `TIKZ_FIGURE_MAP`, `_EXTRA_CROSS_REF_ROUTING`,
+  `_EXTRA_DOUBLED_NOUN_REFS`, `_LISTING_SOURCE_BASE`, `POSTPROCESS_REWRITES`,
+  the frontmatter/whitespace style flags, and the per-file exercise
+  counters.
+- `scripts/transforms/` — themed transform modules: `math.py`, `refs.py`,
+  `cite.py`, `figures.py`, `code.py`, `envs.py`, `tables.py`,
+  `typography.py`, `algorithms.py`, `frontmatter.py`. Each module owns one
+  family of transforms; tests still import via `postprocess.convert_X`
+  (re-exported from the top of `postprocess.py`).
+- `scripts/transforms/_helpers.py` — shared helpers (currently just
+  `convert_label_colons`). Add here when a helper is needed by ≥2 transform
+  modules.
+
+**Adding a new transform.** Drop it into the appropriate `transforms/*.py`,
+add a re-import in `postprocess.py`'s import block, and a call in
+`process_text` at the right ordering position (update
+`tests/test_pipeline_order.py::EXPECTED_PIPELINE_ORDER` too). If the
+transform needs mutable state, add it to `postprocess.py` and late-import
+inside the function — that's the established pattern; module docstrings
+mark this with a "State coupling" header.
+
 ## How to approach a new book conversion
 
 1. **Read [`lessons/`](lessons/) first.** Every lesson there is a pitfall

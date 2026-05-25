@@ -13,3 +13,4 @@ tmp/
 # repos). See reports/README.md for the verification workflow.
 fixtures/
 .coverage
+QUALITY-REVIEW.md

@@ -62,6 +62,14 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Added — config-driven features
 
+- **`cross_ref_routing:`** (P1b) extends `make_ref`'s label-prefix →
+  MyST role mapping. Books that use `lst:` instead of `list:` for
+  listings (or similar idiosyncratic conventions) no longer need to
+  fork `postprocess.py`. String form expands to both colon- and
+  hyphen-bearing variants; list form passes through verbatim.
+- **`doubled_noun_refs:`** (P1b) extends `_DOUBLED_NOUN_REFS` for
+  books with custom theorem-class nouns (`Claim`, `Conjecture`,
+  `Fact`, etc.). Defaults still apply.
 - **Per-file `frontmatter_style:` override** ([9bdd1f0]) on `chapters[]`
   and `extra_files[]` entries. Books that mix standalone and absorbed
   styles (dp1: numbered chapters standalone + front-matter absorbed)
@@ -90,6 +98,13 @@ haven't validated. Everything below is on `main` and available now.
 - **Structural validation** (`scripts/validate.py`, [cc17444]) —
   counts equations, theorems, figures, cross-refs, citations in
   source vs. output. Reports per-chapter mismatches.
+- **Cross-reference resolution check** (P1a): the project-wide pool
+  of declared anchors is matched against every `{ref|eq|numref|
+  prf:ref}` directive; declared bib keys are matched against every
+  `{cite*}` directive. Catches the regression class of #30, #31,
+  #33, #35, #37 — name-mismatches where counts pass but the
+  rendered output silently breaks. Opt out with
+  `validate.cross_ref_resolution: false`.
 - **`validate.broken_inline_math`** ([af44cb5]) — flags inline math
   whose continuation line opens with `>` (silently parsed as a
   blockquote marker by MyST). Folds in book-dp1's standalone
@@ -137,10 +152,39 @@ haven't validated. Everything below is on `main` and available now.
   parity tests never touch in-progress branches in `../book-dp1` /
   `../book-dp2`.
 - **`scripts/test.sh`** ([cc17444]) — runs the pytest suite. 96
-  tests at 0.1.0.
+  tests at 0.1.0; 383 after the P0–P2 quality pass.
+- **`pytest-cov` coverage** (P0a) — informational baseline (~69%
+  total, 70% on `postprocess.py`). No minimum enforced. Override
+  with `--no-cov` for fast iteration.
+- **Pipeline-order assertion test** (P0b, `tests/test_pipeline_order.py`)
+  — locks the canonical `process_text` call sequence against a
+  checked-in constant. Codifies lesson 008; reorders must be
+  explicit.
+- **Golden-file end-to-end tests** (P0c, `tests/golden/`, `tests/
+  test_golden.py`) — 12 pandoc-output fixtures run through the full
+  pipeline and compared byte-for-byte against checked-in expected
+  output. `UPDATE_GOLDEN=1 uv run pytest tests/test_golden.py`
+  re-captures the outputs for intentional behaviour changes.
+- **Shape catalogue tests** (P2a) — three parametrized files cover
+  every (env × shape) cell for math envs, every (cite-form × boundary
+  × key-type) cell, and every (figure-shape × caption-variant) cell.
+  A bug in one sibling handler now fails tests against all siblings.
+  Closes the discipline gap that produced the #30 → #37 and #32 →
+  #36 regression chains.
 
 ### Changed
 
+- **`postprocess.py` split into themed transform modules** (P3a):
+  the 2958-line monolith is now a 640-line orchestrator that imports
+  from `scripts/transforms/{math,refs,cite,figures,code,envs,
+  tables,typography,algorithms,frontmatter,_helpers}.py`. Each
+  module is 100–600 lines. Public symbols are re-exported from
+  `postprocess` so the import surface (`postprocess.convert_X`)
+  stays stable — no test edits required. Mutable module-level state
+  (`CHAPTER_TITLES`, `ENV_MAP`, `TIKZ_FIGURE_MAP`, the various
+  `_EXTRA_*` config-extension lists, etc.) stays on `postprocess` as
+  the single source of truth; transform modules late-import it
+  inside functions when they need state.
 - **Pipeline ordering** ([223bd12]): `resolve_listings` and
   `resolve_algorithms` now run AFTER `convert_citations` so inlined
   source code isn't mangled (e.g. Julia `@views` was being eaten as
