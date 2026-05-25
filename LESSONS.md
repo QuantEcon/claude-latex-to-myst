@@ -41,11 +41,12 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 032 | [Per-row \\label{} inside multi-row \\begin{align} lost — extract to anchors above the block](lessons/032-per-row-align-labels-lost-as-anchors.md) | post-processing | 🔴 | codified |
 | 033 | [Pandoc pre-resolves \\ref{} inside \\caption{} to a chapter-unaware number — recover the label from data-reference](lessons/033-pandoc-pre-resolves-ref-inside-caption-to-wrong-number.md) | post-processing | 🟡 | codified |
 | 034 | [Pandoc attribute fenced code blocks (from lstlisting) are not honoured by MyST — convert to {code-block} directives](lessons/034-pandoc-attr-fenced-code-blocks-need-myst-directive-conversion.md) | post-processing | 🟡 | codified |
+| 035 | [Citation regex trailing-`:` swallowed into key after the #32 widening](lessons/035-citation-regex-trailing-colon-swallowed-into-key.md) | regex-safety | 🟡 | codified |
 
 ## By category
 
 - **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034
-- **regex-safety:** 002, 017, 024, 031
+- **regex-safety:** 002, 017, 024, 031, 035
 - **pandoc:** 027
 - **preprocess:** 028, 029, 030
 - **katex:** 003, 006

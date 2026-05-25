@@ -950,6 +950,30 @@ def test_citation_textual_plain_key_trailing_period_unchanged():
     assert "{cite:t}`Smith2020`. Next sentence." in out
 
 
+@pytest.mark.parametrize("prose,key,after", [
+    # Plain key + comma (regression baseline).
+    ("In the spirit of @key2019, ...", "key2019", ", ..."),
+    # Plain key + trailing colon in prose — the #36 regression case.
+    ("See @key2019: it explains.", "key2019", ": it explains."),
+    # Plain key + sentence-ending period.
+    ("See @key2019. Next.", "key2019", ". Next."),
+    # Colon-bearing key + trailing colon in prose (the ECTA case from #36).
+    ("Per @ECTA:ECTA1716: see.", "ECTA:ECTA1716", ": see."),
+    # Colon-bearing key + space (no trailing punctuation issue).
+    ("Per @author:2020:tag and.", "author:2020:tag", " and."),
+    # Colon-bearing key + sentence end (#32 baseline).
+    ("Per @Bertsekas:2000:DPO:517430.", "Bertsekas:2000:DPO:517430", "."),
+])
+def test_citation_textual_key_boundary(prose, key, after):
+    """GH #36 — a trailing ``:`` immediately after the key belongs to
+    prose, not to the key. The #32 widening accidentally pulled it
+    into the capture (9 broken sites in the Deep-Learning book).
+    Parametrized over both colon-bearing and plain keys to lock the
+    boundary behaviour."""
+    out = postprocess.convert_citations(prose)
+    assert f"{{cite:t}}`{key}`{after}" in out
+
+
 # ── simple_table → list-table (FIX Issue 1) ──────────────────────────────────
 
 

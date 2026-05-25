@@ -148,6 +148,17 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **Textual `@key` citation regex swallowed trailing `:` from prose**
+  ([#36]): direct regression from the [#32] widening — adding `:`
+  to the boundary lookahead meant ``\citet{key}: explanation`` had
+  the prose colon captured into the key. 9 sites broken in the
+  Deep-Learning book. Fix encodes the asymmetric constraint
+  (`:` legal *inside* the key, not at the *end*) directly in the
+  capture pattern: ``[a-zA-Z][a-zA-Z0-9_:]*[a-zA-Z0-9_]``; boundary
+  reverted to the pre-#32 form so `:` in prose terminates the match.
+  Parametrized test now covers trailing colon, semicolon, period,
+  and space across both plain and colon-bearing keys. Lesson [035].
+  Closes [#36].
 - **Textual `@key` citation regex truncated colon-bearing bib keys**
   ([#32]): JabRef / Mendeley / ACM-style keys (`Author:Year:Tag`)
   were captured only up to the first `:`, leaving the suffix as
@@ -553,6 +564,7 @@ haven't validated. Everything below is on `main` and available now.
 [#31]: https://github.com/QuantEcon/claude-latex-to-myst/issues/31
 [#32]: https://github.com/QuantEcon/claude-latex-to-myst/issues/32
 [#33]: https://github.com/QuantEcon/claude-latex-to-myst/issues/33
+[#36]: https://github.com/QuantEcon/claude-latex-to-myst/issues/36
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
@@ -569,6 +581,7 @@ haven't validated. Everything below is on `main` and available now.
 [032]: lessons/032-per-row-align-labels-lost-as-anchors.md
 [033]: lessons/033-pandoc-pre-resolves-ref-inside-caption-to-wrong-number.md
 [034]: lessons/034-pandoc-attr-fenced-code-blocks-need-myst-directive-conversion.md
+[035]: lessons/035-citation-regex-trailing-colon-swallowed-into-key.md
 
 ### Settled architectural decisions
 

@@ -715,11 +715,14 @@ def convert_citations(text: str) -> str:
 
     # Inline/textual citation: @key (not preceded by [ or @, and not
     # inside backticks). Guards against email addresses and
-    # already-converted citations. ``:`` is permitted in keys to
-    # accommodate JabRef/Mendeley/ACM-style ``Author:Year:Tag`` keys
-    # (closes #32).
+    # already-converted citations. ``:`` is permitted *inside* keys
+    # (JabRef/Mendeley/ACM-style ``Author:Year:Tag`` — #32) but the
+    # last char must be alphanumeric — otherwise a trailing ``:`` in
+    # prose like ``\citet{key}: explanation`` gets swallowed into the
+    # capture group (closes #36). Boundary lookahead stays at the
+    # pre-#32 form so ``:`` in prose can still terminate the match.
     text = re.sub(
-        r'(?<![`\[@])@([a-zA-Z][a-zA-Z0-9_:]+(?:\d{4}[a-zA-Z]?)?)(?=[^a-zA-Z0-9_:]|$)',
+        r'(?<![`\[@])@([a-zA-Z][a-zA-Z0-9_:]*[a-zA-Z0-9_])(?=[^a-zA-Z0-9_]|$)',
         r'{cite:t}`\1`',
         text
     )
