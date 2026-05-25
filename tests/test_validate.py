@@ -283,3 +283,93 @@ def test_parse_bib_keys_ignores_strings_and_preamble(tmp_path):
     # Both match the current parser. ``realkey`` is the real one.
     keys = v.parse_bib_keys(bib)
     assert 'realkey' in keys
+
+
+# ── Type-compatibility check (P1a-prime, closes #38 class) ───────────────────
+
+
+def test_collect_typed_references_captures_role():
+    """``collect_typed_references`` returns (role, target) pairs for
+    every cross-reference, plus the same cite-key set as
+    ``collect_references``."""
+    md = (
+        "See {ref}`sec-a`, {eq}`eq-b`, {numref}`fig-c`, "
+        "{prf:ref}`thm-d`, {cite:t}`smith2020`."
+    )
+    typed_xrefs, cites = v.collect_typed_references(md)
+    assert ('ref',     'sec-a')  in typed_xrefs
+    assert ('eq',      'eq-b')   in typed_xrefs
+    assert ('numref',  'fig-c')  in typed_xrefs
+    assert ('prf:ref', 'thm-d')  in typed_xrefs
+    assert cites == {'smith2020'}
+
+
+def test_check_resolution_flags_directive_type_mismatch():
+    """A ``{ref}`eq-foo`` that resolves to an existing eq anchor is
+    still broken in MyST — equation anchors are only reachable via
+    ``{eq}``. The type-compatibility check (P1a-prime) flags it."""
+    # ``eq-foo`` exists (trailing-paren equation label form), and
+    # something references it via plain ``{ref}``. Anchor resolves
+    # by name; type does NOT match.
+    md = "$$\nx = y\n$$ (eq-foo)\n\nSee {ref}`eq-foo`.\n"
+    diags = v.check_resolution(md, 'ch.md')
+    assert any('directive-type mismatch' in d and 'eq-foo' in d for d in diags), diags
+    assert any('expects {eq}' in d for d in diags), diags
+
+
+def test_check_resolution_flags_ref_to_prf_anchor():
+    """``{ref}`alg-young`` cannot target a ``{prf:algorithm}``
+    directive's ``:label:``. Should be ``{prf:ref}``."""
+    md = (
+        "```{prf:algorithm}\n:label: alg-young\n\nBody\n```\n"
+        "\nLater, see {ref}`alg-young`.\n"
+    )
+    diags = v.check_resolution(md, 'ch.md')
+    assert any('directive-type mismatch' in d and 'alg-young' in d for d in diags), diags
+
+
+def test_check_resolution_no_mismatch_when_role_matches():
+    """Well-typed refs produce no diagnostics."""
+    md = (
+        "$$\nx = y\n$$ (eq-foo)\n\n"
+        "```{prf:theorem}\n:label: thm-main\n\nBody\n```\n\n"
+        "# Section {#sec-a}\n\n"
+        "See {eq}`eq-foo`, {prf:ref}`thm-main`, {ref}`sec-a`.\n"
+    )
+    assert v.check_resolution(md, 'ch.md') == []
+
+
+def test_check_resolution_skips_type_check_when_disabled():
+    """``check_types=False`` opts out of the type-compatibility pass.
+    Only name resolution remains."""
+    md = "$$\nx = y\n$$ (eq-foo)\n\nSee {ref}`eq-foo`.\n"
+    diags = v.check_resolution(md, 'ch.md', check_types=False)
+    # Name resolves, type check skipped → no diagnostics.
+    assert diags == []
+
+
+def test_check_resolution_unresolved_name_does_not_emit_type_mismatch():
+    """When the name doesn't resolve, the type-mismatch pass is
+    skipped for that target (would be noise on top of the bigger
+    "missing anchor" problem)."""
+    md = "See {ref}`eq-missing`.\n"
+    diags = v.check_resolution(md, 'ch.md')
+    assert any('unresolved' in d for d in diags)
+    assert not any('directive-type mismatch' in d for d in diags)
+
+
+def test_check_resolution_section_ref_passes():
+    """Generic ``{ref}`` to section-family labels is the right
+    directive type — regression guard for the routing table."""
+    md = "# Intro {#sec-intro}\n\nSee {ref}`sec-intro`.\n"
+    assert v.check_resolution(md, 'ch.md') == []
+
+
+def test_check_resolution_numref_to_figure_passes():
+    """``{numref}`fig-X`` is the right directive type for figure
+    anchors — regression guard."""
+    md = (
+        "```{figure} fig.png\n:name: fig-bar\n\nCaption\n```\n\n"
+        "See {numref}`fig-bar`.\n"
+    )
+    assert v.check_resolution(md, 'ch.md') == []

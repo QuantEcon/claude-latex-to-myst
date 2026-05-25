@@ -99,15 +99,11 @@ _ANCHOR_PATTERNS = [
     re.compile(r'^\$\$\s+\(([^)\s]+)\)\s*$', re.MULTILINE),
 ]
 
-# Reference patterns. Each capture group 1 is the target name (single key)
-# or comma-separated keys (multi-key ``{cite}`` form).
-_REF_PATTERNS = [
-    # MyST cross-reference roles: {ref}, {eq}, {numref}, {prf:ref}.
-    (re.compile(r'\{(?:ref|eq|numref|prf:ref)\}`([^`]+)`'),    'xref'),
-    # Citation roles: {cite}, {cite:t}, {cite:p}, {cite:author},
-    # {cite:year}. Body may be a comma-separated list of keys.
-    (re.compile(r'\{cite(?::t|:p|:author|:year)?\}`([^`]+)`'), 'cite'),
-]
+# Reference patterns. Capture group 1 is the directive role
+# (``ref`` / ``eq`` / ``numref`` / ``prf:ref``); group 2 is the
+# target name (single, or comma-separated for ``{cite}``).
+_XREF_RE = re.compile(r'\{(ref|eq|numref|prf:ref)\}`([^`]+)`')
+_CITE_RE = re.compile(r'\{(cite(?::t|:p|:author|:year)?)\}`([^`]+)`')
 
 
 def collect_anchors(text: str) -> set[str]:
@@ -125,17 +121,52 @@ def collect_anchors(text: str) -> set[str]:
 def collect_references(text: str) -> tuple[set[str], set[str]]:
     """Return ``(xref_targets, cite_targets)`` — the names every
     ``{ref|eq|numref|prf:ref}`` and every ``{cite*}`` directive points
-    at. Multi-key ``{cite}`a,b,c``` are split on comma."""
+    at. Multi-key ``{cite}`a,b,c``` are split on comma.
+
+    Untyped — preserves the original name-only contract used by tests
+    and downstream consumers. See ``collect_typed_references`` for
+    the role-aware variant used by the type-compatibility check.
+    """
     xrefs: set[str] = set()
     cites: set[str] = set()
-    for pat, kind in _REF_PATTERNS:
-        bucket = xrefs if kind == 'xref' else cites
-        for m in pat.finditer(text):
-            for key in m.group(1).split(','):
-                key = key.strip()
-                if key:
-                    bucket.add(key)
+    for m in _XREF_RE.finditer(text):
+        for key in m.group(2).split(','):
+            key = key.strip()
+            if key:
+                xrefs.add(key)
+    for m in _CITE_RE.finditer(text):
+        for key in m.group(2).split(','):
+            key = key.strip()
+            if key:
+                cites.add(key)
     return xrefs, cites
+
+
+def collect_typed_references(text: str) -> tuple[
+    list[tuple[str, str]], set[str]
+]:
+    """Return ``(typed_xrefs, cite_targets)`` where ``typed_xrefs`` is
+    a list of ``(role, target)`` pairs. Used by the type-compatibility
+    check (P1a-prime, closes #38 class of bugs): a reference whose
+    role doesn't match the routing-role for the target label's prefix
+    is broken in MyST (``{ref}`eq-foo`` cannot target an equation
+    anchor, ``{numref}`thm-X`` cannot target a theorem, etc.).
+    """
+    typed_xrefs: list[tuple[str, str]] = []
+    cites: set[str] = set()
+    for m in _XREF_RE.finditer(text):
+        role = m.group(1)
+        # Cross-refs are always single-target (comma-separated multi
+        # forms only apply to {cite}).
+        target = m.group(2).strip()
+        if target:
+            typed_xrefs.append((role, target))
+    for m in _CITE_RE.finditer(text):
+        for key in m.group(2).split(','):
+            key = key.strip()
+            if key:
+                cites.add(key)
+    return typed_xrefs, cites
 
 
 # Bib-key parse. A real ``.bib`` file looks like::
@@ -162,26 +193,66 @@ def parse_bib_keys(bib_path: Path) -> set[str]:
     return set(_BIB_KEY_RE.findall(text))
 
 
-def check_resolution(text: str, filename: str,
-                     bib_keys: set[str] | None = None) -> list[str]:
-    """Return diagnostic lines for cross-refs and citations whose
-    targets don't resolve. Empty list = clean.
+# Lazy import to avoid circular at module load — validate.py is
+# called from the CLI but also from tests that import it directly.
+def _routing_role(target: str) -> str:
+    """Local wrapper around ``transforms.refs.routing_role`` (which
+    late-imports the per-book extras from ``postprocess``). Returns
+    the MyST role name a label SHOULD be referenced through, based
+    on its prefix."""
+    from transforms.refs import routing_role
+    return routing_role(target)
 
-    - A cross-ref ``{ref}`X``` is unresolved if no anchor named ``X``
-      was declared anywhere in ``text``.
-    - A citation ``{cite*}`X``` is unresolved if ``X`` is not in the
-      provided ``bib_keys``. If ``bib_keys`` is None (no bibliography
-      configured), citation checks are skipped.
+
+def check_resolution(text: str, filename: str,
+                     bib_keys: set[str] | None = None,
+                     check_types: bool = True) -> list[str]:
+    """Return diagnostic lines for cross-refs and citations whose
+    targets don't resolve OR whose directive type doesn't match the
+    target. Empty list = clean.
+
+    Three diagnostic classes:
+
+    1. **Unresolved cross-reference** — a ``{ref|eq|numref|prf:ref}`X```
+       to an anchor named ``X`` that doesn't exist anywhere.
+    2. **Directive-type mismatch** (P1a-prime, closes #38 class) — the
+       reference role doesn't match the routing-role for the target
+       label's prefix. E.g. ``{ref}`eq-foo`` cannot target an
+       equation anchor; should be ``{eq}`eq-foo``. Disable with
+       ``check_types=False``.
+    3. **Unresolved citation key** — a ``{cite*}`X``` to a key not
+       declared in ``bib_keys``. Skipped when ``bib_keys`` is None
+       (no bibliography configured).
     """
     diagnostics: list[str] = []
     anchors = collect_anchors(text)
-    xrefs, cites = collect_references(text)
+    typed_xrefs, cites = collect_typed_references(text)
 
-    for target in sorted(xrefs - anchors):
+    # Pass 1 — name resolution. Sort uniquified pairs for determinism.
+    unresolved = sorted(
+        {(role, target) for role, target in typed_xrefs if target not in anchors}
+    )
+    for role, target in unresolved:
         diagnostics.append(
             f'{filename}: unresolved cross-reference: '
-            f'{{ref|eq|numref|prf:ref}}`{target}`'
+            f'{{{role}}}`{target}` (no such anchor)'
         )
+
+    # Pass 2 — type compatibility. Only checks refs that DID resolve;
+    # an unresolved ref's role-vs-routing mismatch is noise on top of
+    # the bigger "missing anchor" problem.
+    if check_types:
+        resolved = {(r, t) for r, t in typed_xrefs if t in anchors}
+        mismatches = sorted({
+            (role, target, _routing_role(target))
+            for role, target in resolved
+            if role != _routing_role(target)
+        })
+        for role, target, expected in mismatches:
+            diagnostics.append(
+                f'{filename}: directive-type mismatch: '
+                f'{{{role}}}`{target}` (label prefix expects {{{expected}}})'
+            )
 
     if bib_keys is not None:
         for key in sorted(cites - bib_keys):
@@ -265,8 +336,24 @@ def main():
     any_mismatch = False
     broken_math_total = 0
     unresolved_total = 0
+    type_mismatch_total = 0
     check_broken_math = checks.get('broken_inline_math', True)
     check_resolution_flag = checks.get('cross_ref_resolution', True)
+    # Type-compatibility (P1a-prime) is opt-out separately because it
+    # may surface pre-existing mismatches at first run that need
+    # human triage. Default on.
+    check_types_flag = checks.get('cross_ref_type_compatibility', True)
+
+    # Apply the config (loads cross_ref_routing extras, etc.) so the
+    # type-compatibility check honours per-book routing overrides.
+    try:
+        import postprocess
+        postprocess.apply_config(config, base)
+    except SystemExit:
+        # validate_config inside apply_config may sys.exit on bad
+        # config; the calling shell will have already failed before
+        # we got here in practice. Re-raise rather than mask.
+        raise
 
     # Cross-chapter anchor space: a ``{ref}\`X\``` in chapter A may resolve
     # to an anchor declared in chapter B. Build the union once.
@@ -312,11 +399,36 @@ def main():
         if check_resolution_flag:
             # Resolution check uses the project-wide anchor pool, not just
             # the current chapter's, so cross-chapter refs resolve correctly.
-            xrefs, cites = collect_references(md_text)
-            for target in sorted(xrefs - all_anchors):
+            typed_xrefs, cites = collect_typed_references(md_text)
+
+            # (1) Name resolution.
+            unresolved_pairs = sorted({
+                (role, target) for role, target in typed_xrefs
+                if target not in all_anchors
+            })
+            for role, target in unresolved_pairs:
                 print(f'{md.name}: unresolved cross-reference: '
-                      f'{{ref|eq|numref|prf:ref}}`{target}`')
+                      f'{{{role}}}`{target}` (no such anchor)')
                 unresolved_total += 1
+
+            # (2) Type compatibility — only for refs that resolve.
+            if check_types_flag:
+                resolved_pairs = {
+                    (role, target) for role, target in typed_xrefs
+                    if target in all_anchors
+                }
+                mismatches = sorted({
+                    (role, target, _routing_role(target))
+                    for role, target in resolved_pairs
+                    if role != _routing_role(target)
+                })
+                for role, target, expected in mismatches:
+                    print(f'{md.name}: directive-type mismatch: '
+                          f'{{{role}}}`{target}` '
+                          f'(label prefix expects {{{expected}}})')
+                    type_mismatch_total += 1
+
+            # (3) Citation resolution.
             if bib_keys is not None:
                 for key in sorted(cites - bib_keys):
                     print(f'{md.name}: unresolved citation key: '
@@ -330,11 +442,15 @@ def main():
     if unresolved_total:
         print(f'  {unresolved_total} unresolved cross-reference(s) / citation(s).')
         print('  An anchor named in a {ref}/{eq}/{cite*} directive is missing.')
+    if type_mismatch_total:
+        print(f'  {type_mismatch_total} directive-type mismatch(es).')
+        print('  Reference role does not match the target label\'s prefix '
+              '(e.g. {ref}`eq-foo` should be {eq}`eq-foo`).')
     if any_mismatch:
         print('  Mismatches detected (marked with `!`). Investigate before shipping.')
-    if any_mismatch or broken_math_total or unresolved_total:
+    if any_mismatch or broken_math_total or unresolved_total or type_mismatch_total:
         sys.exit(1)
-    print('  All counts match. All cross-references resolve.')
+    print('  All counts match. All cross-references resolve and are well-typed.')
 
 
 if __name__ == '__main__':

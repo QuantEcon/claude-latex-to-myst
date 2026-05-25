@@ -64,10 +64,16 @@ _DOUBLED_NOUN_REFS = [
 ]
 
 
+# Each tuple maps a set of label-prefix families to a MyST role. The
+# prefix list is uniform across colon-form (``eq:``) and hyphen-form
+# (``eq-``) so ``routing_role`` works regardless of whether the label
+# arrives as raw pandoc output (colon-form) or post-``convert_label_colons``
+# (hyphen-form). Callers used to need to pick the form carefully —
+# don't anymore.
 _DEFAULT_CROSS_REF_ROUTING: list[tuple[tuple[str, ...], str]] = [
     (('eq:', 'eq-'),                                'eq'),
-    (('f:', 'fig:'),                                'numref'),
-    (('tab:', 'tbl:'),                              'numref'),
+    (('f:', 'f-', 'fig:', 'fig-'),                  'numref'),
+    (('tab:', 'tab-', 'tbl:', 'tbl-'),              'numref'),
     # Code-block listings (``{code-block}`` with ``:name: list-…``) are
     # enumerable; ``{numref}`` lets MyST render the auto-counter (default
     # "Program N") rather than dumping the caption inline (issue #8).
@@ -76,12 +82,32 @@ _DEFAULT_CROSS_REF_ROUTING: list[tuple[tuple[str, ...], str]] = [
     # (book-dp1 convention `\label{algo:foo}` → `algo-foo`). ``eg:``
     # targets ``prf:example``. Both full-word forms were missed by the
     # original short-form abbreviations — issue #9.
-    (('t:', 'thm:', 'l:', 'lem:', 'p:', 'pr:', 'prop:',
-      'd:', 'def:', 'c:', 'cor:', 'ex:', 'r:', 'rem:',
-      'a:', 'as:',
-      'alg:', 'algo:', 'algo-',
-      'eg:', 'eg-'),                                'prf:ref'),
-    (('s:', 'ss:', 'sss:', 'sec:', 'ch:', 'c-', 'c:'), 'ref'),
+    (('t:',    't-',
+      'thm:',  'thm-',
+      'l:',    'l-',
+      'lem:',  'lem-',
+      'p:',    'p-',
+      'pr:',   'pr-',
+      'prop:', 'prop-',
+      'd:',    'd-',
+      'def:',  'def-',
+      # ``c:`` / ``c-`` historically routed to ``prf:ref`` (corollary
+      # shorthand). Books using ``c:`` for chapter should override via
+      # ``cross_ref_routing:`` config.
+      'c:',    'c-',
+      'cor:',  'cor-',
+      'ex:',   'ex-',
+      'r:',    'r-',
+      'rem:',  'rem-',
+      'a:',    'a-',
+      'as:',   'as-',
+      'alg:',  'alg-',  'algo:', 'algo-',
+      'eg:',   'eg-'),                              'prf:ref'),
+    (('s:',   's-',
+      'ss:',  'ss-',
+      'sss:', 'sss-',
+      'sec:', 'sec-',
+      'ch:',  'ch-'),                               'ref'),
 ]
 
 
