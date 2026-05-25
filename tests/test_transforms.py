@@ -1836,6 +1836,62 @@ def test_convert_equations_align_no_labels_unchanged_shape():
     assert "=" not in [line.strip() for line in out.splitlines() if line.strip().startswith("(")]
 
 
+def test_convert_equations_multline_trailing_label_extracted():
+    """GH #37 — ``\\begin{multline}`` standard convention puts the
+    label at the *end* of the body. The pre-fix regex required the
+    label *immediately* after ``\\begin{multline}``, so this dominant
+    shape was missed and the label survived into the math body —
+    KaTeX silently drops it and ``\\eqref{}`` resolves to nothing.
+    Same shape of bug that #26 fixed for ``equation`` and #30 fixed
+    for ``align``."""
+    text = (
+        "$$\\begin{multline}\n"
+        "a + b\\\\\n"
+        "+ c = d\n"
+        "\\label{eq:foo}\n"
+        "\\end{multline}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert "$$ (eq-foo)" in out
+    assert "\\label{" not in out
+
+
+def test_convert_equations_multline_no_label_unchanged():
+    """Regression guard: an unlabeled ``multline`` still produces a
+    bare ``$$ … $$`` block."""
+    text = (
+        "$$\\begin{multline}\n"
+        "a + b\\\\\n"
+        "+ c = d\n"
+        "\\end{multline}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert "$$" in out
+    # No trailing-label artifact.
+    assert "()" not in out
+    assert "\\begin{multline}" not in out
+
+
+def test_convert_equations_gather_per_row_labels():
+    """GH #37 — ``\\begin{gather}`` legitimately carries per-row
+    labels (one number per stacked equation). First label becomes
+    the block's trailing ``(label)`` for backward-compat; the rest
+    stack as anchors above (the same convention #30 chose for
+    multi-row align)."""
+    text = (
+        "$$\\begin{gather}\n"
+        "a = 1 \\label{eq:a}\\\\\n"
+        "b = 2 \\label{eq:b}\n"
+        "\\end{gather}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert "$$ (eq-a)" in out
+    assert "(eq-b)=" in out
+    assert "\\label{" not in out
+    # Stacked anchor comes before the math block.
+    assert out.index("(eq-b)=") < out.index("$$")
+
+
 # ── Labels: colons → hyphens (universal rule) ────────────────────────────────
 
 

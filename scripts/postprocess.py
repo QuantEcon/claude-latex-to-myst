@@ -408,12 +408,14 @@ def convert_equations(text: str) -> str:
         content = m.group(1).strip()
         return f'$$\n{content}\n$$'
     
-    def _extract_align_labels(content: str) -> tuple[str, list[str]]:
-        """Pull every ``\\label{...}`` out of an align body and return the
-        stripped body plus the list of labels in source order. Per-row
-        labels (closes #30) otherwise survive into MyST as bare
-        ``\\label{}`` tokens that KaTeX silently drops, leaving any
-        ``\\eqref{}`` to the row unresolved."""
+    def _extract_math_labels(content: str) -> tuple[str, list[str]]:
+        """Pull every ``\\label{...}`` out of a math-env body and return
+        the stripped body plus the list of labels in source order. Used
+        by ``align`` (closes #30) and ``multline`` / ``gather`` (closes
+        #37). Per-row labels — and the standard "label at end of body"
+        convention for ``multline`` — otherwise survive into MyST as
+        bare ``\\label{}`` tokens that KaTeX silently drops, leaving
+        any ``\\eqref{}`` to the row unresolved."""
         labels = re.findall(r'\\label\{([^}]+)\}', content)
         content = re.sub(r'\\label\{[^}]+\}', '', content).strip()
         return content, labels
@@ -425,7 +427,7 @@ def convert_equations(text: str) -> str:
     # collapses but cross-refs all resolve).
     def replace_labeled_align(m):
         leading = convert_label_colons(m.group(1))
-        content, extra = _extract_align_labels(m.group(2).strip())
+        content, extra = _extract_math_labels(m.group(2).strip())
         block = f'$$\n\\begin{{aligned}}\n{content}\n\\end{{aligned}}\n$$ ({leading})'
         if extra:
             anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in extra)
@@ -441,7 +443,7 @@ def convert_equations(text: str) -> str:
 
     # Pattern: $$\begin{align*} ... \end{align*}$$ (unlabeled)
     def replace_unlabeled_align(m):
-        content, labels = _extract_align_labels(m.group(1).strip())
+        content, labels = _extract_math_labels(m.group(1).strip())
         block = f'$$\n\\begin{{aligned}}\n{content}\n\\end{{aligned}}\n$$'
         if labels:
             anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in labels)
@@ -455,38 +457,38 @@ def convert_equations(text: str) -> str:
         flags=re.DOTALL
     )
     
-    # Pattern: $$\begin{multline}\label{...} ... \end{multline}$$
-    def replace_labeled_multline(m):
-        label = convert_label_colons(m.group(1))
-        content = m.group(2).strip()
-        return f'$$\n{content}\n$$ ({label})'
-    
-    text = re.sub(
-        r'\$\$\\begin\{multline\*?\}\s*\\label\{([^}]+)\}\s*(.*?)\\end\{multline\*?\}\$\$',
-        replace_labeled_multline,
-        text,
-        flags=re.DOTALL
-    )
-    
-    # Unlabeled multline
+    # multline + gather: one unified handler. Collapse the previous
+    # labeled / unlabeled pair into a single pass that extracts
+    # ``\label{}`` from anywhere in the body — the standard LaTeX
+    # convention for ``multline`` puts the label *at the end* of the
+    # body, which the leading-label-only regex would miss (closes
+    # #37). Same shape of fix that #30 applied to align. First label
+    # becomes the block's trailing ``(label)`` for backward-compat;
+    # any additional labels (legitimate per-row in ``gather``) stack
+    # as anchors above.
+    def replace_math_block(m):
+        content, labels = _extract_math_labels(m.group(1).strip())
+        block = f'$$\n{content}\n$$'
+        if not labels:
+            return block
+        leading = convert_label_colons(labels[0])
+        block = f'{block} ({leading})'
+        extra = labels[1:]
+        if extra:
+            anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in extra)
+            return f'{anchors}\n{block}'
+        return block
+
     text = re.sub(
         r'\$\$\\begin\{multline\*?\}\s*(.*?)\\end\{multline\*?\}\$\$',
-        replace_unlabeled_equation,
+        replace_math_block,
         text,
         flags=re.DOTALL
     )
-    
-    # Pattern: $$\begin{gather}\label{...} ... \end{gather}$$
-    text = re.sub(
-        r'\$\$\\begin\{gather\*?\}\s*\\label\{([^}]+)\}\s*(.*?)\\end\{gather\*?\}\$\$',
-        replace_labeled_multline,
-        text,
-        flags=re.DOTALL
-    )
-    
+
     text = re.sub(
         r'\$\$\\begin\{gather\*?\}\s*(.*?)\\end\{gather\*?\}\$\$',
-        replace_unlabeled_equation,
+        replace_math_block,
         text,
         flags=re.DOTALL
     )

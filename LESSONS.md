@@ -43,10 +43,11 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 034 | [Pandoc attribute fenced code blocks (from lstlisting) are not honoured by MyST — convert to {code-block} directives](lessons/034-pandoc-attr-fenced-code-blocks-need-myst-directive-conversion.md) | post-processing | 🟡 | codified |
 | 035 | [Citation regex trailing-`:` swallowed into key after the #32 widening](lessons/035-citation-regex-trailing-colon-swallowed-into-key.md) | regex-safety | 🟡 | codified |
 | 036 | [Pandoc-attr fence regex stops at the first `}` inside a quoted caption value](lessons/036-attr-fence-regex-chokes-on-braces-in-caption-values.md) | regex-safety | 🟡 | codified |
+| 037 | [`\label{}` extraction not applied to `multline` / `gather` (incompleteness from #30)](lessons/037-multline-gather-label-extraction-incomplete.md) | post-processing | 🟢 | codified |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037
 - **regex-safety:** 002, 017, 024, 031, 035, 036
 - **pandoc:** 027
 - **preprocess:** 028, 029, 030

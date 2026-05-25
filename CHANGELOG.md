@@ -148,6 +148,18 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **`\label{}` extraction not applied to `multline` / `gather`**
+  ([#37]): incompleteness from [#30]. That fix unified the
+  ``align`` handlers to scan the body for any ``\label{}``, but
+  ``multline`` and ``gather`` kept the original "label immediately
+  after ``\begin``" assumption — and the dominant LaTeX convention
+  for ``multline`` puts the label at the *end* of the body.
+  Unified both envs the same way: single handler, all labels
+  extracted, first label trailing, rest stacked as anchors above.
+  Renamed the helper ``_extract_align_labels`` →
+  ``_extract_math_labels`` since it now serves three envs.
+  1 broken ``{eq}`` ref in the Deep-Learning book.
+  Lesson [037]. Closes [#37].
 - **Pandoc-attr fence regex stopped at the first `}` inside a quoted
   caption value** ([#35]): direct regression from the [#31]
   ``convert_pandoc_attr_code_blocks`` introduction — the attribute
@@ -576,6 +588,7 @@ haven't validated. Everything below is on `main` and available now.
 [#33]: https://github.com/QuantEcon/claude-latex-to-myst/issues/33
 [#35]: https://github.com/QuantEcon/claude-latex-to-myst/issues/35
 [#36]: https://github.com/QuantEcon/claude-latex-to-myst/issues/36
+[#37]: https://github.com/QuantEcon/claude-latex-to-myst/issues/37
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
@@ -594,6 +607,7 @@ haven't validated. Everything below is on `main` and available now.
 [034]: lessons/034-pandoc-attr-fenced-code-blocks-need-myst-directive-conversion.md
 [035]: lessons/035-citation-regex-trailing-colon-swallowed-into-key.md
 [036]: lessons/036-attr-fence-regex-chokes-on-braces-in-caption-values.md
+[037]: lessons/037-multline-gather-label-extraction-incomplete.md
 
 ### Settled architectural decisions
 
