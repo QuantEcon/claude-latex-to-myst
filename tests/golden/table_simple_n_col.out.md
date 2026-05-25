@@ -6,7 +6,9 @@ title: "Table Simple N Col"
 
 The lineage from plain SGD to AdamW is summarised below.
 
-````{table} Lineage from plain SGD to AdamW.
+````{table}
+
+Lineage from plain SGD to AdamW.
 
 ```{list-table}
 :header-rows: 1

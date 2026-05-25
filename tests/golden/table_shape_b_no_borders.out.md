@@ -9,7 +9,9 @@ Tables emitted by pandoc from ``\begin{table}\begin{tabular}...\end{tabular}
 pandoc inserts only the header separator. The header row sits at the
 table's indent immediately above the dash-rule, with the body below.
 
-````{table} Lineage from plain SGD to AdamW.
+````{table}
+
+Lineage from plain SGD to AdamW.
 
 ```{list-table}
 :header-rows: 1

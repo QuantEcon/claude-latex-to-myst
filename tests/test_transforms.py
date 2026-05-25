@@ -1198,6 +1198,85 @@ def test_simple_table_no_caption_emits_bare_list_table():
     assert "````" not in out
 
 
+def test_simple_table_caption_with_inline_role_backticks():
+    """Regression for PR #41 v6: captions containing inline-role
+    backticks (``{ref}`foo``, ``{cite:t}`bar``) silently broke when
+    placed on the directive argument — MyST's argument parser
+    mistakes the role's backticks for inline-code-span delimiters,
+    the directive fails to parse, and the ``{table}`` collapses to a
+    plain paragraph in the AST.
+
+    All 8 silently-failing captioned tables in the Deep-Learning
+    book had ≥2 backticks in their captions. The v7 fix moves the
+    caption into the directive body as a regular markdown paragraph,
+    where inline roles parse normally.
+    """
+    body = (
+        "::: {#tab:demo}\n"
+        "  ---- ----\n"
+        "  H1   H2\n"
+        "  ---- ----\n"
+        "  a    b\n"
+        "  ---- ----\n"
+        "\n"
+        "  : Lineage uses {cite:t}`smith2023` and Chapter {ref}`ch-foo`"
+        " for context.\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # The {table} opener line must NOT contain backticks (the bug
+    # shape that broke MyST's argument parser).
+    table_open_line = next(
+        line for line in out.split('\n') if line.startswith('````{table}')
+    )
+    assert '`' not in table_open_line[len('````{table}'):], (
+        f'{{table}} opener must not carry inline-role backticks: '
+        f'{table_open_line!r}'
+    )
+    # The caption text — including the inline roles — survives in the
+    # body as a markdown paragraph.
+    assert '{cite:t}`smith2023`' in out
+    assert '{ref}`ch-foo`' in out
+    # :name: is on the wrapper from the enclosing ::: {#tab:demo}.
+    assert ':name: tab-demo' in out
+
+
+def test_simple_table_long_math_caption_in_body():
+    """Regression for PR #41 v6: long mixed-math captions (~400+
+    chars with multiple ``$math$`` runs) on the directive argument
+    line tripped MyST's parser even after the v5 ``{table}`` wrapper
+    landed — the docutils body validator fired "list-table directive
+    must have a list of lists" because the long argument apparently
+    bled into the body. Move the caption into the body as a
+    paragraph; the argument stays empty.
+
+    Canonical reproducer: Deep-Learning book ``tab-curse_of_dim``,
+    429-char caption with 10 inline ``$math$`` runs."""
+    body = (
+        "::: {#tab:curse_of_dim}\n"
+        "  ---- ---------------------- ---------\n"
+        "  $d$   Grid points $(10^d)$   Memory\n"
+        "  ---- ---------------------- ---------\n"
+        "  1    $10^1$                 80 B\n"
+        "  ---- ---------------------- ---------\n"
+        "\n"
+        "  : Size of an $n = 10$ Cartesian grid and the 64-bit memory"
+        " required to store one floating-point value per grid point,"
+        " as a function of state-space dimension $d$. Grid-based"
+        " methods are comfortable only at low dimension; by $d = 10$"
+        " even storing one scalar per grid point is borderline.\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # Empty argument on the directive opener.
+    assert "````{table}\n" in out
+    # Caption text including all math runs survives in the body.
+    assert "Size of an $n = 10$ Cartesian grid" in out
+    assert "by $d = 10$ even storing" in out
+    # :name: propagated from the enclosing fence.
+    assert ":name: tab-curse_of_dim" in out
+
+
 def test_simple_table_caption_with_inline_math_and_refs_wraps():
     """Regression for PR #41 v4: a long caption containing inline
     ``$math$`` (and potentially inline directives like ``{ref}`X```)
@@ -1225,17 +1304,17 @@ def test_simple_table_caption_with_inline_math_and_refs_wraps():
         " even storing one scalar per grid point is borderline.\n"
     )
     out = postprocess.convert_simple_tables(body)
-    # Outer: {table} wrapper at 4-backtick fence with long caption.
-    assert "````{table} Size of an $n = 10$ Cartesian grid" in out
-    # Caption survives in full — including the trailing clauses with
-    # additional $math$ runs.
+    # Outer: {table} wrapper at 4-backtick fence with EMPTY argument;
+    # caption lives as the first paragraph of the body.
+    assert "````{table}\n" in out
+    # Caption text appears in the body — survives in full including
+    # trailing clauses with additional $math$ runs.
+    assert "Size of an $n = 10$ Cartesian grid" in out
     assert "by $d = 10$" in out
-    # Inner: bare {list-table} — no caption, no inline math leaks here.
+    # Caption did NOT land on the {table} opener line.
+    assert "````{table} Size" not in out
+    # Inner: bare {list-table} — no caption leaks here.
     assert "```{list-table}" in out
-    inner_start = out.index("```{list-table}")
-    inner_end = out.index("```", inner_start + len("```{list-table}"))
-    inner = out[inner_start:inner_end]
-    assert "Cartesian grid" not in inner   # caption not duplicated inside
     # Rows survived.
     assert "* - $d$" in out
     assert "  - Memory" in out
@@ -1269,9 +1348,10 @@ def test_simple_table_inside_id_fence_emits_explicit_name():
     # will turn the opener into a (tab-nas_methods)= standalone anchor
     # downstream); convert_simple_tables also emits :name: on the
     # directive directly so the identifier propagates to the AST.
-    assert "````{table} Caption text." in out
+    assert "````{table}\n" in out
     assert ":name: tab-nas_methods" in out
-    # The {table} :name: comes BEFORE the blank line and inner directive.
+    assert "Caption text." in out
+    # The {table} :name: comes BEFORE the inner list-table directive.
     assert out.index(":name: tab-nas_methods") < out.index("```{list-table}")
 
 
@@ -1377,8 +1457,12 @@ def test_simple_table_with_caption():
     regression."""
     body = _table("A | B") + "\n  : My caption\n"
     out = postprocess.convert_simple_tables(body)
-    # Outer wrapper: 4-backtick fence + caption-as-argument.
-    assert "````{table} My caption" in out
+    # Outer wrapper: 4-backtick fence with EMPTY argument; caption
+    # lives as the first paragraph of the body.
+    assert "````{table}\n" in out
+    # Caption text appears as a body paragraph, not on the opener line.
+    assert "My caption" in out
+    assert "````{table} My caption" not in out   # not on opener line
     # Inner: bare {list-table} — no caption / name / arg.
     assert "```{list-table}" in out
     inner = out.split("```{list-table}", 1)[1]
@@ -1450,7 +1534,9 @@ def test_simple_table_three_column_with_caption():
         "  : Lineage from plain SGD to AdamW.\n"
     )
     out = postprocess.convert_simple_tables(body)
-    assert "````{table} Lineage from plain SGD to AdamW." in out
+    assert "````{table}\n" in out
+    assert "Lineage from plain SGD to AdamW." in out
+    assert "````{table} Lineage" not in out   # not on opener line
     assert "```{list-table}" in out
     assert ":header-rows: 1" in out
     # Docutils-style option form must NOT appear.
@@ -1607,7 +1693,9 @@ def test_simple_table_shape_b_header_above_single_rule():
         "  : Lineage from plain SGD to AdamW.\n"
     )
     out = postprocess.convert_simple_tables(body)
-    assert "````{table} Lineage from plain SGD to AdamW." in out
+    assert "````{table}\n" in out
+    assert "Lineage from plain SGD to AdamW." in out
+    assert "````{table} Lineage" not in out
     assert "```{list-table}" in out
     assert ":header-rows: 1" in out
     assert ":caption:" not in out
@@ -1701,8 +1789,10 @@ def test_simple_table_shape_b_preceded_by_prose_with_blank_separator():
     # The intro paragraph survives.
     assert "An introductory paragraph at indent zero." in out
     assert out.count("introductory paragraph") == 1
-    # Table converted with caption as {table} wrapper argument.
-    assert "````{table} Caption text." in out
+    # Table converted with caption as {table} body paragraph.
+    assert "````{table}\n" in out
+    assert "Caption text." in out
+    assert "````{table} Caption" not in out   # not on opener line
     assert "```{list-table}" in out
     assert ":caption:" not in out
     assert "* - Item" in out
@@ -1733,7 +1823,9 @@ def test_simple_table_header_plus_caption_inside_center():
     )
     out = postprocess.convert_simple_tables(body)
     assert out.count("```{list-table}") == 1
-    assert "````{table} Common symbols used throughout." in out
+    assert "````{table}\n" in out
+    assert "Common symbols used throughout." in out
+    assert "````{table} Common" not in out
     assert "```{list-table}" in out
     assert ":header-rows: 1" in out
     assert ":caption:" not in out

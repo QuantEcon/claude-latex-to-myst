@@ -5,8 +5,10 @@ title: "Table Wide Indent Header Inside Id Fence"
 # Wide-indent header + id-fence test
 
 (tab-seq_compare)=
-````{table} Comparison of sequence architectures across $\mathcal{O}(T^2)$ attention and unit-length paths.
+````{table}
 :name: tab-seq_compare
+
+Comparison of sequence architectures across $\mathcal{O}(T^2)$ attention and unit-length paths.
 
 ```{list-table}
 :header-rows: 1

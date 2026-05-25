@@ -4,7 +4,9 @@ title: "Table Simple Two Col"
 
 # Notation
 
-````{table} Common symbols used throughout.
+````{table}
+
+Common symbols used throughout.
 
 ```{list-table}
 :header-rows: 1

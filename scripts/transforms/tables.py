@@ -428,9 +428,31 @@ def convert_simple_tables(text: str) -> str:
         )
 
         if caption:
-            out.append(f'````{{table}} {caption}')
+            # Caption is emitted as the FIRST PARAGRAPH inside the
+            # ``{table}`` body, NOT as the directive argument. Two
+            # bugs in MyST's directive-argument parser drove this:
+            #
+            # (1) Captions containing inline-role backticks (``{ref}
+            #     `ch-foo``` / ``{cite:t}`smith2023```) — the parser
+            #     misreads the role's backticks as inline-code span
+            #     delimiters mid-argument, the directive fails to
+            #     parse cleanly, and the ``{table}`` collapses to a
+            #     plain paragraph in the AST.
+            # (2) Very long mixed-math captions (~400+ chars, multiple
+            #     ``$math$`` runs) — argument parser mis-attributes
+            #     subsequent lines, body validator fires "list-table
+            #     directive must have a list of lists".
+            #
+            # Caption-as-first-paragraph is the canonical MyST form
+            # for ``{table}`` per https://mystmd.org/guide/figures#tables
+            # — the body is regular markdown so inline roles, backticks,
+            # and math all parse normally. Closes PR #41 silent-fail
+            # and explicit-error classes for captioned tables.
+            out.append('````{table}')
             if directive_name:
                 out.append(f':name: {directive_name}')
+            out.append('')
+            out.append(caption)
             out.append('')
             out.append('```{list-table}')
             out.append(f':header-rows: {header_rows_count}')
