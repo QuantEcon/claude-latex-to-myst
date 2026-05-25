@@ -113,9 +113,7 @@ _DOUBLED_NOUN_REFS = [
 ]
 
 
-def convert_label_colons(label: str) -> str:
-    """Convert colons to hyphens in a label: 'thm:main' → 'thm-main'."""
-    return label.replace(':', '-')
+from transforms._helpers import convert_label_colons  # re-export (P3a)
 
 
 def convert_environment_divs(text: str) -> str:
