@@ -17,6 +17,25 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Added — pipeline transforms
 
+- **Unified tabular extraction via marker preprocessor** ([#55],
+  follow-up to [#51]): ``_apply_table_markers.py`` now extracts EVERY
+  ``\\begin{tabular}`` variant in source ``.tex`` — not just those
+  inside ``\\begin{table}`` floats. Three shapes are now discovered:
+  (a) ``\\begin{table}`` floats (existing); (b) ``\\begin{center}``
+  blocks containing a tabular (the common-symbols-style notation-list
+  and ch06_ha_youngs histogram shapes); (c) bare ``\\begin{tabular}``
+  not inside any wrapper. Tabular-family variants
+  (``\\begin{tabular*}``, ``\\begin{tabularx}``, ``\\begin{tabulary}``,
+  ``\\begin{tabu}``) are recognised — parsers handle their 2-arg
+  signature ``{width}{colspec}``. Tabulars whose ancestor stack
+  contains a math env (``equation``, ``align``, ``array``, ...),
+  Beamer slide env (``frame``, ``columns``, ``block``), TikZ
+  diagram (``tikzpicture``), figure-family env (``figure``,
+  ``subfigure``, ``minipage``), or custom box env are SKIPPED via
+  ``_has_skip_ancestor`` — content remains as raw LaTeX for pandoc
+  to handle. ``convert_simple_tables`` is now a safety-net fallback;
+  it is no longer reached by any production input across the three
+  test corpora. Retirement tracked under #55's Phase 4. Closes [#55].
 - **`_apply_table_markers` + `resolve_table_markers`** ([#51]): bypass
   pandoc's lossy LaTeX-tabular reader for `\begin{table}` floats.
   Pandoc's reader collapses all interior `\hline`/`\midrule`
