@@ -223,6 +223,22 @@ def process_text(text: str) -> str:
     # inter-block slice followed by either the marker (when parsing
     # succeeded) or the original block text (defensive fallback). No
     # in-place mutation of ``text`` — purely re-assembly.
+    #
+    # Critical: the marker MUST be on its own paragraph in the .tex we
+    # hand to pandoc. If the original ``\begin{table}`` sat
+    # immediately after prose with no blank line (as in Deep-Learning
+    # ``ch07_pinns.tex:5953`` and 4 other tables), the marker would
+    # be glued to that paragraph, pandoc would emit it inline with
+    # the prose, and ``resolve_table_markers`` would then expand the
+    # multi-line ``\`\`\`\`{table}`` directive onto the same line as
+    # the prose — MyST refuses to parse a directive in that position,
+    # so the table collapses, the closing fence leaks into the next
+    # paragraph, and cross-refs to the label fall through unresolved.
+    # See https://github.com/QuantEcon/claude-latex-to-myst/pull/53
+    # for the regression report. Wrap the marker in ``\n\n`` on both
+    # sides — pandoc and LaTeX both collapse multiple blank lines to
+    # a single paragraph break, so this is safe even when the source
+    # already had blank lines around the block.
     out_parts: list[str] = []
     last_end = 0
     for (start, end, _), spec in zip(blocks, converted_specs):
@@ -232,7 +248,7 @@ def process_text(text: str) -> str:
             # handle it as best it can.
             out_parts.append(text[start:end])
         else:
-            out_parts.append(encode_marker(spec))
+            out_parts.append(f'\n\n{encode_marker(spec)}\n\n')
         last_end = end
     out_parts.append(text[last_end:])
     return ''.join(out_parts)

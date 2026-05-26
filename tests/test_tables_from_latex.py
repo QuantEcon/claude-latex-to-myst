@@ -463,6 +463,57 @@ def test_pandoc_batch_convert_falls_back_when_pandoc_missing(monkeypatch, capsys
 
 
 @pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
+def test_process_text_wraps_marker_in_blank_lines_when_prose_precedes_table():
+    """Regression for PR #53 retest against Deep-Learning book: 5
+    captioned tables lost their ``{table}`` directive because
+    ``\\begin{table}`` sat IMMEDIATELY after a prose paragraph (no
+    blank line in the .tex source). The marker substitution then
+    glued the marker to the preceding paragraph; pandoc emitted it
+    inline; ``resolve_table_markers`` expanded the multi-line
+    ``\\`\\`\\`\\`{table}`` directive onto the same line as the prose,
+    where MyST refuses to parse a directive. The fix wraps the
+    marker in ``\\n\\n`` on both sides at substitution time.
+
+    Affected sources in Deep-Learning included
+    ``tab:olg6_savings_rates``, ``tab:pinn_failure_modes``,
+    ``tab:cdice_tests`` and 2 others — all sharing the
+    "prose-then-block-with-no-blank-line" shape.
+    """
+    src = (
+        r'For $A=6$, $\beta=0.7$, Table~\ref{tab:foo} reports the rates.'
+        '\n'  # NO blank line before \begin{table}
+        r'\begin{table}[ht]' '\n'
+        r'\begin{tabular}{ll}' '\n'
+        r'\toprule' '\n'
+        r'H1 & H2 \\' '\n'
+        r'\midrule' '\n'
+        r'a & b \\' '\n'
+        r'\bottomrule' '\n'
+        r'\end{tabular}' '\n'
+        r'\caption{Cap}' '\n'
+        r'\label{tab:foo}' '\n'
+        r'\end{table}' '\n'
+        r'After the table, more prose follows.'  # NO blank line after
+    )
+    out = _process_text(src)
+    # The marker must be on its own line — preceded and followed by
+    # blank lines so pandoc treats it as a standalone block.
+    import re
+    marker_match = re.search(
+        r'\n\n<!--TABLE payload=[A-Za-z0-9+/=]+-->\n\n',
+        out,
+    )
+    assert marker_match is not None, (
+        f'marker must be wrapped in blank lines (paragraph break on '
+        f'both sides); got:\n{out!r}'
+    )
+    # And the preceding prose / trailing prose must still be present
+    # — we're isolating the marker, not eating context.
+    assert 'For $A=6$' in out
+    assert 'After the table, more prose follows.' in out
+
+
+@pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
 def test_process_text_emits_marker_for_simple_table():
     src = (
         r'Before.' '\n\n'
