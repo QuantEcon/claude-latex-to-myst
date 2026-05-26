@@ -119,6 +119,15 @@ for ch in "${CHAPTER_STEMS[@]}"; do
   # sources that contain no description envs (GH #19).
   python3 "$SCRIPT_DIR/_apply_description_markers.py" "$dst"
 
+  # Replace \begin{table}...\end{table} (LaTeX float) with TABLE marker
+  # comments. Pandoc's LaTeX reader collapses ALL interior \hline/\midrule
+  # separators in simple_tables format — the LaTeX-side header row
+  # identity is lost before pandoc produces output. This pre-pandoc
+  # extraction preserves the structure. The postprocess step emits MyST
+  # {table} directives. No-op for sources without \begin{table} floats
+  # (#51, Path C from PR #41 R3).
+  python3 "$SCRIPT_DIR/_apply_table_markers.py" "$dst"
+
   echo "  Preprocessed: ${ch}.tex"
 done
 
