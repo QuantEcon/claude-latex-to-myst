@@ -420,6 +420,32 @@ def parse_table_block(block_body: str) -> TableSpec | None:
             # Strip \label{...} from caption text.
             caption = re.sub(r'\\label\{[^}]+\}\s*', '', caption).strip()
 
+    # If no explicit ``\caption{}`` was found, look for a "bold-title
+    # paragraph" pattern immediately before the tabular: ``\textbf{X}
+    # \par\smallskip?`` optionally followed by font-size /
+    # arraystretch / centering commands. This is the de-facto title
+    # convention for ``\begin{center}\textbf{X}\par\begin{tabular}``
+    # shapes (e.g. Deep-Learning's ``execution_map``). Without this
+    # promotion the title is silently dropped — caught by PR #60
+    # retest. Skip when an explicit caption already exists so we
+    # don't clobber it.
+    if caption is None:
+        # Look at the region BETWEEN the start of block_body and the
+        # tabular opener for the title pattern. ``\textbf{TEXT}\par``
+        # (with optional trailing skip + intervening config commands)
+        # must be the LAST non-whitespace content before the tabular.
+        prelude = block_body[: open_m.start()]
+        title_m = re.search(
+            r'\\textbf\{([^{}]+)\}\s*\\par'              # \textbf{X}\par
+            r'(?:\s*\\(?:small|med|big)skip)?'           # optional \smallskip etc.
+            r'\s*(?:\\(?:scriptsize|small|footnotesize|normalsize)\s*)*'  # font cmds
+            r'\s*(?:\\renewcommand\{[^}]*\}\{[^}]*\}\s*)*'  # arraystretch etc.
+            r'\s*\Z',  # ...immediately before the tabular opener
+            prelude,
+        )
+        if title_m:
+            caption = title_m.group(1).strip()
+
     name: str | None = None
     label_m = _LABEL_RE.search(block_body)
     if label_m:

@@ -675,6 +675,113 @@ def test_process_text_skips_tabular_inside_tikzpicture():
     assert r'\begin{tabular}' in out
 
 
+def test_parse_table_block_promotes_bold_title_paragraph_to_caption():
+    """``\\textbf{X}\\par\\smallskip?`` immediately preceding
+    ``\\begin{tabular}`` (optionally with intervening font-size or
+    ``\\renewcommand`` config commands) is promoted to a synthetic
+    caption when there's no explicit ``\\caption{}``.
+
+    Surfaced by Deep-Learning ``execution_map`` (#59 was the original
+    request; PR #60 retest flagged that #55 dropped the title
+    entirely). Pre-#55 it stayed as orphaned bold prose above the
+    table; #55 substituted the whole ``\\begin{center}`` block which
+    silently deleted it. This promotion restores the title as the
+    table's caption — the table becomes an enumerable container
+    (with no ``\\label{}`` for cross-ref impact)."""
+    body = (
+        r'\begin{center}' '\n'
+        r'\textbf{Execution map: chapters and notebooks}\par\smallskip' '\n'
+        r'\scriptsize' '\n'
+        r'\renewcommand{\arraystretch}{1.2}' '\n'
+        r'\begin{tabular}{ll}' '\n'
+        r'\hline' '\n'
+        r'Ch & Topic \\' '\n'
+        r'\hline' '\n'
+        r'1 & Intro \\' '\n'
+        r'\hline' '\n'
+        r'\end{tabular}' '\n'
+        r'\end{center}' '\n'
+    )
+    # Note: this exercises parse_table_block on the WHOLE inside of
+    # the center wrap (what _CENTER_BLOCK_RE captures as group 1).
+    # The promotion logic should treat the bold paragraph as a
+    # caption since there's no \caption{}.
+    inner = body[len(r'\begin{center}') + 1 : -len(r'\end{center}') - 1]
+    spec = parse_table_block(inner)
+    assert spec is not None
+    assert spec.caption == 'Execution map: chapters and notebooks'
+
+
+def test_parse_table_block_does_not_promote_when_explicit_caption_present():
+    """If an explicit ``\\caption{}`` exists, the bold-title promotion
+    is skipped — don't clobber the author's caption."""
+    body = (
+        r'\textbf{Some bold preamble}\par\smallskip' '\n'
+        r'\begin{tabular}{ll}' '\n'
+        r'\hline' '\n'
+        r'A & B \\' '\n'
+        r'\hline' '\n'
+        r'1 & 2 \\' '\n'
+        r'\hline' '\n'
+        r'\end{tabular}' '\n'
+        r'\caption{The real caption}' '\n'
+    )
+    spec = parse_table_block(body)
+    # Explicit caption wins; bold preamble is NOT promoted.
+    assert spec.caption == 'The real caption'
+
+
+def test_parse_table_block_does_not_promote_when_intervening_prose():
+    """The promotion requires the bold paragraph to be IMMEDIATELY
+    before the tabular (only whitespace and config commands in
+    between). Real prose between them means the bold isn't the
+    de-facto title — leave it alone."""
+    body = (
+        r'\textbf{A heading}\par' '\n'
+        r'Some intervening prose paragraph that makes this not a title.' '\n'
+        r'\begin{tabular}{ll}' '\n'
+        r'\hline' '\n'
+        r'a & b \\' '\n'
+        r'\hline' '\n'
+        r'\end{tabular}' '\n'
+    )
+    spec = parse_table_block(body)
+    # No promotion — intervening prose disqualifies.
+    assert spec.caption is None
+
+
+@pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
+def test_pandoc_batch_convert_strips_adjacency_artifact():
+    """Pandoc inserts ``\\`<!-- -->\\`{=html}`` between adjacent
+    inline-math + digit/letter tokens (``$\\times$9``,
+    ``$>$50,000``) as a defensive separator. mystmd handles the
+    adjacency natively so the artifact is pure noise. Strip it from
+    every converted cell.
+
+    Surfaced by PR #60 retest: 4 cells across 3 Deep-Learning files
+    showed visible ``\\`<!-- -->\\`{=html}`` text in the rendered
+    output."""
+    mod = _load_marker_preprocessor()
+    cells = [
+        r'(c$\times$9)',
+        r'$>$50,000 agents',
+        r'$\sim$500',
+        r'plain text',  # control — no artifact should appear
+    ]
+    out = mod._pandoc_batch_convert(cells)
+    assert all('<!-- -->' not in c for c in out), (
+        f'adjacency artifact leaked into output: {out!r}'
+    )
+    assert all('{=html}' not in c for c in out), (
+        f'pandoc raw-html attribute leaked into output: {out!r}'
+    )
+    # Sanity: cells still contain the math content.
+    assert '$\\times$' in out[0]
+    assert '9' in out[0]
+    assert '$>$' in out[1]
+    assert '50,000' in out[1]
+
+
 @pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
 def test_process_text_skips_table_float_inside_skip_ancestor():
     """``\\begin{table}`` floats are subject to the same
