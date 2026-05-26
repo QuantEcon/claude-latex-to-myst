@@ -168,6 +168,14 @@ haven't validated. Everything below is on `main` and available now.
   [lessons/README.md](lessons/README.md) for the schema.
 - **Iterative-error-reduction workflow** documented in
   [CLAUDE.md](CLAUDE.md) — category-first, never error-by-error.
+- **`GETTING-STARTED.md`** (PR [#58]) — a short workflow-oriented
+  guide for newcomers running their first conversion in
+  collaboration with Claude Code. Complements the reference-style
+  README: covers the collaboration model (who does what), a first-
+  conversion walkthrough, the iterative loop, when to capture a
+  lesson vs. codify it, and the worktree pattern for parallel work.
+  Linked from the top of the README so it's the obvious entry
+  point for new readers.
 
 ### Added — tooling
 
@@ -294,6 +302,33 @@ haven't validated. Everything below is on `main` and available now.
   after it (sibling), or anywhere in the body before it. Audited
   ``_apply_algorithmic_markers.py`` — that preprocessor has no
   caption/label layer so it's unaffected.
+- **Algorithm `\caption{} \label{} \begin{algorithmic} ... body`
+  layout dropped the label** ([#43], [#39] follow-up): the [#39]
+  fix's strict trailing-only scan early-bailed once non-whitespace
+  followed the closing brace of ``\caption{}``, dropping the
+  sibling label and falling back to an auto-generated name. But
+  the dominant LaTeX layout is caption+label BEFORE the
+  ``\begin{algorithmic}`` body (mirroring how figures/tables are
+  laid out), and every algorithm in the Deep-Learning book uses
+  that shape — every body ``\ref{alg:X}`` was broken. Refactored
+  ``_extract_caption`` to scan ``post_caption`` first (the new
+  layout), then ``pre_caption`` (the older layout from [#39]).
+  Subsumes the [#39] fix while preserving every existing test
+  case. Closes [#43].
+- **`\label{}` inside `\begin{align*}` emitted inline anchor that
+  fused with preceding prose** ([#48]): pandoc joins display-math
+  blocks to the prose line above with no blank line separator. The
+  anchor-form emission used by ``replace_unlabeled_align`` (and
+  the extra-anchor stacks in ``replace_labeled_align`` /
+  ``replace_math_block`` for ``multline``/``gather``) returned
+  ``{anchors}\n{block}`` — no blank line before the anchor, so MyST
+  parsed ``prose if and only if (eq-vgctp)=`` as one paragraph,
+  rendered the anchor as literal text, and lost the cross-ref
+  target. Wrapped every anchor emission in ``\n\n…\n\n`` so the
+  anchor is always a block-level construct regardless of pandoc's
+  upstream whitespace. Re-captured the ``math_align_per_row_labels``
+  golden, which was previously pinning the buggy fused output.
+  Closes [#48].
 - **HTML entities inside caption math** ([#40]): pandoc HTML-encodes
   ``<`` / ``>`` / ``&`` inside ``<figcaption>``. Inside prose the
   browser decodes them; inside ``$...$`` KaTeX sees the entity as
@@ -758,6 +793,10 @@ haven't validated. Everything below is on `main` and available now.
 [#39]: https://github.com/QuantEcon/claude-latex-to-myst/issues/39
 [#40]: https://github.com/QuantEcon/claude-latex-to-myst/issues/40
 [#42]: https://github.com/QuantEcon/claude-latex-to-myst/issues/42
+[#43]: https://github.com/QuantEcon/claude-latex-to-myst/issues/43
+[#48]: https://github.com/QuantEcon/claude-latex-to-myst/issues/48
+[#51]: https://github.com/QuantEcon/claude-latex-to-myst/issues/51
+[#58]: https://github.com/QuantEcon/claude-latex-to-myst/pull/58
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
