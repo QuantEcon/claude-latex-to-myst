@@ -6,8 +6,10 @@ title: "Math Align Per Row Labels"
 
 The Bayesian update for posterior mean and variance is
 
+
 (eq-bayes_mean)=
 (eq-bayes_var)=
+
 $$
 \begin{aligned}
 \mu_{f,t+1} &= \frac{S_{\epsilon}\,\mu_{f,t} + \varphi T_t S_{f,t} y_{t+1}}{S_{\epsilon} + (\varphi T_t)^2 S_{f,t}}, \\
