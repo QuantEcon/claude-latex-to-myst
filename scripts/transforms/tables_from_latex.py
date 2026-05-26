@@ -59,13 +59,46 @@ _TABLE_BLOCK_RE = re.compile(
     re.DOTALL,
 )
 
-# Inside the table block: locate the tabular environment. The column
-# spec is captured separately via balanced-brace extraction because
-# specs often contain nested ``{...}`` (e.g. ``@{}>{$}l<{$}@{}}``,
-# ``>{\raggedright\arraybackslash}p{0.19\linewidth}``) that a flat
-# ``\{([^}]*)\}`` regex would clip at the first ``}``.
-_TABULAR_START_RE = re.compile(r'\\begin\{tabular\}\s*\{')
-_TABULAR_END_RE = re.compile(r'\\end\{tabular\}')
+# A \begin{center}...\end{center} block — used for the "center-wrap"
+# tabular shape: ``\begin{center}\begin{tabular}{...}...\end{tabular}\end{center}``.
+# Pandoc converts ``\begin{center}`` to a ``::: center`` fenced div;
+# rather than wrap our emitted MyST table inside that, we substitute
+# the whole ``\begin{center}`` block when it contains a tabular.
+_CENTER_BLOCK_RE = re.compile(
+    r'\\begin\{center\}(.*?)\\end\{center\}',
+    re.DOTALL,
+)
+
+# Tabular-family environment names. ``tabular`` is the bare form.
+# ``tabular*`` takes an extra ``{total-width}`` arg before the colspec.
+# ``tabularx`` / ``tabulary`` (package variants) take a ``{width}``
+# arg before the colspec.
+#
+# ``tabu`` is NOT included — the ``tabu`` package's syntax is more
+# variable than the others: ``\begin{tabu}{cols}`` (1-arg),
+# ``\begin{tabu} to <len> {cols}`` and ``\begin{tabu} spread <len>
+# {cols}`` (1-arg with a non-braced ``to``/``spread`` prefix). The
+# ``to``/``spread`` keyword can't be skipped with balanced-brace
+# extraction. None of the test corpora use ``tabu`` so leaving it
+# unrecognised falls back to the pandoc-output path. Add a dedicated
+# handler if a future consumer needs it.
+_TABULAR_VARIANTS_1ARG = ('tabular',)
+_TABULAR_VARIANTS_2ARG = ('tabular*', 'tabularx', 'tabulary')
+_TABULAR_ALL = _TABULAR_VARIANTS_1ARG + _TABULAR_VARIANTS_2ARG
+
+# Match the opener of any tabular variant — capture the name so we
+# know whether to expect 1 or 2 brace args. The regex group is the
+# environment name; escape star for `tabular*` etc.
+_TABULAR_OPEN_RE = re.compile(
+    r'\\begin\{('
+    + '|'.join(re.escape(v) for v in _TABULAR_ALL)
+    + r')\}'
+)
+
+# Generic end matcher — `\end{X}` for any tabular variant. Includes
+# escaped `*` so `\end{tabular*}` matches.
+def _tabular_end_re(env_name: str) -> re.Pattern:
+    return re.compile(r'\\end\{' + re.escape(env_name) + r'\}')
 
 # Caption + label extraction. Both can appear in any order before or
 # after the tabular environment.
@@ -336,19 +369,39 @@ def parse_table_block(block_body: str) -> TableSpec | None:
       that has non-empty content above it. Empty sections (just
       whitespace) are skipped.
     """
-    # Find the tabular environment.
-    start_m = _TABULAR_START_RE.search(block_body)
-    if not start_m:
+    # Find the tabular-variant environment opener.
+    open_m = _TABULAR_OPEN_RE.search(block_body)
+    if not open_m:
         return None
-    # ``start_m.end() - 1`` is the index of the opening ``{`` for the
-    # column spec — extract with balanced-brace logic.
-    spec_open = start_m.end() - 1
+    env_name = open_m.group(1)
+    # ``tabular*`` / ``tabularx`` / ``tabulary`` / ``tabu`` take an
+    # extra ``{width}`` arg BEFORE the colspec; skip it via
+    # balanced-brace extraction. ``tabular`` (the bare form) takes
+    # only the colspec.
+    cursor = open_m.end()
+    # Walk past any whitespace.
+    while cursor < len(block_body) and block_body[cursor] in ' \t\n':
+        cursor += 1
+    if env_name in _TABULAR_VARIANTS_2ARG:
+        # First arg = width spec, balance-brace-extract and discard.
+        if cursor >= len(block_body) or block_body[cursor] != '{':
+            return None
+        width_close = _find_balanced_brace(block_body, cursor)
+        if width_close == -1:
+            return None
+        cursor = width_close + 1
+        while cursor < len(block_body) and block_body[cursor] in ' \t\n':
+            cursor += 1
+    # Colspec arg.
+    if cursor >= len(block_body) or block_body[cursor] != '{':
+        return None
+    spec_open = cursor
     spec_close = _find_balanced_brace(block_body, spec_open)
     if spec_close == -1:
         return None
     colspec_str = block_body[spec_open + 1 : spec_close]
-    # The tabular body runs from after the spec to ``\end{tabular}``.
-    end_m = _TABULAR_END_RE.search(block_body, spec_close + 1)
+    # The tabular body runs from after the spec to ``\end{<env>}``.
+    end_m = _tabular_end_re(env_name).search(block_body, spec_close + 1)
     if not end_m:
         return None
     tab_body = block_body[spec_close + 1 : end_m.start()]
@@ -366,6 +419,32 @@ def parse_table_block(block_body: str) -> TableSpec | None:
         if caption and r'\label{' in caption:
             # Strip \label{...} from caption text.
             caption = re.sub(r'\\label\{[^}]+\}\s*', '', caption).strip()
+
+    # If no explicit ``\caption{}`` was found, look for a "bold-title
+    # paragraph" pattern immediately before the tabular: ``\textbf{X}
+    # \par\smallskip?`` optionally followed by font-size /
+    # arraystretch / centering commands. This is the de-facto title
+    # convention for ``\begin{center}\textbf{X}\par\begin{tabular}``
+    # shapes (e.g. Deep-Learning's ``execution_map``). Without this
+    # promotion the title is silently dropped — caught by PR #60
+    # retest. Skip when an explicit caption already exists so we
+    # don't clobber it.
+    if caption is None:
+        # Look at the region BETWEEN the start of block_body and the
+        # tabular opener for the title pattern. ``\textbf{TEXT}\par``
+        # (with optional trailing skip + intervening config commands)
+        # must be the LAST non-whitespace content before the tabular.
+        prelude = block_body[: open_m.start()]
+        title_m = re.search(
+            r'\\textbf\{([^{}]+)\}\s*\\par'              # \textbf{X}\par
+            r'(?:\s*\\(?:small|med|big)skip)?'           # optional \smallskip etc.
+            r'\s*(?:\\(?:scriptsize|small|footnotesize|normalsize)\s*)*'  # font cmds
+            r'\s*(?:\\renewcommand\{[^}]*\}\{[^}]*\}\s*)*'  # arraystretch etc.
+            r'\s*\Z',  # ...immediately before the tabular opener
+            prelude,
+        )
+        if title_m:
+            caption = title_m.group(1).strip()
 
     name: str | None = None
     label_m = _LABEL_RE.search(block_body)
@@ -401,19 +480,183 @@ def parse_table_block(block_body: str) -> TableSpec | None:
     return spec
 
 
-def find_table_blocks(text: str) -> list[tuple[int, int, str]]:
-    """Find all ``\\begin{table}...\\end{table}`` blocks in ``text``.
+# Environments whose contents should NEVER be extracted as tabulars
+# even if they contain ``\begin{tabular}``-shaped content. Math envs
+# (matrix-like layouts), Beamer slide envs (which our pipeline doesn't
+# build but tex sources may contain), TikZ diagrams (tabular-in-node
+# matrix layouts), figure-family envs (where a tabular is figure
+# content, not a standalone table), and custom envs whose semantics
+# we can't infer.
+_SKIP_ANCESTOR_ENVS = frozenset({
+    # Math
+    'equation', 'equation*', 'align', 'align*', 'gather', 'gather*',
+    'multline', 'multline*', 'eqnarray', 'eqnarray*', 'array',
+    'matrix', 'pmatrix', 'bmatrix', 'vmatrix', 'Vmatrix', 'smallmatrix',
+    'cases', 'displaymath', 'math', 'split',
+    # Beamer slide envs (our pipeline doesn't build these but source
+    # files may contain a ``mystmd``-input mode that mixes slide +
+    # manuscript content)
+    'frame', 'columns', 'column', 'block', 'alertblock', 'exampleblock',
+    # Diagrams
+    'tikzpicture', 'tikzcd',
+    # Figure-family — a tabular inside a figure is figure content
+    # (caption attaches to the figure, not the table). Skipping
+    # leaves it for ``convert_figures`` / ``convert_simple_tables``
+    # to handle via the pandoc-output path.
+    'figure', 'subfigure', 'minipage', 'wrapfigure', 'sidewaystable',
+    # Comment env (``\begin{comment}...\end{comment}`` from the
+    # ``comment`` package — content is suppressed in PDF; pandoc
+    # passes through)
+    'comment',
+    # Custom-content envs commonly used in books
+    'definitionbox', 'theorembox', 'proofbox',
+})
 
-    Returns a list of ``(start_idx, end_idx, body_content)`` tuples.
-    ``start_idx`` and ``end_idx`` are character offsets in ``text``
-    (inclusive start, exclusive end — suitable for slicing).
+
+def _ancestor_stack(text: str, pos: int) -> list[str]:
+    """Return the stack of unclosed ``\\begin{X}`` environments at
+    ``pos`` in ``text``, outermost first. Empty list if at top level.
+
+    Walks all ``\\begin{X}`` / ``\\end{X}`` events before ``pos`` in
+    source order. Comment-line occurrences are filtered out.
+
+    Returns the FULL stack (not just nearest) because skip-ancestor
+    decisions need to consider deep wrappers: a tabular inside
+    ``\\begin{frame}\\begin{center}\\begin{tabular}`` has ``center``
+    as its nearest ancestor (not in skip set) but ``frame`` deeper
+    in the stack (in skip set). Checking only the nearest would
+    incorrectly extract.
+    """
+    pattern = re.compile(r'\\(begin|end)\{(\w+\*?)\}')
+    stack: list[str] = []
+    for m in pattern.finditer(text, 0, pos):
+        if _starts_in_comment(text, m.start()):
+            continue
+        kind = m.group(1)
+        name = m.group(2)
+        if kind == 'begin':
+            stack.append(name)
+        else:  # end
+            if stack and stack[-1] == name:
+                stack.pop()
+            # If unmatched end, just ignore — defensive.
+    return stack
+
+
+def _has_skip_ancestor(text: str, pos: int) -> bool:
+    """True if ANY ancestor in the env stack at ``pos`` is in
+    ``_SKIP_ANCESTOR_ENVS``. Used to skip tabulars whose surrounding
+    context is unsafe to extract (math, slides, tikz, figure-family)."""
+    return any(env in _SKIP_ANCESTOR_ENVS for env in _ancestor_stack(text, pos))
+
+
+def _nearest_unclosed_env(text: str, pos: int) -> str | None:
+    """Return the name of the nearest unclosed ``\\begin{X}`` ancestor
+    at ``pos``, or ``None`` if at top level. Convenience wrapper
+    around ``_ancestor_stack``. Useful for classifying tabular
+    context (``table`` → captioned float, ``center`` → center-wrap,
+    ``None`` → bare)."""
+    stack = _ancestor_stack(text, pos)
+    return stack[-1] if stack else None
+
+
+def find_table_blocks(text: str) -> list[tuple[int, int, str]]:
+    """Find all tabular-bearing blocks in ``text`` that should be
+    extracted via the marker preprocessor.
+
+    Three discovery shapes (in priority order):
+
+    1. **Table float**: ``\\begin{table}[pos]?...\\end{table}``. The
+       block body is the content inside, which carries the caption
+       and label.
+
+    2. **Center wrap**: ``\\begin{center}...\\end{center}`` where the
+       inside contains a tabular variant (``\\begin{tabular}``,
+       ``\\begin{tabularx}``, etc.). The whole ``\\begin{center}``
+       block is substituted so pandoc doesn't wrap the emitted MyST
+       table in a ``::: center`` fenced div. No caption/label
+       (center-wrapped tables are not enumerable LaTeX floats).
+
+    3. **Bare**: ``\\begin{tabular}...\\end{tabular}`` (or any
+       tabular variant) NOT inside the above. Substituted directly.
+       No caption/label.
+
+    Tabulars inside math envs, Beamer slide envs, or TikZ pictures
+    are skipped via ``_nearest_unclosed_env`` (see
+    ``_SKIP_ANCESTOR_ENVS``). Comment-line blocks are skipped.
+
+    Returns ``(start_idx, end_idx, body)`` tuples in source order.
+    ``body`` is the content fed to ``parse_table_block`` for each
+    shape — for shapes 1 and 2 it's the WHOLE wrapper's inside; for
+    shape 3 it's the tabular itself including ``\\begin``/``\\end``.
     """
     blocks: list[tuple[int, int, str]] = []
+    consumed_ranges: list[tuple[int, int]] = []  # ranges already claimed
+
+    def _claimed(pos: int) -> bool:
+        return any(s <= pos < e for s, e in consumed_ranges)
+
+    # 1. Table floats (existing behaviour). Also subject to the
+    # whole-ancestor-stack skip check so e.g.
+    # ``\begin{frame}\begin{table}...\end{table}\end{frame}`` (a
+    # captioned table inside a Beamer slide) is left for pandoc to
+    # handle — extracting would inject a ``{table}`` directive
+    # inside slide content the pipeline doesn't build anyway.
     for m in _TABLE_BLOCK_RE.finditer(text):
         if _starts_in_comment(text, m.start()):
-            # Skip blocks inside a LaTeX line-comment.
+            continue
+        if _has_skip_ancestor(text, m.start()):
             continue
         blocks.append((m.start(), m.end(), m.group(1)))
+        consumed_ranges.append((m.start(), m.end()))
+
+    # 2. Center-wraps containing a tabular variant.
+    for m in _CENTER_BLOCK_RE.finditer(text):
+        if _starts_in_comment(text, m.start()):
+            continue
+        if _claimed(m.start()):
+            continue
+        inner = m.group(1)
+        # Only claim if the center-block actually contains a tabular.
+        if not _TABULAR_OPEN_RE.search(inner):
+            continue
+        # Skip if ANY ancestor (not just nearest) is in the skip set
+        # — e.g. ``\begin{frame}\begin{center}\begin{tabular}`` has
+        # ``center`` as nearest (process candidate) but ``frame``
+        # deeper (skip). We don't extract from inside Beamer slides.
+        if _has_skip_ancestor(text, m.start()):
+            continue
+        blocks.append((m.start(), m.end(), m.group(1)))
+        consumed_ranges.append((m.start(), m.end()))
+
+    # 3. Bare tabular variants — anything left that we haven't claimed.
+    for m in _TABULAR_OPEN_RE.finditer(text):
+        if _starts_in_comment(text, m.start()):
+            continue
+        if _claimed(m.start()):
+            continue
+        # Skip if any ancestor is in the skip set. This catches both
+        # the nearest (``\begin{tikzpicture}\begin{tabular}``) and
+        # deep wrappers (``\begin{frame}\begin{tabular}``).
+        if _has_skip_ancestor(text, m.start()):
+            continue
+        # Find the matching \end{<env>} for the tabular variant.
+        env_name = m.group(1)
+        end_m = _tabular_end_re(env_name).search(text, m.end())
+        if end_m is None:
+            continue
+        # Body for bare tabular is the WHOLE tabular block (including
+        # \begin/\end markers) — parse_table_block looks for
+        # \begin{tabular} inside.
+        start = m.start()
+        end = end_m.end()
+        if _claimed(start):
+            continue
+        blocks.append((start, end, text[start:end]))
+        consumed_ranges.append((start, end))
+
+    # Sort by source position so substitution preserves order.
+    blocks.sort(key=lambda b: b[0])
     return blocks
 
 

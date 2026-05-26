@@ -1,5 +1,26 @@
 """Pandoc simple_tables → MyST {list-table} directives (closes #19, #34).
 
+**Status (PR #55):** this transform is now a SAFETY-NET FALLBACK only.
+Every ``\\begin{tabular}`` variant in source ``.tex`` is now extracted
+BEFORE pandoc sees it by ``_apply_table_markers.py`` (via
+``transforms.tables_from_latex.find_table_blocks``), so pandoc no longer
+emits dash-rule simple_tables for any tabular originating from
+``.tex``. This transform stays in place to catch:
+
+  - Source files that contain literal pandoc-style simple_table markup
+    (rare; only happens if a hand-edit injected raw dash-rule tables
+    into the markdown OUTPUT, then re-ran the pipeline — not a normal
+    flow).
+  - Defensive coverage if a future change to ``_apply_table_markers.py``
+    misses a tabular shape and lets pandoc emit dash-rule output.
+
+It is no longer reached by any production input across book-dp1,
+book-dp2, or Deep-Learning. Retirement is tracked as part of #55's
+Phase 4 ("once all corpora pass cleanly through the new path, mark
+deprecated, keep one release cycle, then delete").
+
+Original docstring follows.
+
 Converts pandoc's fixed-width simple_tables and multiline_tables of any
 column count (2+) to MyST ``{list-table}`` directives. Handles three
 shapes:

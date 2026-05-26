@@ -131,10 +131,27 @@ def _pandoc_batch_convert(cells: list[str]) -> list[str]:
         # Replace the \mbox{} placeholder back to empty.
         if content in (r'\mbox{}', ''):
             content = ''
+        # Strip pandoc's adjacency-separator artifact. When a cell
+        # contains ``$math$`` followed directly by a digit/letter (no
+        # space), pandoc's markdown writer emits a defensive no-op
+        # ``\`<!-- -->\`{=html}`` between them to prevent some
+        # markdown parsers from misreading the adjacency. mystmd
+        # handles ``$\times$9`` natively, so the separator is pure
+        # noise. Surfaced by PR #60 retest where 4 cells in 3
+        # Deep-Learning files had this pattern.
+        content = _PANDOC_ADJACENCY_ARTIFACT_RE.sub('', content)
         if 0 <= idx < len(out_cells):
             out_cells[idx] = content
 
     return out_cells
+
+
+# Pandoc's adjacency-separator: ``\`<!-- -->\`{=html}``. The backticks
+# are literal, ``<!-- -->`` is the HTML comment, ``{=html}`` is
+# pandoc's raw-HTML attribute. Together they render as a no-op in
+# both HTML and plain text. Stripping is safe; the artifact is never
+# load-bearing.
+_PANDOC_ADJACENCY_ARTIFACT_RE = re.compile(r'`<!-- -->`\{=html\}')
 
 
 def _flatten_table_cells(spec: TableSpec) -> list[str]:

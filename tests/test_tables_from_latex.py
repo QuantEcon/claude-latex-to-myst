@@ -583,24 +583,327 @@ def test_process_text_round_trip_through_marker_to_myst():
 
 
 @pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
-def test_process_text_no_op_when_no_table_floats():
-    """A source with no ``\\begin{table}`` blocks must pass through
-    unchanged — no spurious markers, no pandoc invocations harming
-    surrounding content."""
+def test_process_text_no_op_for_pure_prose():
+    """A source with no tabular-variant blocks at all must pass
+    through unchanged — no spurious markers."""
+    src = (
+        r'Some prose with \textbf{bold}.' '\n\n'
+        r'And a second paragraph with $math$ and \cref{tab:elsewhere}.'
+    )
+    out = _process_text(src)
+    assert out == src
+    assert '<!--TABLE' not in out
+
+
+@pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
+def test_process_text_extracts_center_wrapped_tabular():
+    """#55: ``\\begin{center}\\begin{tabular}...\\end{tabular}\\end{center}``
+    is a common shape for non-float tables. The whole ``\\begin{center}``
+    block is substituted (not just the tabular) so pandoc doesn't
+    wrap the emitted MyST inside a ``::: center`` fenced div.
+
+    Surfaced by Deep-Learning ``ch06_ha_youngs`` (9 histogram step
+    tables in the worked example)."""
+    src = (
+        r'Walking through the steps:' '\n\n'
+        r'\begin{center}\small' '\n'
+        r'\begin{tabular}{l cccc c}' '\n'
+        r'\toprule' '\n'
+        r'& $k=1.0$ & $k=2.0$ & $k=3.0$ & $k=4.0$ & Row sum \\' '\n'
+        r'\midrule' '\n'
+        r'$\varepsilon=$low  & 0.10 & 0.20 & 0.10 & 0.05 & 0.45 \\' '\n'
+        r'$\varepsilon=$high & 0.05 & 0.15 & 0.20 & 0.15 & 0.55 \\' '\n'
+        r'\bottomrule' '\n'
+        r'\end{tabular}' '\n'
+        r'\end{center}' '\n'
+        r'Then the next step:' '\n'
+    )
+    out = _process_text(src)
+    assert '<!--TABLE' in out
+    # The WHOLE \begin{center} block is replaced.
+    assert r'\begin{center}' not in out
+    assert r'\end{center}' not in out
+    # Surrounding prose preserved.
+    assert 'Walking through the steps' in out
+    assert 'Then the next step' in out
+
+
+@pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
+def test_process_text_extracts_tabularx_variant():
+    """#55: ``\\begin{tabularx}{width}{colspec}`` is the flexible-width
+    variant from the ``tabularx`` package. The width arg comes BEFORE
+    the colspec — parser must skip it before reading column alignment.
+
+    Surfaced by book-dp2 ``common_symbols.tex`` (3 notation-list
+    tables wrapped in ``{\\setstretch{1.2}\\begin{tabularx}...}``).
+    """
+    src = (
+        r'Notation:' '\n\n'
+        r'\begin{tabularx}{\linewidth}{c || >{\raggedright\arraybackslash}X}' '\n'
+        r'$\1\{P\}$ & indicator function \\' '\n'
+        r'$\alpha$ & a scalar \\' '\n'
+        r'\end{tabularx}' '\n'
+    )
+    out = _process_text(src)
+    assert '<!--TABLE' in out
+    # Original tabularx block gone.
+    assert r'\begin{tabularx}' not in out
+
+
+@pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
+def test_process_text_skips_tabular_inside_tikzpicture():
+    """A ``\\begin{tabular}`` inside ``\\begin{tikzpicture}`` is part of
+    a TikZ matrix node, NOT a real table. Extracting it would inject
+    a ``{table}`` directive inside what mystmd treats as raw TikZ
+    content — broken.
+
+    Surfaced by Deep-Learning ``ch06_ha_youngs`` (1 tikzpicture with
+    a tabular-shaped node)."""
+    src = (
+        r'\begin{tikzpicture}' '\n'
+        r'\node[draw] (n1) at (0,0) {' '\n'
+        r'\begin{tabular}{cc}' '\n'
+        r'  a & b \\' '\n'
+        r'\end{tabular}' '\n'
+        r'};' '\n'
+        r'\end{tikzpicture}' '\n'
+    )
+    out = _process_text(src)
+    # No marker should be inserted — the tabular is inside TikZ.
+    assert '<!--TABLE' not in out
+    # Original tabular should remain unchanged.
+    assert r'\begin{tabular}' in out
+
+
+def test_parse_table_block_promotes_bold_title_paragraph_to_caption():
+    """``\\textbf{X}\\par\\smallskip?`` immediately preceding
+    ``\\begin{tabular}`` (optionally with intervening font-size or
+    ``\\renewcommand`` config commands) is promoted to a synthetic
+    caption when there's no explicit ``\\caption{}``.
+
+    Surfaced by Deep-Learning ``execution_map`` (#59 was the original
+    request; PR #60 retest flagged that #55 dropped the title
+    entirely). Pre-#55 it stayed as orphaned bold prose above the
+    table; #55 substituted the whole ``\\begin{center}`` block which
+    silently deleted it. This promotion restores the title as the
+    table's caption — the table becomes an enumerable container
+    (with no ``\\label{}`` for cross-ref impact)."""
+    body = (
+        r'\begin{center}' '\n'
+        r'\textbf{Execution map: chapters and notebooks}\par\smallskip' '\n'
+        r'\scriptsize' '\n'
+        r'\renewcommand{\arraystretch}{1.2}' '\n'
+        r'\begin{tabular}{ll}' '\n'
+        r'\hline' '\n'
+        r'Ch & Topic \\' '\n'
+        r'\hline' '\n'
+        r'1 & Intro \\' '\n'
+        r'\hline' '\n'
+        r'\end{tabular}' '\n'
+        r'\end{center}' '\n'
+    )
+    # Note: this exercises parse_table_block on the WHOLE inside of
+    # the center wrap (what _CENTER_BLOCK_RE captures as group 1).
+    # The promotion logic should treat the bold paragraph as a
+    # caption since there's no \caption{}.
+    inner = body[len(r'\begin{center}') + 1 : -len(r'\end{center}') - 1]
+    spec = parse_table_block(inner)
+    assert spec is not None
+    assert spec.caption == 'Execution map: chapters and notebooks'
+
+
+def test_parse_table_block_does_not_promote_when_explicit_caption_present():
+    """If an explicit ``\\caption{}`` exists, the bold-title promotion
+    is skipped — don't clobber the author's caption."""
+    body = (
+        r'\textbf{Some bold preamble}\par\smallskip' '\n'
+        r'\begin{tabular}{ll}' '\n'
+        r'\hline' '\n'
+        r'A & B \\' '\n'
+        r'\hline' '\n'
+        r'1 & 2 \\' '\n'
+        r'\hline' '\n'
+        r'\end{tabular}' '\n'
+        r'\caption{The real caption}' '\n'
+    )
+    spec = parse_table_block(body)
+    # Explicit caption wins; bold preamble is NOT promoted.
+    assert spec.caption == 'The real caption'
+
+
+def test_parse_table_block_does_not_promote_when_intervening_prose():
+    """The promotion requires the bold paragraph to be IMMEDIATELY
+    before the tabular (only whitespace and config commands in
+    between). Real prose between them means the bold isn't the
+    de-facto title — leave it alone."""
+    body = (
+        r'\textbf{A heading}\par' '\n'
+        r'Some intervening prose paragraph that makes this not a title.' '\n'
+        r'\begin{tabular}{ll}' '\n'
+        r'\hline' '\n'
+        r'a & b \\' '\n'
+        r'\hline' '\n'
+        r'\end{tabular}' '\n'
+    )
+    spec = parse_table_block(body)
+    # No promotion — intervening prose disqualifies.
+    assert spec.caption is None
+
+
+@pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
+def test_pandoc_batch_convert_strips_adjacency_artifact():
+    """Pandoc inserts ``\\`<!-- -->\\`{=html}`` between adjacent
+    inline-math + digit/letter tokens (``$\\times$9``,
+    ``$>$50,000``) as a defensive separator. mystmd handles the
+    adjacency natively so the artifact is pure noise. Strip it from
+    every converted cell.
+
+    Surfaced by PR #60 retest: 4 cells across 3 Deep-Learning files
+    showed visible ``\\`<!-- -->\\`{=html}`` text in the rendered
+    output."""
+    mod = _load_marker_preprocessor()
+    cells = [
+        r'(c$\times$9)',
+        r'$>$50,000 agents',
+        r'$\sim$500',
+        r'plain text',  # control — no artifact should appear
+    ]
+    out = mod._pandoc_batch_convert(cells)
+    assert all('<!-- -->' not in c for c in out), (
+        f'adjacency artifact leaked into output: {out!r}'
+    )
+    assert all('{=html}' not in c for c in out), (
+        f'pandoc raw-html attribute leaked into output: {out!r}'
+    )
+    # Sanity: cells still contain the math content.
+    assert '$\\times$' in out[0]
+    assert '9' in out[0]
+    assert '$>$' in out[1]
+    assert '50,000' in out[1]
+
+
+@pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
+def test_process_text_skips_table_float_inside_skip_ancestor():
+    """``\\begin{table}`` floats are subject to the same
+    skip-ancestor check as center-wraps and bare tabulars. Surfaced
+    by Copilot review of PR #60: the original step-1 loop had no
+    skip check, so e.g. ``\\begin{frame}\\begin{table}...\\end{table}``
+    (a captioned table inside a Beamer slide) would be extracted
+    and replaced by a marker even though ``frame`` is in the skip
+    set. The audit found ~6 such occurrences across the
+    Deep-Learning sources (slide files, not in the pipeline today —
+    but the gap is real for any future source that mixes slide and
+    manuscript content)."""
+    src = (
+        r'\begin{frame}' '\n'
+        r'\begin{table}' '\n'
+        r'\begin{tabular}{cc}' '\n'
+        r'\hline' '\n'
+        r'A & B \\' '\n'
+        r'\hline' '\n'
+        r'a & b \\' '\n'
+        r'\hline' '\n'
+        r'\end{tabular}' '\n'
+        r'\caption{Cap}' '\n'
+        r'\label{tab:foo}' '\n'
+        r'\end{table}' '\n'
+        r'\end{frame}' '\n'
+    )
+    out = _process_text(src)
+    # No marker — frame is a skip-set ancestor, so the table float
+    # inside it is left for pandoc to handle.
+    assert '<!--TABLE' not in out
+    # Original LaTeX preserved.
+    assert r'\begin{table}' in out
+
+
+@pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
+def test_process_text_passes_through_tabu_variant():
+    """``\\begin{tabu}`` is intentionally NOT recognised as a tabular
+    variant by ``_TABULAR_OPEN_RE`` — the tabu package's syntax is
+    too variable (``\\begin{tabu}{cols}``, ``\\begin{tabu} to <len>
+    {cols}``, ``\\begin{tabu} spread <len> {cols}``) for the
+    balanced-brace extractor to handle generically. A ``\\begin{tabu}``
+    block must pass through the preprocessor unchanged so pandoc /
+    ``convert_simple_tables`` can take a shot at it.
+
+    Surfaced by Copilot review of PR #60. None of the test corpora
+    use ``\\begin{tabu}`` so this is purely a defensive guarantee."""
+    src = (
+        r'\begin{tabu}{cc}' '\n'
+        r'a & b \\' '\n'
+        r'\end{tabu}' '\n'
+    )
+    out = _process_text(src)
+    # No marker emitted — tabu is not in the recognised set.
+    assert '<!--TABLE' not in out
+    # Original LaTeX preserved unchanged.
+    assert r'\begin{tabu}' in out
+
+
+@pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
+def test_process_text_skips_tabular_with_deep_skip_ancestor():
+    """A tabular's NEAREST ancestor may be safe (``center``) but a
+    deeper wrapper (``frame``, ``tikzpicture``, etc.) may be in the
+    skip set. The check must walk the WHOLE stack, not just the
+    nearest. Surfaced by source files that mix Beamer slide content
+    (``\\begin{frame}\\begin{center}\\begin{tabular}``) with
+    manuscript content."""
+    src = (
+        r'\begin{frame}' '\n'
+        r'\begin{center}' '\n'
+        r'\begin{tabular}{cc}' '\n'
+        r'  a & b \\' '\n'
+        r'\end{tabular}' '\n'
+        r'\end{center}' '\n'
+        r'\end{frame}' '\n'
+    )
+    out = _process_text(src)
+    # No marker — frame is a skip-set ancestor even though the
+    # nearest is center.
+    assert '<!--TABLE' not in out
+
+
+@pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
+def test_process_text_skips_tabular_inside_math_env():
+    """A ``\\begin{tabular}`` inside a math environment is matrix-like
+    math content (rare but possible). Extracting it would produce a
+    ``{table}`` directive inside a ``\\begin{equation}`` block,
+    which mystmd would misinterpret. Defensive: skip via the
+    ancestor-env list."""
+    src = (
+        r'\begin{equation}' '\n'
+        r'\begin{tabular}{cc}' '\n'
+        r'  a & b \\' '\n'
+        r'\end{tabular}' '\n'
+        r'\end{equation}' '\n'
+    )
+    out = _process_text(src)
+    assert '<!--TABLE' not in out
+
+
+@pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
+def test_process_text_extracts_bare_tabular():
+    """#55: bare ``\\begin{tabular}`` (no ``\\begin{table}`` wrapper)
+    is now extracted by the marker preprocessor. Previously these
+    fell through to ``convert_simple_tables`` (the pandoc-output
+    path); the unified path eliminates the parallel handling."""
     src = (
         r'Some prose with \textbf{bold}.' '\n\n'
         r'\begin{tabular}{ll}' '\n'
+        r'\hline' '\n'
+        r'H1 & H2 \\' '\n'
         r'\hline' '\n'
         r'a & b \\' '\n'
         r'\hline' '\n'
         r'\end{tabular}'
     )
-    # The bare tabular (no \begin{table} wrapper) is NOT extracted —
-    # it stays as raw LaTeX for pandoc / convert_simple_tables to
-    # handle via the existing path.
     out = _process_text(src)
-    assert out == src
-    assert '<!--TABLE' not in out
+    assert '<!--TABLE' in out
+    # Original \begin{tabular} block is gone, replaced by the marker.
+    assert r'\begin{tabular}' not in out
+    # Surrounding prose preserved.
+    assert 'Some prose with' in out
 
 
 @pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
