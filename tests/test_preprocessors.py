@@ -98,6 +98,31 @@ def test_algorithm_marker_sibling_label_before_caption():
     assert "\\label" not in m["body"]
 
 
+def test_algorithm_marker_caption_and_label_before_body():
+    """GH #43 — the dominant LaTeX convention places caption + label BEFORE the
+    ``\\begin{algorithmic}`` body (mirroring how figures/tables are written).
+    Pre-fix, the strict trailing-only scan early-bailed when non-whitespace
+    followed the caption, dropping the label and returning an empty title."""
+    tex = (
+        "\\begin{algorithm}[H]\n"
+        "    \\caption{Young's histogram update}\n"
+        "    \\label{alg:young}\n"
+        "    \\begin{algorithmic}\n"
+        "    \\REQUIRE Histogram\n"
+        "    \\STATE Update\n"
+        "    \\end{algorithmic}\n"
+        "\\end{algorithm}\n"
+    )
+    out = alg.process_text(tex, auto_prefix="ch")
+    m = _extract_marker(out)
+    assert m["name"] == "alg-young"  # NOT algo-ch-auto-1
+    assert m["title"] == "Young's histogram update"
+    assert "\\label" not in m["body"]
+    assert "\\caption" not in m["body"]
+    assert "\\REQUIRE Histogram" in m["body"]
+    assert "\\STATE Update" in m["body"]
+
+
 def test_algorithm_marker_inside_caption_label_still_works():
     """Regression guard — the legacy inside-caption form continues
     to extract the label correctly."""

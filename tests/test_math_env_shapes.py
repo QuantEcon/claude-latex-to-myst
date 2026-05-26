@@ -170,6 +170,54 @@ def test_math_env_shape(env: str, shape: str):
         assert '= 2' in out
 
 
+def test_labeled_align_star_anchor_not_fused_into_prose():
+    """GH #48 — ``\\begin{align*}\\label{eq:foo}…\\end{align*}`` must emit a
+    block-level ``(eq-foo)=`` anchor with surrounding blank lines, so MyST
+    parses it as a block anchor rather than fusing it into the preceding
+    paragraph (which would render the anchor as literal text and lose the
+    cross-ref target)."""
+    src = (
+        'which in turn holds if and only if\n'
+        '$$\\begin{align*}\\label{eq:vgctp}\n'
+        'a &= b\\\\\n'
+        'c &= d\n'
+        '\\end{align*}$$\n'
+    )
+    out = postprocess.convert_equations(src)
+    # The anchor must not be glued onto the prose line (no horizontal
+    # whitespace between "if and only if" and "(eq-vgctp)=" — must be
+    # separated by at least one newline).
+    assert not re.search(r'if and only if[ \t]*\(eq-vgctp\)=', out), (
+        f'anchor fused with prose:\n{out}'
+    )
+    # And it must be preceded by a blank line so MyST parses it as a
+    # block-level anchor rather than inline text.
+    assert re.search(r'\n\n\(eq-vgctp\)=', out), (
+        f'expected block-isolated anchor:\n{out}'
+    )
+
+
+def test_labeled_align_extra_per_row_anchors_not_fused_into_prose():
+    """Same fusion concern for the labeled-align (non-`*`) extra-anchor path:
+    when ``\\begin{align}\\label{first}…\\label{second}\\end{align}``, the
+    leading label becomes the trailing ``(first)``, and ``second`` stacks
+    as an anchor above — which must also have blank-line isolation."""
+    src = (
+        'preceding prose\n'
+        '$$\\begin{align}\\label{eq:first}\n'
+        'a &= b \\label{eq:second}\\\\\n'
+        'c &= d\n'
+        '\\end{align}$$\n'
+    )
+    out = postprocess.convert_equations(src)
+    assert not re.search(r'preceding prose[ \t]*\(eq-second\)=', out), (
+        f'extra anchor fused with prose:\n{out}'
+    )
+    assert re.search(r'\n\n\(eq-second\)=', out), (
+        f'expected block-isolated extra anchor:\n{out}'
+    )
+
+
 def test_math_env_no_label_does_not_emit_spurious_anchors():
     """Regression guard: unlabelled envs must NOT produce a
     ``(eq-)=`` line. A bug that emits anchors for every block would

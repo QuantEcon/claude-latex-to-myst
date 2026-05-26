@@ -133,7 +133,7 @@ def convert_equations(text: str) -> str:
         block = f'$$\n\\begin{{aligned}}\n{content}\n\\end{{aligned}}\n$$ ({leading})'
         if extra:
             anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in extra)
-            return f'{anchors}\n{block}'
+            return f'\n\n{anchors}\n\n{block}'
         return block
 
     text = re.sub(
@@ -143,13 +143,16 @@ def convert_equations(text: str) -> str:
         flags=re.DOTALL
     )
 
-    # Pattern: $$\begin{align*} ... \end{align*}$$ (unlabeled)
+    # Pattern: $$\begin{align*} ... \end{align*}$$ (unlabeled at the env
+    # level, may carry an inner \label{} per #48 — emit as explicit anchor
+    # form with surrounding blank lines so MyST parses it as a block-level
+    # anchor rather than fusing it into the preceding prose paragraph).
     def replace_unlabeled_align(m):
         content, labels = _extract_math_labels(m.group(1).strip())
         block = f'$$\n\\begin{{aligned}}\n{content}\n\\end{{aligned}}\n$$'
         if labels:
             anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in labels)
-            return f'{anchors}\n{block}'
+            return f'\n\n{anchors}\n\n{block}'
         return block
 
     text = re.sub(
@@ -178,7 +181,7 @@ def convert_equations(text: str) -> str:
         extra = labels[1:]
         if extra:
             anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in extra)
-            return f'{anchors}\n{block}'
+            return f'\n\n{anchors}\n\n{block}'
         return block
 
     text = re.sub(
