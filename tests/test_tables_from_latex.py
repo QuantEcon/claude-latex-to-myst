@@ -9,12 +9,9 @@ the parser's contract clear.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-
-from transforms.tables_from_latex import (  # noqa: E402
+from transforms.tables_from_latex import (
     TableSpec,
     decode_marker,
     emit_myst,
@@ -395,8 +392,9 @@ import pytest  # noqa: E402
 PANDOC_AVAILABLE = shutil.which('pandoc') is not None
 
 
-def _process_text(src: str) -> str:
-    """Helper: invoke the preprocessor's ``process_text`` on a string."""
+def _load_marker_preprocessor():
+    """Load the ``_apply_table_markers`` module by path (it's a script,
+    not on a package path). Returns the imported module."""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         '_apply_table_markers',
@@ -404,7 +402,64 @@ def _process_text(src: str) -> str:
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.process_text(src)
+    return module
+
+
+def _process_text(src: str) -> str:
+    """Helper: invoke the preprocessor's ``process_text`` on a string."""
+    return _load_marker_preprocessor().process_text(src)
+
+
+def test_pandoc_batch_convert_falls_back_to_original_cells_on_subprocess_failure(
+    monkeypatch, capsys
+):
+    """Defensive: pandoc failures (binary missing, OOM, bad construct)
+    must NOT take down the whole preprocess pass. ``_pandoc_batch_convert``
+    falls back to returning the original cells unchanged; the rest of
+    the marker pipeline then emits structurally-valid markers whose
+    cells contain raw LaTeX. ``resolve_table_markers`` still emits
+    ``{table}`` directives — content is worse than the happy path,
+    but the build doesn't break."""
+    import subprocess
+
+    mod = _load_marker_preprocessor()
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.CalledProcessError(
+            returncode=1, cmd=args[0] if args else 'pandoc',
+            stderr='simulated pandoc failure',
+        )
+
+    monkeypatch.setattr(subprocess, 'run', fake_run)
+
+    cells = [r'\textbf{x}', r'$y$', 'plain']
+    out = mod._pandoc_batch_convert(cells)
+    # Fallback: returns the original (raw-LaTeX) cells.
+    assert out == cells
+    # Failure is logged to stderr so the author has a signal.
+    captured = capsys.readouterr()
+    assert 'pandoc batch conversion failed' in captured.err
+    assert 'simulated pandoc failure' in captured.err
+
+
+def test_pandoc_batch_convert_falls_back_when_pandoc_missing(monkeypatch, capsys):
+    """A FileNotFoundError (pandoc not on PATH) is treated the same as
+    a CalledProcessError — fall back to original cells, log to stderr.
+    Without this guard, environments without pandoc would crash the
+    preprocess pass entirely instead of degrading gracefully."""
+    import subprocess
+
+    mod = _load_marker_preprocessor()
+
+    def fake_run(*args, **kwargs):
+        raise FileNotFoundError('pandoc')
+
+    monkeypatch.setattr(subprocess, 'run', fake_run)
+
+    cells = ['cell']
+    out = mod._pandoc_batch_convert(cells)
+    assert out == cells
+    assert 'FileNotFoundError' in capsys.readouterr().err
 
 
 @pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')

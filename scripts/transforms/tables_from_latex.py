@@ -6,8 +6,9 @@ This module operates on the RAW LATEX SOURCE — before pandoc sees it.
 The companion ``scripts/_apply_table_markers.py`` calls into here to
 extract structured data from each table block, then replaces the
 block with an HTML-comment marker. The post-pandoc resolver
-``resolve_table_markers`` (in ``postprocess.py``) decodes the markers
-and emits MyST ``{table}`` directives.
+``resolve_table_markers`` (defined below in this module, wired into
+``postprocess.py``'s ``process_text``) decodes the markers and emits
+MyST ``{table}`` directives.
 
 Why this exists: pandoc's LaTeX reader emits ``simple_tables`` format
 for ``\\begin{tabular}{lccc}``-style tables and COLLAPSES all interior

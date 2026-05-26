@@ -81,13 +81,31 @@ def _pandoc_batch_convert(cells: list[str]) -> list[str]:
 
     latex_in = '\n\n'.join(parts) + '\n'
 
-    result = subprocess.run(
-        ['pandoc', '-f', 'latex', '-t', 'markdown', '--wrap=none'],
-        input=latex_in,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    # Defensive: pandoc can fail for reasons unrelated to a specific
+    # cell's content (binary missing, OOM on a huge document, version
+    # mismatch on a specific construct). Fall back to returning the
+    # original LaTeX cells unchanged — resolve_table_markers will
+    # still emit the {table} structure with header detection intact;
+    # cells will contain raw LaTeX rather than converted markdown,
+    # which is worse than the happy path but far better than aborting
+    # the whole preprocess pass. Mirrors the sentinel-missing fallback
+    # below.
+    try:
+        result = subprocess.run(
+            ['pandoc', '-f', 'latex', '-t', 'markdown', '--wrap=none'],
+            input=latex_in,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(
+            f'_apply_table_markers: pandoc batch conversion failed '
+            f'({type(e).__name__}); falling back to raw-LaTeX cells. '
+            f'stderr: {getattr(e, "stderr", "")!r}',
+            file=sys.stderr,
+        )
+        return list(cells)
     md_out = result.stdout
 
     # Split on the sentinel pattern. ``re.split`` with a capture group
