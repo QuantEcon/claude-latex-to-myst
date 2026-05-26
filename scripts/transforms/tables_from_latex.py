@@ -190,8 +190,13 @@ def _parse_colspec(spec: str) -> list[str]:
                     i = k
             else:
                 i += 1
-        elif c in '|@!>':
-            # Vertical rule or separator/modifier — skip with arg.
+        elif c in '|@!><':
+            # Vertical rule (``|``) or separator/modifier with arg
+            # (``@{}``, ``!{}``, ``>{...}``, ``<{...}``). Modifiers
+            # carry a braced argument that must be skipped — anything
+            # inside (``\bfseries``, ``\centering``, ``$``) can contain
+            # ``l``/``c``/``r`` chars that would otherwise be
+            # misparsed as real columns. ``|`` has no arg.
             if c in '@!><':
                 j = i + 1
                 if j < len(spec) and spec[j] == '{':
@@ -470,15 +475,24 @@ def encode_marker(spec: TableSpec) -> str:
 
 
 def decode_marker(payload_b64: str) -> TableSpec:
-    """Decode a marker payload back to a ``TableSpec``."""
+    """Decode a marker payload back to a ``TableSpec``.
+
+    Raises on malformed payloads (invalid base64, non-JSON content, JSON
+    that lacks the structural fields). Callers (``resolve_table_markers``)
+    handle the exception by leaving the original marker in place — see
+    the defensive ``try/except`` there. ``name`` and ``caption`` use
+    ``.get`` because they're legitimately optional; ``colspec``,
+    ``header_rows``, and ``body_rows`` are structural and indexed
+    directly so missing keys raise ``KeyError``.
+    """
     raw = base64.b64decode(payload_b64.encode('ascii')).decode('utf-8')
     data = json.loads(raw)
     return TableSpec(
         name=data.get('name'),
         caption=data.get('caption'),
-        colspec=data.get('colspec', []),
-        header_rows=data.get('header_rows', []),
-        body_rows=data.get('body_rows', []),
+        colspec=data['colspec'],
+        header_rows=data['header_rows'],
+        body_rows=data['body_rows'],
     )
 
 
@@ -594,7 +608,17 @@ def resolve_table_markers(text: str) -> str:
     #51 by bypassing pandoc's lossy LaTeX-tabular reader entirely.
     """
     def repl(m: re.Match) -> str:
-        spec = decode_marker(m.group('payload'))
-        return emit_myst(spec)
+        # Defensive: a corrupted payload (manual edit of the
+        # intermediate file, partial copy-paste, future pandoc version
+        # that mangles the marker) shouldn't crash the whole
+        # postprocess pipeline. Leave the original marker in place on
+        # failure — the visible artefact tells the author something
+        # went wrong without taking down the build. Mirrors the
+        # defensive decode in ``resolve_algorithms``.
+        try:
+            spec = decode_marker(m.group('payload'))
+            return emit_myst(spec)
+        except Exception:
+            return m.group(0)
 
     return _MARKER_RE.sub(repl, text)

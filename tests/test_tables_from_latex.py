@@ -121,6 +121,35 @@ def test_parses_booktabs_toprule_midrule_bottomrule():
     assert spec.body_rows[0] == [r'$x$', 'state', '1.0']
 
 
+def test_colspec_skips_post_cell_modifier_with_letters_inside():
+    """``<{...}`` is a post-cell content modifier (mirror of ``>{...}``).
+    Its braced argument can contain LaTeX commands that include
+    ``l``/``c``/``r`` characters (``\\bfseries``, ``\\centering``,
+    ``\\raggedright``) — those must NOT be parsed as real columns.
+
+    Surfaced by Copilot's review of PR #53: the original code skipped
+    ``>{...}`` but not ``<{...}``, so a colspec like
+    ``@{}>{$}l<{\\bfseries\\centering}@{}}`` would emit spurious ``c``
+    and ``r`` column entries from the modifier body."""
+    body = (
+        r'\begin{tabular}{@{}>{$}l<{\bfseries\centering}'
+        r'>{$}c<{\raggedright}@{}}' '\n'
+        r'\hline' '\n'
+        r'A & B \\' '\n'
+        r'\hline' '\n'
+        r'1 & 2 \\' '\n'
+        r'\hline' '\n'
+        r'\end{tabular}'
+    )
+    spec = parse_table_block(body)
+    # Two real columns: ``l`` and ``c``. NOT 5+ from the letters
+    # inside ``\bfseries\centering`` / ``\raggedright``.
+    assert spec.colspec == ['l', 'c'], (
+        f'expected 2 columns from spec; got {len(spec.colspec)}: '
+        f'{spec.colspec!r}'
+    )
+
+
 def test_parses_nested_brace_colspec():
     """Real-world Deep-Learning shape: ``\\begin{tabular}{@{}>{...}p{...}...@{}}``
     — nested braces in the column spec must be balanced correctly,
@@ -496,6 +525,25 @@ def test_process_text_converts_inline_latex_in_cells_via_pandoc():
     assert spec.header_rows[0] == ['**Symbol**', '**Meaning**']
     assert spec.body_rows[0] == ['$x$', 'state']
     assert spec.caption == 'Notation'
+
+
+def test_resolve_table_markers_leaves_corrupted_payload_in_place():
+    """A corrupted marker payload (malformed base64, valid base64 of
+    non-JSON, JSON with wrong shape) must NOT crash the postprocess
+    pipeline. The original marker is left in the text so the failure
+    is visible to the author. Mirrors ``resolve_algorithms``'s
+    defensive decode pattern. Surfaced by Copilot review of PR #53."""
+    from transforms.tables_from_latex import resolve_table_markers
+
+    # Three corruption modes: invalid base64, valid base64 of non-JSON,
+    # JSON with missing required fields. All should pass through.
+    for payload in ('not-base64-!!!', 'bm90LWpzb24=', 'eyJmb28iOiJiYXIifQ=='):
+        text = f'Before.\n\n<!--TABLE payload={payload}-->\n\nAfter.'
+        out = resolve_table_markers(text)
+        assert 'Before.' in out
+        assert 'After.' in out
+        # Original marker preserved on failure.
+        assert f'<!--TABLE payload={payload}-->' in out
 
 
 def test_resolve_table_markers_decodes_in_place():

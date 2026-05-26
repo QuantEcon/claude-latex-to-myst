@@ -200,7 +200,11 @@ def process_text(text: str) -> str:
             _unflatten_table_cells(spec, flat_out[start : start + length])
         )
 
-    # Replace blocks in reverse so offsets stay valid.
+    # Stream the output forward: ``find_table_blocks`` returns blocks
+    # in source order, so we walk them left-to-right, appending each
+    # inter-block slice followed by either the marker (when parsing
+    # succeeded) or the original block text (defensive fallback). No
+    # in-place mutation of ``text`` — purely re-assembly.
     out_parts: list[str] = []
     last_end = 0
     for (start, end, _), spec in zip(blocks, converted_specs):

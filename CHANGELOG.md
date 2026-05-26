@@ -30,9 +30,9 @@ haven't validated. Everything below is on `main` and available now.
   `resolve_table_markers` decodes the markers and emits MyST
   `{table}` directives with proper header/body splits. Same shape
   as the existing `_apply_listing_markers` / `_apply_algorithm_markers`
-  patterns (lesson 014, 015). Closes #51 / R3 from PR #41 / and
-  the dp2 `{list-table}` fallback regression for captioned
-  zero-header tables. `convert_simple_tables` continues to handle
+  patterns (lesson 014, 015). Closes #51 (R3 from PR #41) and the
+  dp2 `{list-table}` fallback regression for captioned zero-header
+  tables. `convert_simple_tables` continues to handle
   `\begin{center}\begin{tabular}` shapes (no float wrapper) via
   pandoc's output.
 - **`_warn_dropped_text_macros`** ([#22]): a new preprocess step that
