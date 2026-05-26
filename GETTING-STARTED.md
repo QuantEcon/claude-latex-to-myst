@@ -52,7 +52,7 @@ Claude will:
 1. Re-run the pipeline.
 2. Build with `myst build --html`.
 3. Group warnings (typically by `duplicate_id`, `xref_not_found`, `math_parse`, `directive_unknown`, …).
-4. Identify the highest-count category and propose either a **config rewrite** (in your book's `config.yaml`, for book-specific shapes) or a **pipeline transform** (in the tool's `scripts/postprocess.py`, for shapes that will recur in other books).
+4. Identify the highest-count category and propose either a **config rewrite** (in your book's `mystmd/config.yaml`, for book-specific shapes) or a **pipeline transform** (in the tool's `scripts/postprocess.py`, for shapes that will recur in other books).
 5. Implement, re-run, recount.
 
 One regex fix usually eliminates 50–200 build errors. Repeat until the remaining errors are genuinely per-file edge cases — at that point, hand-fixing the markdown directly is appropriate (but ask Claude to do it; it can review the diff for collateral damage).
@@ -60,7 +60,7 @@ One regex fix usually eliminates 50–200 build errors. Repeat until the remaini
 ## What to ask Claude vs. do yourself
 
 **Tell Claude:**
-- "The chapter titles in `config.yaml` are wrong — pull them from the `\chapter{}` headings instead."
+- "The chapter titles in `mystmd/config.yaml` are wrong — pull them from the `\chapter{}` headings instead."
 - "There are 47 `xref_not_found` warnings. Categorize them and find the pattern."
 - "Equation labels inside `align*` aren't producing anchors. Check the lessons catalogue before writing new code."
 - "Capture a lesson about the thing we just figured out."
@@ -82,7 +82,7 @@ If the bug is mechanically fixable and would affect another book, ask Claude to 
 
 ## Working in parallel
 
-For non-trivial pipeline work, ask Claude to use a **git worktree** (`/<EnterWorktree>` is available as a built-in tool, or just `git worktree add`). This lets you run two Claude Code sessions side-by-side — one on a feature branch, one on a parallel fix — without either tripping on the other's branch state.
+For non-trivial pipeline work, ask Claude to set up a **git worktree** (`git worktree add ../mybook-issue-N -b fix/issue-N main`). This lets you run two Claude Code sessions side-by-side — one on a feature branch, one on a parallel fix — without either tripping on the other's branch state.
 
 The two sessions share the same `.git` repository (so commits are immediately visible) but have independent working directories and HEADs. This is how complex multi-issue work happens here in practice.
 
