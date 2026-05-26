@@ -1181,17 +1181,470 @@ def test_simple_table_preserves_math_and_refs_in_cells():
     assert "  - see {ref}`eg-foo`" in out
 
 
-def test_simple_table_with_caption():
-    body = _table("A | B") + "\n  : My caption\n"
+def test_simple_table_no_caption_emits_bare_list_table():
+    """Un-captioned tables continue to emit a bare ``{list-table}`` —
+    no ``{table}`` wrapper. Keeps the 2-col and N-col tests that
+    pre-date the wrapper fix stable on shape."""
+    body = (
+        "  ----  ----\n"
+        "  a     b\n"
+        "  ----  ----\n"
+        "  1     2\n"
+        "  ----  ----\n"
+    )
     out = postprocess.convert_simple_tables(body)
-    assert ":caption: My caption" in out
+    assert "```{list-table}" in out
+    assert "{table}" not in out
+    assert "````" not in out
+
+
+def test_simple_table_caption_with_inline_role_backticks():
+    """Regression for PR #41 v6: captions containing inline-role
+    backticks (``{ref}`foo``, ``{cite:t}`bar``) silently broke when
+    placed on the directive argument — MyST's argument parser
+    mistakes the role's backticks for inline-code-span delimiters,
+    the directive fails to parse, and the ``{table}`` collapses to a
+    plain paragraph in the AST.
+
+    All 8 silently-failing captioned tables in the Deep-Learning
+    book had ≥2 backticks in their captions. The v7 fix moves the
+    caption into the directive body as a regular markdown paragraph,
+    where inline roles parse normally.
+    """
+    body = (
+        "::: {#tab:demo}\n"
+        "  ---- ----\n"
+        "  H1   H2\n"
+        "  ---- ----\n"
+        "  a    b\n"
+        "  ---- ----\n"
+        "\n"
+        "  : Lineage uses {cite:t}`smith2023` and Chapter {ref}`ch-foo`"
+        " for context.\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # The {table} opener line must NOT contain backticks (the bug
+    # shape that broke MyST's argument parser).
+    table_open_line = next(
+        line for line in out.split('\n') if line.startswith('````{table}')
+    )
+    assert '`' not in table_open_line[len('````{table}'):], (
+        f'{{table}} opener must not carry inline-role backticks: '
+        f'{table_open_line!r}'
+    )
+    # The caption text — including the inline roles — survives in the
+    # body as a markdown paragraph.
+    assert '{cite:t}`smith2023`' in out
+    assert '{ref}`ch-foo`' in out
+    # :name: is on the wrapper from the enclosing ::: {#tab:demo}.
+    assert ':name: tab-demo' in out
+
+
+def test_simple_table_long_math_caption_in_body():
+    """Regression for PR #41 v6: long mixed-math captions (~400+
+    chars with multiple ``$math$`` runs) on the directive argument
+    line tripped MyST's parser even after the v5 ``{table}`` wrapper
+    landed — the docutils body validator fired "list-table directive
+    must have a list of lists" because the long argument apparently
+    bled into the body. Move the caption into the body as a
+    paragraph; the argument stays empty.
+
+    Canonical reproducer: Deep-Learning book ``tab-curse_of_dim``,
+    429-char caption with 10 inline ``$math$`` runs."""
+    body = (
+        "::: {#tab:curse_of_dim}\n"
+        "  ---- ---------------------- ---------\n"
+        "  $d$   Grid points $(10^d)$   Memory\n"
+        "  ---- ---------------------- ---------\n"
+        "  1    $10^1$                 80 B\n"
+        "  ---- ---------------------- ---------\n"
+        "\n"
+        "  : Size of an $n = 10$ Cartesian grid and the 64-bit memory"
+        " required to store one floating-point value per grid point,"
+        " as a function of state-space dimension $d$. Grid-based"
+        " methods are comfortable only at low dimension; by $d = 10$"
+        " even storing one scalar per grid point is borderline.\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # Empty argument on the directive opener.
+    assert "````{table}\n" in out
+    # Caption text including all math runs survives in the body.
+    assert "Size of an $n = 10$ Cartesian grid" in out
+    assert "by $d = 10$ even storing" in out
+    # :name: propagated from the enclosing fence.
+    assert ":name: tab-curse_of_dim" in out
+
+
+def test_simple_table_caption_with_inline_math_and_refs_wraps():
+    """Regression for PR #41 v4: a long caption containing inline
+    ``$math$`` (and potentially inline directives like ``{ref}`X```)
+    on the ``{list-table}`` argument line broke MyST's body parser,
+    producing the ``list-table directive must have a list of lists``
+    error. The ``{table}`` wrapper sidesteps the cascade — caption
+    lives on the wrapper's argument; inner ``{list-table}`` carries
+    only ``:header-rows:`` and rows.
+
+    The Deep-Learning book's ``ch02_deqns:19`` curse-of-dimensionality
+    table is the canonical reproducer: ~390-char caption with
+    multiple inline ``$math$`` runs."""
+    body = (
+        "  ---- ---------------------- ---------\n"
+        "  $d$   Grid points $(10^d)$   Memory\n"
+        "  ---- ---------------------- ---------\n"
+        "  1    $10^1$                 80 B\n"
+        "  5    $10^5$                 800 kB\n"
+        "  ---- ---------------------- ---------\n"
+        "\n"
+        "  : Size of an $n = 10$ Cartesian grid and the 64-bit memory"
+        " required to store one floating-point value per grid point,"
+        " as a function of state-space dimension $d$. Grid-based"
+        " methods are comfortable only at low dimension; by $d = 10$"
+        " even storing one scalar per grid point is borderline.\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # Outer: {table} wrapper at 4-backtick fence with EMPTY argument;
+    # caption lives as the first paragraph of the body.
+    assert "````{table}\n" in out
+    # Caption text appears in the body — survives in full including
+    # trailing clauses with additional $math$ runs.
+    assert "Size of an $n = 10$ Cartesian grid" in out
+    assert "by $d = 10$" in out
+    # Caption did NOT land on the {table} opener line.
+    assert "````{table} Size" not in out
+    # Inner: pipe-table (NOT a nested {list-table} directive — see
+    # R2 fix in PR #41 v8: nested directives consumed a phantom
+    # enumerator slot).
+    assert "```{list-table}" not in out
+    assert "| $d$ | Grid points $(10^d)$ | Memory |" in out
+    # Alignment row immediately follows the header.
+    assert "|---|---|---|" in out
+    # Body rows present.
+    assert "| 1 | $10^1$ | 80 B |" in out
+    assert "| 5 | $10^5$ | 800 kB |" in out
+
+
+def test_simple_table_inside_id_fence_emits_explicit_name():
+    """Mode B fix for PR #41 silent failures: when a table is wrapped
+    in ``::: {#tab:foo}`` (pandoc's emit for ``\\begin{table}\\label{tab:foo}``),
+    extract the id and emit ``:name: tab-foo`` on the directive
+    directly. This ensures the table AST node carries the identifier
+    even when MyST's standalone-anchor attachment misfires through
+    the 4-backtick ``{table}`` wrapper.
+
+    Without this fix, the cross-reference resolver falls back to
+    "next non-table node with this label" and ``{numref}`tab-foo``
+    resolves to a paragraph instead of a table (confirmed in the
+    Deep-Learning book's ``tab-relobralo_hp`` case)."""
+    body = (
+        "::: {#tab:nas_methods}\n"
+        "  ---- ----\n"
+        "  H1   H2\n"
+        "  ---- ----\n"
+        "  a    b\n"
+        "  ---- ----\n"
+        "\n"
+        "  : Caption text.\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # When :name: is emitted, the wrapping ``::: {#tab:nas_methods}``
+    # opener and matching ``:::`` closer are SUPPRESSED so
+    # convert_environment_divs doesn't emit a competing
+    # ``(tab-nas_methods)=`` standalone anchor (R1 in PR #41).
+    # ``:name:`` is the single source of truth for the label.
+    assert "````{table}\n" in out
+    assert ":name: tab-nas_methods" in out
+    assert "Caption text." in out
+    # Body is a pipe-table, not a nested {list-table} (R2 fix —
+    # phantom-enumerator).
+    assert "```{list-table}" not in out
+    assert "| H1 | H2 |" in out
+    assert "| a | b |" in out
+    # Fence opener and closer are suppressed.
+    assert "::: {#tab:nas_methods}" not in out
+    assert ":::" not in out
+
+
+def test_simple_table_inside_id_fence_no_caption_uses_list_table_name():
+    """Mode B for un-captioned tables: ``:name:`` lands on the bare
+    ``{list-table}`` directly (no ``{table}`` wrapper, since no
+    caption)."""
+    body = (
+        "::: {#tab:simple}\n"
+        "  ---- ----\n"
+        "  H1   H2\n"
+        "  ---- ----\n"
+        "  a    b\n"
+        "  ---- ----\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert ":name: tab-simple" in out
+    # No wrapper for the un-captioned case.
+    assert "{table}" not in out
+
+
+def test_simple_table_no_enclosing_fence_no_name_emitted():
+    """Regression guard: bare tables (no enclosing ``::: {#id}`` fence)
+    don't get a spurious ``:name:`` from leftover stack state. The
+    div-id stack is reset per-table-iteration; this test pins that
+    contract."""
+    body = (
+        "::: {#tab:first}\n"
+        "  ---- ----\n"
+        "  a    b\n"
+        "  ---- ----\n"
+        ":::\n"
+        "\n"
+        "Plain prose.\n"
+        "\n"
+        "  ---- ----\n"
+        "  c    d\n"
+        "  ---- ----\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # First table inside #tab:first → has :name:
+    assert ":name: tab-first" in out
+    # Second table is bare — no :name: should be emitted.
+    # Count :name: occurrences to confirm only one.
+    assert out.count(":name:") == 1
+
+
+def test_simple_table_shape_b_wide_indent_header_accepted():
+    """Mode A fix for PR #41 silent failures: pandoc aligns header
+    text by data-column position, not by leading-whitespace count.
+    Wide tables emit headers at indent 26+ over a rule at indent 2 —
+    v5's upper-bound check rejected these, breaking ``tab-seq_compare``
+    and similar.
+
+    With the v6 indent-relaxation, ``_collect_header_above`` accepts
+    any non-blank line at indent >= opener_indent (no upper bound)."""
+    # Synthesised after Deep-Learning ``ch01_intro.md:838``: header at
+    # wide indent, dash-rule at indent 2, body rows at indent 2,
+    # fewer header cells than rule columns (the first column has no
+    # header — it's the row-label column).
+    body = (
+        "::: {#tab:seq_compare}\n"
+        "                          **RNN**            **LSTM**           **Transformer**\n"
+        "  ----------------------- ------------------ ------------------ ------------------------\n"
+        "  Hidden state            single $\\h_t$      $\\h_t$ and $C_t$   none per step\n"
+        "  Path length             $\\mathcal{O}(T)$   $\\mathcal{O}(T)$   $\\mathcal{O}(1)$\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # Header is absorbed into the directive — should appear as the
+    # first row inside the list-table, NOT as raw text outside.
+    assert "```{list-table}" in out
+    assert ":header-rows: 1" in out
+    # Bold header tokens survived and landed in the bullet rows.
+    assert "**RNN**" in out
+    assert "**LSTM**" in out
+    assert "**Transformer**" in out
+    # The original wide-indent header line should NOT appear in the
+    # output (it was absorbed into the directive). Check the actual
+    # `**RNN**` line is rendered as a list-table cell, not as a raw
+    # leading paragraph.
+    lines = out.split('\n')
+    # Find where the directive starts and ends.
+    list_table_start = next(j for j, l in enumerate(lines) if '```{list-table}' in l)
+    # Everything before list-table opener should be the ::: opener and blank.
+    before = '\n'.join(lines[:list_table_start])
+    # The bold header tokens must NOT appear before the directive opens.
+    assert "**RNN**" not in before
+
+
+def test_simple_table_caption_pipe_table_escapes_literal_pipe():
+    """Cells containing literal ``|`` (e.g. ``OR``-pipe in code, or
+    ``|x|`` absolute-value notation in math) must be escaped to ``\\|``
+    so the pipe-table parser doesn't treat them as column separators.
+
+    Conservative guarantee: every ``|`` inside a cell becomes ``\\|``,
+    even inside ``$math$`` regions. None of the corpus we've audited
+    (Deep-Learning book, book-dp1, book-dp2) has ``|`` inside table-cell
+    math today, so the over-escape is defensive rather than load-bearing.
+    """
+    body = (
+        "  ---- -------\n"
+        "  Op   Result\n"
+        "  ---- -------\n"
+        "  AND  a | b\n"
+        "  ABS  $|x|$\n"
+        "  ---- -------\n"
+        "\n"
+        "  : Operator legend.\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # Every literal pipe inside the cells is escaped.
+    assert r"a \| b" in out
+    assert r"$\|x\|$" in out
+    # The pipe-table structure is otherwise intact.
+    assert "| Op | Result |" in out
+    assert "|---|---|" in out
+
+
+def test_simple_table_pandoc_no_borders_broad_rules():
+    """Regression for PR #41 v7's ``tab-bm_vs_irbc`` Mode A failure.
+    Pandoc's ``\\toprule`` / ``\\bottomrule`` emit (no per-column
+    rules on top/bottom) puts a SINGLE long dash-group above the
+    header and below the body. These broad rules don't match the
+    multi-group ``_RULE_RE`` so they're invisible to ``_rule_columns``
+    — but they DO bound the table region and must not bleed into
+    parsed cells.
+
+    Pre-fix: ``_collect_header_above`` walked past the top broad
+    rule into it (treating it as another header line); multiline
+    parsing then joined the dashes with the header text, producing
+    cells like ``------ **Brock-Mirman**`` in the first row.
+    Bottom broad rule ended up in the body block, polluting the
+    last row.
+
+    Fix: ``_is_broad_dash_rule`` recognises ≥10-dash single-group
+    rules. ``_collect_header_above`` stops at them (without
+    including them in parsing) but counts them in the
+    ``out``-removal range. Forward scan treats them as closers
+    when followed by blank+caption/boundary/EOF.
+
+    Synthesised from Deep-Learning book ``ch03_irbc.tex``'s
+    ``tab:bm_vs_irbc`` (LaTeX uses ``p{0.19\\linewidth}`` cols with
+    ``\\toprule``/``\\midrule``/``\\bottomrule``)."""
+    body = (
+        "::: {#tab:bm_vs_irbc}\n"
+        "  -" + "-" * 170 + "\n"
+        "                        **Brock-Mirman**                                                                                                     **IRBC**\n"
+        "  --------------------- ------------------------------------------------------------------------------------------- "
+        "-----------------------------------------------------------------\n"
+        "  Countries                                                                                                         $N$\n"
+        "\n"
+        "  States                $(K, z)$                                                                                    $(k^1,\\ldots,k^N)$\n"
+        "  -" + "-" * 170 + "\n"
+        "\n"
+        "  : Caption text.\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # Captioned table → {table} wrapper with caption in body and a
+    # pipe-table inner (R2 fix — pipe tables avoid the phantom
+    # enumerator from a nested {list-table} directive).
+    assert "````{table}" in out
+    assert "Caption text." in out
+    assert "```{list-table}" not in out
+    # Header row: empty first cell, then the bold headers.
+    assert "**Brock-Mirman**" in out
+    assert "**IRBC**" in out
+    # Dashes from the broad rules MUST NOT appear in any cell. A
+    # pipe-table cell that starts with dashes would render as
+    # "|  --..." — we look for any pipe-then-dashes pattern.
+    for line in out.split('\n'):
+        if line.lstrip().startswith('| --'):
+            raise AssertionError(
+                f'broad rule dashes leaked into a pipe-table cell: '
+                f'{line!r}\n\nfull output:\n{out}'
+            )
+    # The body row "Countries / / $N$" — first cell Countries, middle empty.
+    assert "| Countries |" in out
+    assert "$N$" in out
+    # :name: from the id fence, fence itself suppressed (R1 fix).
+    assert ":name: tab-bm_vs_irbc" in out
+    assert "(tab-bm_vs_irbc)=" not in out
+    assert "::: {#tab:bm_vs_irbc}" not in out
+
+
+def test_simple_table_with_caption():
+    """Captioned tables with exactly one header row wrap a markdown
+    pipe-table inside a ``{table}`` directive.
+
+    Rationale (R2 fix in PR #41 v8): a nested ``{list-table}`` directive
+    inside ``{table}`` causes mystmd to register TWO enumerable table
+    containers — the outer ``{table}`` and the inner ``{list-table}``
+    — so the inner consumes the next table-counter slot and
+    ``{numref}`` text drifts off-by-one across the chapter. A
+    pipe-table inside ``{table}`` renders as the same HTML output
+    but isn't a directive, so only the outer ``{table}`` is
+    enumerable.
+
+    The caption lives as the first paragraph of the ``{table}`` body
+    (canonical MyST form per
+    https://mystmd.org/guide/figures#tables) so inline roles,
+    backticks, and long mixed-math captions all parse normally.
+
+    The pipe-table path is conditional on ``header_rows_count == 1``;
+    the 0-header and ≥2-header fallback cases are covered by
+    ``test_simple_table_with_caption_zero_header_falls_back_to_list_table``
+    and (implicitly) the existing multi-block fixtures."""
+    # Shape A with interior separator → header_rows_count == 1.
+    body = (
+        "  ---------- ----------\n"
+        "  Sym        Meaning\n"
+        "  ---------- ----------\n"
+        "  $X$        State\n"
+        "  $A$        Action\n"
+        "  ---------- ----------\n"
+        "\n"
+        "  : My caption\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # Outer wrapper: 4-backtick fence with EMPTY argument; caption
+    # lives as the first paragraph of the body.
+    assert "````{table}\n" in out
+    # Caption text appears as a body paragraph, not on the opener line.
+    assert "My caption" in out
+    assert "````{table} My caption" not in out   # not on opener line
+    # Inner: pipe-table (no nested {list-table} directive).
+    assert "```{list-table}" not in out
+    # Pipe-table header row + alignment row + body rows.
+    assert "| Sym | Meaning |" in out
+    assert "|---|---|" in out
+    assert "| $X$ | State |" in out
+    assert "| $A$ | Action |" in out
+    # Docutils-style option form must NOT appear anywhere.
+    assert ":caption:" not in out
     # Caption line should be consumed, not left behind.
     assert "  : My caption" not in out
 
 
-def test_simple_table_three_column_left_alone():
-    """3+ column tables stay as raw simple_tables. Out of scope per FIX
-    Issue 1's "first cut" — wider tables have more layout nuance."""
+def test_simple_table_with_caption_zero_header_falls_back_to_list_table():
+    """When the captioned table has no detectable header rows (Shape A
+    without an interior separator — pandoc's simple_tables format
+    collapses interior ``\\hline`` rules so the LaTeX-side header rows
+    arrive as ``header_rows_count == 0``), the inner body falls back
+    to ``{list-table}`` rather than pipe-table.
+
+    Rationale (PR #41 v9): pipe-table syntax mandates a header row;
+    v8's synthetic-empty-header workaround rendered as a visible blank
+    row at the top of the table in mystmd — surfaced by book-dp2's
+    ``tab-convergence_cases``. The ``{list-table}`` fallback uses
+    ``:header-rows: 0`` which renders as a headerless table cleanly.
+
+    Trade-off: the fallback re-introduces the phantom-enumerator
+    behaviour for the inner directive (R2). Limited to captioned-
+    AND-0-header tables only — rare in practice (zero such tables
+    in the Deep-Learning book corpus). The proper fix is the Path C
+    follow-up that bypasses pandoc's lossy LaTeX-tabular reader so
+    interior ``\\hline`` rules survive to inform ``header_rows_count``.
+    """
+    # Shape A with NO interior separator → header_rows_count == 0.
+    body = _table("A | B") + "\n  : My caption\n"
+    out = postprocess.convert_simple_tables(body)
+    # Outer {table} wrapper still present.
+    assert "````{table}\n" in out
+    assert "My caption" in out
+    # Inner: {list-table} fallback, not pipe-table.
+    assert "```{list-table}" in out
+    assert ":header-rows: 0" in out
+    # No synthetic blank pipe-table header row.
+    assert "|  |  |" not in out
+    # Body rows in list-table form.
+    assert "* - A" in out
+    assert "  - B" in out
+
+
+def test_simple_table_three_column_basic():
+    """3-col tables convert to {list-table} (#34). Headerless shape
+    (top rule + rows + bottom rule, no interior separator) emits
+    ``:header-rows: 0``."""
     body = (
         "  ----  ----  ----\n"
         "  A     B     C\n"
@@ -1199,9 +1652,389 @@ def test_simple_table_three_column_left_alone():
         "  ----  ----  ----\n"
     )
     out = postprocess.convert_simple_tables(body)
-    # Untouched.
+    assert "```{list-table}" in out
+    assert ":header-rows: 0" in out
+    assert "* - A" in out
+    assert "  - B" in out
+    assert "  - C" in out
+    assert "* - D" in out
+    assert "  - E" in out
+    assert "  - F" in out
+    assert "----  ----  ----" not in out
+
+
+def test_simple_table_three_column_with_header():
+    """An interior dash-rule with the same column count as the opener
+    marks the header/body boundary and triggers ``:header-rows: 1``
+    (#34). This is pandoc's standard simple_tables-with-header shape."""
+    body = (
+        "  -------- ---------- ----------\n"
+        "  Item     Value      Notes\n"
+        "  -------- ---------- ----------\n"
+        "  alpha    1.0        first\n"
+        "  beta     2.5        second\n"
+        "  -------- ---------- ----------\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert ":header-rows: 1" in out
+    # Header row present.
+    assert "* - Item" in out
+    assert "  - Value" in out
+    assert "  - Notes" in out
+    # Data rows present.
+    assert "* - alpha" in out
+    assert "* - beta" in out
+
+
+def test_simple_table_three_column_with_caption():
+    """N-col captioned tables use the ``{table}``-wraps-pipe-table
+    shape (same wrapper logic as the 2-col case, see
+    ``test_simple_table_with_caption`` for rationale)."""
+    body = (
+        "  -------- ---------- ----------\n"
+        "  Item     Value      Notes\n"
+        "  -------- ---------- ----------\n"
+        "  alpha    1.0        first\n"
+        "  beta     2.5        second\n"
+        "  -------- ---------- ----------\n"
+        "\n"
+        "  : Lineage from plain SGD to AdamW.\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "````{table}\n" in out
+    assert "Lineage from plain SGD to AdamW." in out
+    assert "````{table} Lineage" not in out   # not on opener line
+    # Pipe-table body (no nested {list-table} directive).
     assert "```{list-table}" not in out
-    assert "----  ----  ----" in out
+    assert "| Item | Value | Notes |" in out
+    assert "|---|---|---|" in out
+    assert "| alpha | 1.0 | first |" in out
+    assert "| beta | 2.5 | second |" in out
+    # Docutils-style option form must NOT appear.
+    assert ":caption:" not in out
+    # Caption line should be consumed.
+    assert "  : Lineage" not in out
+
+
+def test_simple_table_five_column():
+    """Tables with 5 columns convert correctly — the column-start
+    detection generalizes to any N (#34)."""
+    body = (
+        "  ----  ----  ----  ----  ----\n"
+        "  v     w     x     y     z\n"
+        "  ----  ----  ----  ----  ----\n"
+        "  1     2     3     4     5\n"
+        "  6     7     8     9     10\n"
+        "  ----  ----  ----  ----  ----\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert ":header-rows: 1" in out
+    assert "* - v" in out
+    assert "  - w" in out
+    assert "  - z" in out
+    assert "* - 1" in out
+    assert "  - 5" in out
+    assert "* - 6" in out
+    assert "  - 10" in out
+
+
+def test_simple_table_mismatched_column_count_not_fused():
+    """A 3-col opener must NOT close on a downstream 2-col rule —
+    different column count = different table. Without the guard
+    [tables.py:61, :85 — historical line refs], the scan would fuse
+    adjacent tables of different shapes into one mangled list-table."""
+    body = (
+        "  ----  ----  ----\n"
+        "  A     B     C\n"
+        "  D     E     F\n"
+        "  ----  ----  ----\n"
+        "\n"
+        "Some prose.\n"
+        "\n"
+        "  ----------  --------------------\n"
+        "  alpha       first\n"
+        "  beta        second\n"
+        "  ----------  --------------------\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # Both tables convert independently — two list-tables.
+    assert out.count("```{list-table}") == 2
+    # Prose between is preserved.
+    assert "Some prose." in out
+    # First list-table has 3 columns (3 cells per row).
+    first_block = out.split("```{list-table}", 2)[1].split("```", 1)[0]
+    # Three "* - " starts (one per row) plus two "  - " per row.
+    assert first_block.count("* - ") == 2  # 2 data rows after header
+    # Confirm the third column from the first table is present.
+    assert "  - C" in first_block
+    assert "  - F" in first_block
+
+
+def test_simple_table_three_column_in_center():
+    """3-col multiline-style table bounded by ``::: center`` (no closing
+    rule). The boundary-stop logic generalizes from 2-col (#34).
+
+    Also pins the Copilot-review fix: the fenced-div + with-header
+    shape used to leave the raw body rows in the output (``next_i``
+    landed inside the table body, re-emitting the rows after the
+    generated ``{list-table}``). The "raw rows absent" assertions
+    below are the regression lock — they failed before the
+    closer-vs-interior look-ahead and ``next_i = boundary_idx`` fix.
+    """
+    body = (
+        "::: center\n"
+        "  ----  ----  ----------\n"
+        "  Code  Type  Description\n"
+        "  ----  ----  ----------\n"
+        "  A     int   first\n"
+        "  B     str   second\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert ":header-rows: 1" in out
+    assert "* - Code" in out
+    assert "  - Type" in out
+    assert "  - Description" in out
+    assert "* - A" in out
+    assert "  - int" in out
+    assert "  - first" in out
+    # ``:::`` boundary must NOT be eaten.
+    assert ":::" in out
+    # Raw body rows must NOT survive after the list-table.
+    assert "  A     int" not in out
+    assert "  B     str" not in out
+    # Dash-rule lines must be gone too.
+    assert "----  ----  ----------" not in out
+
+
+def test_simple_table_same_column_count_tables_separated_by_prose():
+    """Bug pinned by Copilot review: two same-column-count tables in
+    the same doc, NOT inside ``::: center``, must convert independently.
+
+    Pre-fix the forward scan greedily collected ALL same-N rules until
+    EOF, inflating the block count past 2. The first opener bailed,
+    then its *closing rule* was re-tried as a new opener — fusing the
+    intervening prose into the second table as if it were row content
+    (with the prose sliced at column boundaries).
+
+    The closer-vs-interior look-ahead fix stops the scan at the first
+    same-N rule whose next non-blank line is out-of-table content
+    (different indent, EOF, caption, fence boundary)."""
+    body = (
+        "  ----  ----\n"
+        "  A     B\n"
+        "  ----  ----\n"
+        "\n"
+        "Some prose.\n"
+        "\n"
+        "  ----  ----\n"
+        "  X     Y\n"
+        "  ----  ----\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert out.count("```{list-table}") == 2
+    assert "Some prose." in out
+    # Prose must NOT be sliced into cells.
+    assert "* - Some pro" not in out
+    assert "  - se." not in out
+    # Both tables' rows present.
+    assert "* - A" in out
+    assert "  - B" in out
+    assert "* - X" in out
+    assert "  - Y" in out
+
+
+def test_simple_table_shape_b_header_above_single_rule():
+    """Pandoc's ``\\begin{table}\\begin{tabular}...\\end{tabular}
+    \\caption{...}\\end{table}`` (no ``\\toprule`` / ``\\bottomrule``)
+    produces a single dash-rule with the header row above it and no
+    closing rule. The Deep-Learning book has ~37 tables in this shape
+    that the original Shape-A-only logic left as raw text (#34). Now
+    handled via header-above detection + blank-line/caption implicit
+    termination."""
+    body = (
+        "  Optimizer            Update rule          Reference\n"
+        "  -------------------- -------------------- --------------------------\n"
+        "  SGD                  plain SGD            standard\n"
+        "  Adam                 per-param adaptive   widely used\n"
+        "  AdamW                Adam plus decay      current default\n"
+        "\n"
+        "  : Lineage from plain SGD to AdamW.\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "````{table}\n" in out
+    assert "Lineage from plain SGD to AdamW." in out
+    assert "````{table} Lineage" not in out
+    # Pipe-table body (R2 fix — no nested directive).
+    assert "```{list-table}" not in out
+    assert ":caption:" not in out
+    # Header row absorbed (popped from `out`, not duplicated).
+    assert out.count("Optimizer") == 1
+    assert "| Optimizer | Update rule | Reference |" in out
+    # Body rows present, exactly once each.
+    assert "| SGD | plain SGD | standard |" in out
+    assert "| Adam | per-param adaptive | widely used |" in out
+    assert "| AdamW | Adam plus decay | current default |" in out
+    # Dash-rule and caption-as-line must be gone.
+    assert "--------------------" not in out
+    assert "  : Lineage" not in out
+
+
+def test_simple_table_shape_b_no_caption_eof():
+    """Shape B without a caption — body runs to EOF. The Shape-B
+    EOF fallback (header_above non-empty + no other terminator →
+    implicit_end_idx = len(lines)) handles this."""
+    body = (
+        "  Name    Value\n"
+        "  ------- -------\n"
+        "  alpha   1.0\n"
+        "  beta    2.5\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert ":header-rows: 1" in out
+    assert "* - Name" in out
+    assert "  - Value" in out
+    assert "* - alpha" in out
+    assert "* - beta" in out
+    # Header line must be absorbed, not left as raw text.
+    assert "Name    Value" not in out
+
+
+def test_simple_table_shape_b_header_indent_within_first_column():
+    """Pandoc column-aligns header cells by character position, not by
+    leading-whitespace count. A header row at indent 3 on a rule at
+    indent 2 is still column-aligned if the first column spans
+    positions [2, N) — the header's first non-blank char sits inside
+    the first column.
+
+    Surfaced by the Deep-Learning book's ``execution_map`` table
+    where the indent-mismatch caused ``_collect_header_above`` to
+    return empty, leaving the header line outside the emitted
+    ``{list-table}`` and producing a "list-table directive must have
+    a list of lists" MyST build error.
+
+    The relaxed indent check
+    (``opener_indent <= prev_indent < col_starts[1]``) absorbs this
+    case correctly."""
+    body = (
+        "   **Ch.**  **Topic**               **Notebooks**\n"
+        "  --------- ----------------------- ------------------------\n"
+        "      1     Intro to ML & DL        01_Intro_to_DL.ipynb\n"
+        "      2     Linear regression       02_LinReg.ipynb\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert ":header-rows: 1" in out
+    # Header row absorbed.
+    assert "* - **Ch.**" in out
+    assert "  - **Topic**" in out
+    assert "  - **Notebooks**" in out
+    # Body rows present.
+    assert "* - 1" in out
+    assert "  - Intro to ML & DL" in out
+    assert "* - 2" in out
+    # Header line and dash rule must NOT survive as raw text.
+    assert out.count("**Ch.**") == 1
+    assert "---------" not in out
+
+
+def test_simple_table_shape_b_preceded_by_prose_with_blank_separator():
+    """Shape-B header detection must NOT absorb preceding paragraphs.
+    The blank line between prose and the header bounds the look-back."""
+    body = (
+        "An introductory paragraph at indent zero.\n"
+        "\n"
+        "  Item     Value\n"
+        "  -------- -------\n"
+        "  alpha    1.0\n"
+        "  beta     2.5\n"
+        "\n"
+        "  : Caption text.\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # The intro paragraph survives.
+    assert "An introductory paragraph at indent zero." in out
+    assert out.count("introductory paragraph") == 1
+    # Table converted with caption as {table} body paragraph, pipe-table
+    # inner (R2 fix).
+    assert "````{table}\n" in out
+    assert "Caption text." in out
+    assert "````{table} Caption" not in out   # not on opener line
+    assert "```{list-table}" not in out
+    assert ":caption:" not in out
+    assert "| Item | Value |" in out
+    assert "| alpha | 1.0 |" in out
+    assert "| beta | 2.5 |" in out
+
+
+def test_simple_table_header_plus_caption_inside_center():
+    """The combination that #34 originally broke: ``::: center``-wrapped
+    table with BOTH a header (interior dash-rule) and a caption between
+    the closer and ``:::``. Pre-fix, the caption inflated the block
+    count to 3 (header / body / caption), the converter bailed, the
+    header-separator rule was then re-tried as an opener, and the
+    output was a cascade of fragmented partial conversions. The
+    caption-peel logic (last block all caption-shape → drop, let
+    caption-detection pick it up) is what fixes this."""
+    body = (
+        "::: center\n"
+        "  -------- --------------------------------\n"
+        "  Symbol   Meaning\n"
+        "  -------- --------------------------------\n"
+        "  $X$      State space\n"
+        "  $A$      Action space\n"
+        "  $\\pi$    Policy\n"
+        "  -------- --------------------------------\n"
+        "\n"
+        "  : Common symbols used throughout.\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    # Captioned table → {table} wrapper with pipe-table inner.
+    assert "````{table}\n" in out
+    assert "Common symbols used throughout." in out
+    assert "````{table} Common" not in out
+    assert "```{list-table}" not in out
+    assert ":caption:" not in out
+    # Pipe-table rows.
+    assert "| Symbol | Meaning |" in out
+    assert "|---|---|" in out
+    assert "| $X$ | State space |" in out
+    assert "| $A$ | Action space |" in out
+    # The opening fenced-div line and its closer must survive intact.
+    assert "::: center" in out
+    assert ":::" in out
+    # No dash-rule leftovers and no caption-as-row leakage.
+    assert "----" not in out
+
+
+def test_simple_table_three_column_multiline_cells():
+    """Multiline-table shape with N=3: blank-line-separated rows whose
+    cells span multiple lines join with single spaces."""
+    body = (
+        "  ----  ----  --------------------\n"
+        "  A     1     first item\n"
+        "\n"
+        "  B     2     a longer\n"
+        "              wrapped value\n"
+        "\n"
+        "  ----  ----  --------------------\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "```{list-table}" in out
+    assert "* - A" in out
+    assert "  - 1" in out
+    assert "  - first item" in out
+    assert "* - B" in out
+    assert "  - 2" in out
+    assert "  - a longer wrapped value" in out
+
+
+
 
 
 def test_simple_table_skipped_inside_code_fence():

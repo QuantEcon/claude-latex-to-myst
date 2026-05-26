@@ -4,20 +4,15 @@ title: "Table Simple Two Col"
 
 # Notation
 
-```{list-table}
-:header-rows: 0
+````{table}
 
-* - Symbol
-  - Meaning
-```
-  $X$      State space
-  $A$      Action space
-  $\pi$    Policy
-```{list-table}
-:header-rows: 0
+Common symbols used throughout.
 
-* - : Common
-  - symbols used throughout.
-```
+| Symbol | Meaning |
+|---|---|
+| $X$ | State space |
+| $A$ | Action space |
+| $\pi$ | Policy |
+````
 
 Body prose continues.

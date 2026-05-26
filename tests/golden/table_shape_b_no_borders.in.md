@@ -1,0 +1,17 @@
+# Optimizers
+
+Tables emitted by pandoc from ``\begin{table}\begin{tabular}...\end{tabular}
+\caption{...}\label{...}\end{table}`` lack ``\toprule`` / ``\bottomrule`` —
+pandoc inserts only the header separator. The header row sits at the
+table's indent immediately above the dash-rule, with the body below.
+
+  Optimizer            Update rule           Reference
+  -------------------- --------------------- --------------------------
+  SGD                  plain SGD             standard
+  SGD+momentum         adds inertia          follow-up
+  Adam                 per-param adaptive    widely used
+  AdamW                Adam plus decay       current default
+
+  : Lineage from plain SGD to AdamW.
+
+See {numref}`tab-optimizer-family` for the table above.
