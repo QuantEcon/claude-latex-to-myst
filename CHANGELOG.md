@@ -17,6 +17,24 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Added — pipeline transforms
 
+- **`_apply_table_markers` + `resolve_table_markers`** ([#51]): bypass
+  pandoc's lossy LaTeX-tabular reader for `\begin{table}` floats.
+  Pandoc's reader collapses all interior `\hline`/`\midrule`
+  separators in `simple_tables` format — the LaTeX-side header row
+  identity is lost before pandoc produces output. The new
+  preprocessor scans the source `.tex` for `\begin{table}` blocks,
+  parses the tabular structure directly (where `\hline` boundaries
+  survive), batches the cell content through pandoc once per file
+  for inline-LaTeX → markdown conversion, and replaces the block
+  with a base64-encoded HTML-comment marker. The post-pandoc
+  `resolve_table_markers` decodes the markers and emits MyST
+  `{table}` directives with proper header/body splits. Same shape
+  as the existing `_apply_listing_markers` / `_apply_algorithm_markers`
+  patterns (lesson 014, 015). Closes #51 (R3 from PR #41) and the
+  dp2 `{list-table}` fallback regression for captioned zero-header
+  tables. `convert_simple_tables` continues to handle
+  `\begin{center}\begin{tabular}` shapes (no float wrapper) via
+  pandoc's output.
 - **`_warn_dropped_text_macros`** ([#22]): a new preprocess step that
   scans the source preamble(s) for custom text macros pandoc will
   silently drop (`\DeclareUrlCommand`, `\newcommand` bodies that wrap

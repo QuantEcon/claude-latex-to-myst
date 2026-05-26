@@ -119,6 +119,7 @@ from transforms.refs import (  # noqa: E402  (re-exports for P3a)
     routing_role,
 )
 from transforms.tables import convert_simple_tables  # noqa: E402  (P3a)
+from transforms.tables_from_latex import resolve_table_markers  # noqa: E402  (#51)
 from transforms.code import (  # noqa: E402  (re-exports for P3a)
     convert_pandoc_attr_code_blocks,
     resolve_listings,
@@ -565,6 +566,14 @@ def process_text(text: str, stem: str, title: str | None = None,
     # adjacent tables again. Order the two passes so the boundary survives
     # until the table pass has used it.
     text = convert_pandoc_attr_code_blocks(text)   # lstlisting → {code-block} (closes #31)
+    # resolve_table_markers handles ``\begin{table}`` floats that the
+    # ``_apply_table_markers.py`` preprocessor extracted before pandoc
+    # ran — those bypass pandoc's lossy LaTeX-tabular reader entirely
+    # (closes #51, R3 from PR #41). convert_simple_tables remains the
+    # fallback for non-float shapes (``\begin{center}\begin{tabular}``
+    # directly, no ``\begin{table}`` wrapper) where pandoc preserves
+    # enough structure for the existing path to work.
+    text = resolve_table_markers(text)
     text = convert_simple_tables(text)
     text = convert_environment_divs(text)
     text = convert_description_lists(text)         # decode DESCITEM markers (lesson 022)
