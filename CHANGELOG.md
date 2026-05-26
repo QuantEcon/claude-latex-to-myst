@@ -280,6 +280,40 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **`\begin{center}\textbf{Title}\par\begin{tabular}` orphan + list-of-lists**
+  ([#59]): the bold-paragraph-as-title-surrogate shape inside a
+  `\begin{center}` block (no `\begin{table}` float, no `\caption{}`)
+  produced a `{list-table}` triggering `list-table directive must
+  have a list of lists` at build time, plus an orphaned bold
+  paragraph floating above the rendered table. Resolved together
+  with [#55] — `parse_table_block` now scans the prelude before
+  `\begin{tabular}` for `\textbf{X}\par\smallskip?` immediately
+  followed by only whitespace + font-size commands +
+  `\renewcommand` config commands. When matched (and there's no
+  explicit `\caption{}`), `X` becomes a synthetic caption. The
+  whole `\begin{center}` block is then substituted with a marker
+  that emits a proper `{table}` directive with the title as
+  caption. Last remaining case from [#47] (Mode 3). Closes [#59].
+- **Nested subfigures bypassed `TIKZ_FIGURE_MAP` composite override**
+  ([#49]): `\begin{figure}` blocks containing `\begin{subfigure}` shapes
+  whose outer label had an entry in `TIKZ_FIGURE_MAP` (consumer-side
+  composite SVG/PDF that represents multiple subfigures combined) were
+  being split into per-subfigure `{figure}` directives — bypassing
+  the override path entirely. Three downstream symptoms: (1)
+  per-subfigure `{figure}` directives pointed at xfig-rewritten PDFs
+  that didn't exist on disk; (2) the composite override was never
+  consulted because `resolve_tikz_figures` only acts on admonition
+  placeholders, not `{figure}` directives; (3) the outer caption was
+  dropped entirely. Regression introduced by [#17]'s
+  unlabeled-subfigure handling, which made subfigures emit `{figure}`
+  directly. Fix: composite-override fast path in `replace_nested` —
+  when `outer_label in TIKZ_FIGURE_MAP`, emit a single admonition
+  with the outer label + outer caption (let `resolve_tikz_figures`
+  substitute the composite). Existing per-subfigure logic is the
+  fallback for the common case. Outer caption now reuses
+  `extract_caption` via synthetic `<figcaption>` tags so HTML-entity
+  decode and ref-routing apply uniformly. Verified end-to-end against
+  book-dp1's `f-du`. Closes [#49].
 - **Transform-side late-import of `postprocess` loaded a second module
   copy under script invocation, silently dropping every config
   extension and override** ([#42], P3a regression): the P3a refactor
@@ -819,9 +853,15 @@ haven't validated. Everything below is on `main` and available now.
 [#40]: https://github.com/QuantEcon/claude-latex-to-myst/issues/40
 [#42]: https://github.com/QuantEcon/claude-latex-to-myst/issues/42
 [#43]: https://github.com/QuantEcon/claude-latex-to-myst/issues/43
+[#47]: https://github.com/QuantEcon/claude-latex-to-myst/issues/47
 [#48]: https://github.com/QuantEcon/claude-latex-to-myst/issues/48
+[#49]: https://github.com/QuantEcon/claude-latex-to-myst/issues/49
 [#51]: https://github.com/QuantEcon/claude-latex-to-myst/issues/51
+[#55]: https://github.com/QuantEcon/claude-latex-to-myst/issues/55
 [#58]: https://github.com/QuantEcon/claude-latex-to-myst/pull/58
+[#59]: https://github.com/QuantEcon/claude-latex-to-myst/issues/59
+[#60]: https://github.com/QuantEcon/claude-latex-to-myst/pull/60
+[#62]: https://github.com/QuantEcon/claude-latex-to-myst/pull/62
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md

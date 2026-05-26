@@ -15,9 +15,11 @@ LaTeX (.tex) ──► preprocess.sh ──► pandoc ──► postprocess.py �
 Pandoc handles the hard parsing. A Python post-processor (25 transform
 stages and counting) turns its output into proper MyST syntax —
 sphinx-proof directives, MyST cross-refs, figure directives, KaTeX-safe
-math, natbib citation variant decoding, simple_tables → list-table,
-etc. The transforms encode every lesson learned over a 26K-line book
-conversion — see [`lessons/`](lessons/) for the catalogue and
+math, natbib citation variant decoding, structured table conversion
+(`\begin{tabular}` variants → MyST `{table}` / pipe-table via a marker
+preprocessor that bypasses pandoc's lossy table reader), etc. The
+transforms encode every lesson learned over a 26K-line book conversion
+— see [`lessons/`](lessons/) for the catalogue and
 [`CHANGELOG.md`](CHANGELOG.md) for what changed when.
 
 > **New here?** [`GETTING-STARTED.md`](GETTING-STARTED.md) is a short guide
@@ -102,7 +104,7 @@ so installs are reproducible across machines.
 | Path | Purpose |
 |------|---------|
 | `scripts/postprocess.py` | The generic transform library (~25 stages chained in `process_file`). |
-| `scripts/preprocess.sh` | LaTeX sanitization before pandoc (config-driven). Calls helpers for chapter-split, rewrites, algorithm markers, listing markers. |
+| `scripts/preprocess.sh` | LaTeX sanitization before pandoc (config-driven). Calls helpers for chapter-split, rewrites, algorithm / listing / description / table markers. |
 | `scripts/convert.sh` | Orchestrator: preprocess → pandoc → postprocess → validate. |
 | `scripts/validate.py` | Structural diff: equations, refs, theorems counted in source vs output; flags broken inline math. |
 | `scripts/templates/book-convert.sh` | Vendored wrapper books ship as their `mystmd/convert.sh`. |

@@ -20,9 +20,19 @@ done — see `scripts/postprocess.py`, `scripts/preprocess.sh`, `scripts/convert
   counters.
 - `scripts/transforms/` — themed transform modules: `math.py`, `refs.py`,
   `cite.py`, `figures.py`, `code.py`, `envs.py`, `tables.py`,
-  `typography.py`, `algorithms.py`, `frontmatter.py`. Each module owns one
-  family of transforms; tests still import via `postprocess.convert_X`
-  (re-exported from the top of `postprocess.py`).
+  `tables_from_latex.py`, `typography.py`, `algorithms.py`,
+  `frontmatter.py`. Each module owns one family of transforms; tests
+  still import via `postprocess.convert_X` (re-exported from the top
+  of `postprocess.py`).
+- `scripts/_apply_*.py` — preprocess scripts that run BEFORE pandoc.
+  Each rewrites a specific LaTeX construct (algorithms, listings,
+  description lists, tables) into a marker comment that pandoc passes
+  through verbatim; the post-pandoc pass decodes the marker back into
+  the target MyST shape. Patterns: `_apply_algorithm_markers.py`,
+  `_apply_listing_markers.py`, `_apply_description_markers.py`,
+  `_apply_table_markers.py`. Use this pattern when pandoc's reader
+  drops or mangles structure you need to preserve (lessons 014, 015,
+  022, and #51 / #55 for tables).
 - `scripts/transforms/_helpers.py` — shared helpers (currently just
   `convert_label_colons`). Add here when a helper is needed by ≥2 transform
   modules.
