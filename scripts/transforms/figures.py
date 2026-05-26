@@ -214,6 +214,29 @@ def convert_html_figures(text: str) -> str:
 
     def replace_nested(m):
         outer_label = convert_label_colons(m.group('outer_id'))
+
+        # Composite-override fast path (closes #49). If the outer
+        # label has a ``TIKZ_FIGURE_MAP`` entry — meaning the
+        # consumer has manually composed a single SVG/PDF that
+        # represents all the subfigures together (xfig overlays,
+        # combined TikZ output, etc.) — bypass per-subfigure splitting
+        # entirely. The inner ``<embed>`` srcs may point at xfig-
+        # rewritten paths that don't exist on disk; splitting would
+        # produce ``{figure}`` directives with broken image refs.
+        # Emit a single admonition placeholder for the outer label;
+        # ``resolve_tikz_figures`` substitutes the composite from
+        # ``TIKZ_FIGURE_MAP``. The outer caption is preserved.
+        #
+        # Late-import to avoid the load-time circular per the
+        # state-coupling note at the top of the module.
+        import postprocess as pp
+        if outer_label and outer_label in pp.TIKZ_FIGURE_MAP:
+            outer_cap_raw = m.group('outer_cap')
+            outer_caption = extract_caption(
+                f'<figcaption>{outer_cap_raw}</figcaption>'
+            )
+            return make_admonition(outer_label, outer_caption)
+
         inner_blob = m.group('inner')
         inner_matches = list(
             re.finditer(r'<figure[^>]*>.*?</figure>', inner_blob, re.DOTALL)

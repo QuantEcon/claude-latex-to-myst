@@ -236,3 +236,79 @@ def test_nested_inner_caption_with_html_emphasis():
     out = postprocess.convert_html_figures(src)
     assert 'Panel A.' in out
     assert '<em>' not in out
+
+
+def test_nested_composite_override_emits_single_admonition(monkeypatch):
+    """#49 fix: when the outer label has a ``TIKZ_FIGURE_MAP`` entry,
+    nested subfigures collapse to a SINGLE admonition placeholder
+    for the outer label — bypassing per-subfigure split.
+
+    Surfaced by book-dp1's ``ch_val.tex`` ``f-du`` figure: outer
+    label was in the map (composite SVG), but the inner
+    ``\\includegraphics`` refs (rewritten from xfig ``.pdf_t``
+    overlays) pointed at PDFs that don't exist on disk. The pre-fix
+    behaviour emitted two ``{figure}`` directives with broken image
+    refs AND dropped the outer caption.
+
+    The fix: check TIKZ_FIGURE_MAP BEFORE entering the
+    per-subfigure split loop. If outer label is present, emit a
+    single admonition (with the outer caption); resolve_tikz_figures
+    will substitute the composite later."""
+    monkeypatch.setattr(
+        postprocess, 'TIKZ_FIGURE_MAP', {'f-du': ('figures/du.svg', None)},
+    )
+    src = _nested('f:du', ['f:du-a', 'f:du-b'],
+                  outer_caption="Du's theorem: convex and concave cases",
+                  inner_captions=['', ''])
+    out = postprocess.convert_html_figures(src)
+
+    # ONE admonition placeholder, not two figure directives.
+    assert out.count('```{admonition}') == 1
+    assert '```{figure}' not in out
+
+    # Outer label is on the admonition; child labels are NOT.
+    assert ':name: f-du' in out
+    assert ':name: f-du-a' not in out
+    assert ':name: f-du-b' not in out
+
+    # Outer caption is preserved (was dropped pre-fix).
+    assert "Du's theorem: convex and concave cases" in out
+
+
+def test_nested_no_composite_override_falls_back_to_per_subfigure(monkeypatch):
+    """Regression guard: when the outer label is NOT in
+    ``TIKZ_FIGURE_MAP``, the existing per-subfigure-split behaviour
+    is preserved. The composite-override path is a strict
+    refinement, not a replacement."""
+    monkeypatch.setattr(postprocess, 'TIKZ_FIGURE_MAP', {})
+    src = _nested('fig:panels', ['fig:a', 'fig:b'])
+    out = postprocess.convert_html_figures(src)
+    # Existing two-figure split behaviour.
+    assert out.count('```{figure}') == 2
+    assert ':name: fig-a' in out
+    assert ':name: fig-b' in out
+
+
+def test_nested_composite_override_outer_caption_with_ref_resolves(monkeypatch):
+    """The outer caption may contain pandoc-resolved ``<a>`` ref
+    anchors (``\\ref{}`` resolves to an HTML link with
+    ``data-reference``). The composite-override path runs the
+    caption through ``extract_caption`` so refs become MyST
+    directives — same processing as the per-subfigure path."""
+    monkeypatch.setattr(
+        postprocess, 'TIKZ_FIGURE_MAP', {'f-x': ('figures/x.svg', None)},
+    )
+    src = _nested(
+        'f:x', ['f:a'],
+        outer_caption=(
+            'See <a data-reference-type="ref" data-reference="ch:bar">'
+            'Chapter 2</a> for context.'
+        ),
+        inner_captions=[''],
+    )
+    out = postprocess.convert_html_figures(src)
+    # Ref resolves to MyST directive (specific role depends on the
+    # routing table; assert the curly-brace directive form).
+    assert '<a ' not in out, f'raw <a> tag leaked: {out!r}'
+    assert 'data-reference' not in out
+    assert '`ch-bar`' in out
