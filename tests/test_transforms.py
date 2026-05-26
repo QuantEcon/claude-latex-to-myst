@@ -1553,8 +1553,8 @@ def test_simple_table_pandoc_no_borders_broad_rules():
 
 
 def test_simple_table_with_caption():
-    """Captioned tables wrap a markdown pipe-table inside a ``{table}``
-    directive.
+    """Captioned tables with exactly one header row wrap a markdown
+    pipe-table inside a ``{table}`` directive.
 
     Rationale (R2 fix in PR #41 v8): a nested ``{list-table}`` directive
     inside ``{table}`` causes mystmd to register TWO enumerable table
@@ -1568,8 +1568,23 @@ def test_simple_table_with_caption():
     The caption lives as the first paragraph of the ``{table}`` body
     (canonical MyST form per
     https://mystmd.org/guide/figures#tables) so inline roles,
-    backticks, and long mixed-math captions all parse normally."""
-    body = _table("A | B") + "\n  : My caption\n"
+    backticks, and long mixed-math captions all parse normally.
+
+    The pipe-table path is conditional on ``header_rows_count == 1``;
+    the 0-header and ≥2-header fallback cases are covered by
+    ``test_simple_table_with_caption_zero_header_falls_back_to_list_table``
+    and (implicitly) the existing multi-block fixtures."""
+    # Shape A with interior separator → header_rows_count == 1.
+    body = (
+        "  ---------- ----------\n"
+        "  Sym        Meaning\n"
+        "  ---------- ----------\n"
+        "  $X$        State\n"
+        "  $A$        Action\n"
+        "  ---------- ----------\n"
+        "\n"
+        "  : My caption\n"
+    )
     out = postprocess.convert_simple_tables(body)
     # Outer wrapper: 4-backtick fence with EMPTY argument; caption
     # lives as the first paragraph of the body.
@@ -1579,12 +1594,51 @@ def test_simple_table_with_caption():
     assert "````{table} My caption" not in out   # not on opener line
     # Inner: pipe-table (no nested {list-table} directive).
     assert "```{list-table}" not in out
-    # Pipe-table alignment row.
+    # Pipe-table header row + alignment row + body rows.
+    assert "| Sym | Meaning |" in out
     assert "|---|---|" in out
+    assert "| $X$ | State |" in out
+    assert "| $A$ | Action |" in out
     # Docutils-style option form must NOT appear anywhere.
     assert ":caption:" not in out
     # Caption line should be consumed, not left behind.
     assert "  : My caption" not in out
+
+
+def test_simple_table_with_caption_zero_header_falls_back_to_list_table():
+    """When the captioned table has no detectable header rows (Shape A
+    without an interior separator — pandoc's simple_tables format
+    collapses interior ``\\hline`` rules so the LaTeX-side header rows
+    arrive as ``header_rows_count == 0``), the inner body falls back
+    to ``{list-table}`` rather than pipe-table.
+
+    Rationale (PR #41 v9): pipe-table syntax mandates a header row;
+    v8's synthetic-empty-header workaround rendered as a visible blank
+    row at the top of the table in mystmd — surfaced by book-dp2's
+    ``tab-convergence_cases``. The ``{list-table}`` fallback uses
+    ``:header-rows: 0`` which renders as a headerless table cleanly.
+
+    Trade-off: the fallback re-introduces the phantom-enumerator
+    behaviour for the inner directive (R2). Limited to captioned-
+    AND-0-header tables only — rare in practice (zero such tables
+    in the Deep-Learning book corpus). The proper fix is the Path C
+    follow-up that bypasses pandoc's lossy LaTeX-tabular reader so
+    interior ``\\hline`` rules survive to inform ``header_rows_count``.
+    """
+    # Shape A with NO interior separator → header_rows_count == 0.
+    body = _table("A | B") + "\n  : My caption\n"
+    out = postprocess.convert_simple_tables(body)
+    # Outer {table} wrapper still present.
+    assert "````{table}\n" in out
+    assert "My caption" in out
+    # Inner: {list-table} fallback, not pipe-table.
+    assert "```{list-table}" in out
+    assert ":header-rows: 0" in out
+    # No synthetic blank pipe-table header row.
+    assert "|  |  |" not in out
+    # Body rows in list-table form.
+    assert "* - A" in out
+    assert "  - B" in out
 
 
 def test_simple_table_three_column_basic():

@@ -68,8 +68,9 @@ def _escape_pipe_cell(cell: str) -> str:
     return cell.replace('|', r'\|')
 
 
-def _emit_pipe_table(all_rows: list[list[str]], header_rows_count: int) -> list[str]:
-    """Emit ``all_rows`` as a markdown pipe-table.
+def _emit_pipe_table(all_rows: list[list[str]]) -> list[str]:
+    """Emit ``all_rows`` as a markdown pipe-table with the first row
+    as the header.
 
     Pipe tables aren't directives — when nested inside a ``{table}``
     container, mystmd renders them as a regular HTML ``<table>`` and
@@ -78,11 +79,15 @@ def _emit_pipe_table(all_rows: list[list[str]], header_rows_count: int) -> list[
     ``{list-table}`` directive consumed the next table-counter slot,
     making ``{numref}`tab-X`` text drift off-by-one.
 
-    Pipe tables require exactly one header row. When
-    ``header_rows_count == 1`` the first row is the header; when
-    ``header_rows_count == 0`` an empty header row is synthesised so
-    the resulting markdown is structurally valid. ``header_rows_count
-    >= 2`` is handled by the caller (falls back to ``{list-table}``).
+    Pipe tables require exactly one header row. Callers must invoke
+    this only when ``header_rows_count == 1``; ``0`` and ``>= 2``
+    cases fall back to ``{list-table}`` (see caller in
+    ``convert_simple_tables``). The 0-header case was previously
+    handled here with a synthetic empty header row, but that renders
+    as a visible blank row at the top of the table in mystmd —
+    surfaced by book-dp2's ``tab-convergence_cases`` where pandoc's
+    simple_tables format collapses interior ``\\hline`` separators
+    so the LaTeX-side header rows arrive as ``header_rows_count == 0``.
     """
     if not all_rows:
         return []
@@ -92,13 +97,9 @@ def _emit_pipe_table(all_rows: list[list[str]], header_rows_count: int) -> list[
         padded = row + [''] * (ncols - len(row))
         return '| ' + ' | '.join(_escape_pipe_cell(c) for c in padded) + ' |'
 
+    header = all_rows[0]
+    body = all_rows[1:]
     out: list[str] = []
-    if header_rows_count == 1:
-        header = all_rows[0]
-        body = all_rows[1:]
-    else:  # header_rows_count == 0
-        header = [''] * ncols
-        body = all_rows
     out.append(fmt_row(header))
     out.append('|' + '|'.join('---' for _ in range(ncols)) + '|')
     for row in body:
@@ -593,24 +594,42 @@ def convert_simple_tables(text: str) -> str:
             # and explicit-error classes for captioned tables.
             #
             # The body table is emitted as a markdown pipe-table when
-            # possible (header_rows ≤ 1). Pipe tables aren't
-            # directives, so mystmd treats the inner table as part of
-            # the ``{table}`` container — only ONE enumerable per
-            # captioned table, not two. This closes R2 in PR #41
-            # (the inner ``{list-table}`` was consuming the next
-            # table-counter slot, drifting ``{numref}`` text
-            # off-by-one). For header_rows ≥ 2 (rare — would require
-            # multiline_table emit with multiple header rows joined
-            # via internal blanks) we fall back to ``{list-table}``
-            # since pipe tables only support a single header row.
+            # ``header_rows_count == 1`` — the common case. Pipe
+            # tables aren't directives, so mystmd treats the inner
+            # table as part of the ``{table}`` container — only ONE
+            # enumerable per captioned table, not two. This closes R2
+            # in PR #41 (the inner ``{list-table}`` was consuming the
+            # next table-counter slot, drifting ``{numref}`` text
+            # off-by-one).
+            #
+            # For ``header_rows_count == 0`` (no header detected — most
+            # often pandoc's simple_tables format collapsing interior
+            # ``\hline`` separators, e.g. book-dp2's
+            # ``tab-convergence_cases``) and ``>= 2`` (rare multiline
+            # multi-header), we fall back to ``{list-table}`` so the
+            # output doesn't carry a synthetic blank header row or a
+            # malformed multi-header. The fallback re-introduces the
+            # phantom-enumerator behaviour for the inner directive,
+            # but only when the outer ``{table}`` is captioned AND
+            # header detection fails — affects almost nothing in
+            # practice (zero captioned-0-header tables in the
+            # Deep-Learning book corpus; one in book-dp2 where the
+            # phantom enum is invisible because no other tables exist
+            # in the chapter to drift against).
+            #
+            # The proper fix is in flight as a follow-up: bypass
+            # pandoc's lossy LaTeX-tabular reader entirely via a
+            # marker preprocessor (Path C — see issue linked from PR
+            # #41's final comment). That would push these tables into
+            # the pipe-table path and the fallback becomes inert.
             out.append('````{table}')
             if directive_name:
                 out.append(f':name: {directive_name}')
             out.append('')
             out.append(caption)
             out.append('')
-            if header_rows_count <= 1:
-                out.extend(_emit_pipe_table(all_rows, header_rows_count))
+            if header_rows_count == 1:
+                out.extend(_emit_pipe_table(all_rows))
             else:
                 out.append('```{list-table}')
                 out.append(f':header-rows: {header_rows_count}')
