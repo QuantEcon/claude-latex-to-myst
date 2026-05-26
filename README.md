@@ -20,6 +20,11 @@ etc. The transforms encode every lesson learned over a 26K-line book
 conversion — see [`lessons/`](lessons/) for the catalogue and
 [`CHANGELOG.md`](CHANGELOG.md) for what changed when.
 
+> **New here?** [`GETTING-STARTED.md`](GETTING-STARTED.md) is a short guide
+> to running a first conversion in collaboration with Claude Code. The rest
+> of this README is the tool reference — bootstrap mechanics, file tour,
+> and sanity checks.
+
 ## Quick start
 
 Requires [`uv`](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
