@@ -70,11 +70,20 @@ _CENTER_BLOCK_RE = re.compile(
 )
 
 # Tabular-family environment names. ``tabular`` is the bare form.
-# ``tabular*`` takes an extra ``{total-width}`` arg. ``tabularx`` /
-# ``tabulary`` / ``tabu`` (package variants) take a ``{width}`` arg
-# before the colspec.
+# ``tabular*`` takes an extra ``{total-width}`` arg before the colspec.
+# ``tabularx`` / ``tabulary`` (package variants) take a ``{width}``
+# arg before the colspec.
+#
+# ``tabu`` is NOT included — the ``tabu`` package's syntax is more
+# variable than the others: ``\begin{tabu}{cols}`` (1-arg),
+# ``\begin{tabu} to <len> {cols}`` and ``\begin{tabu} spread <len>
+# {cols}`` (1-arg with a non-braced ``to``/``spread`` prefix). The
+# ``to``/``spread`` keyword can't be skipped with balanced-brace
+# extraction. None of the test corpora use ``tabu`` so leaving it
+# unrecognised falls back to the pandoc-output path. Add a dedicated
+# handler if a future consumer needs it.
 _TABULAR_VARIANTS_1ARG = ('tabular',)
-_TABULAR_VARIANTS_2ARG = ('tabular*', 'tabularx', 'tabulary', 'tabu')
+_TABULAR_VARIANTS_2ARG = ('tabular*', 'tabularx', 'tabulary')
 _TABULAR_ALL = _TABULAR_VARIANTS_1ARG + _TABULAR_VARIANTS_2ARG
 
 # Match the opener of any tabular variant — capture the name so we
@@ -561,9 +570,16 @@ def find_table_blocks(text: str) -> list[tuple[int, int, str]]:
     def _claimed(pos: int) -> bool:
         return any(s <= pos < e for s, e in consumed_ranges)
 
-    # 1. Table floats (existing behaviour).
+    # 1. Table floats (existing behaviour). Also subject to the
+    # whole-ancestor-stack skip check so e.g.
+    # ``\begin{frame}\begin{table}...\end{table}\end{frame}`` (a
+    # captioned table inside a Beamer slide) is left for pandoc to
+    # handle — extracting would inject a ``{table}`` directive
+    # inside slide content the pipeline doesn't build anyway.
     for m in _TABLE_BLOCK_RE.finditer(text):
         if _starts_in_comment(text, m.start()):
+            continue
+        if _has_skip_ancestor(text, m.start()):
             continue
         blocks.append((m.start(), m.end(), m.group(1)))
         consumed_ranges.append((m.start(), m.end()))

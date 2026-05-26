@@ -676,6 +676,65 @@ def test_process_text_skips_tabular_inside_tikzpicture():
 
 
 @pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
+def test_process_text_skips_table_float_inside_skip_ancestor():
+    """``\\begin{table}`` floats are subject to the same
+    skip-ancestor check as center-wraps and bare tabulars. Surfaced
+    by Copilot review of PR #60: the original step-1 loop had no
+    skip check, so e.g. ``\\begin{frame}\\begin{table}...\\end{table}``
+    (a captioned table inside a Beamer slide) would be extracted
+    and replaced by a marker even though ``frame`` is in the skip
+    set. The audit found ~6 such occurrences across the
+    Deep-Learning sources (slide files, not in the pipeline today —
+    but the gap is real for any future source that mixes slide and
+    manuscript content)."""
+    src = (
+        r'\begin{frame}' '\n'
+        r'\begin{table}' '\n'
+        r'\begin{tabular}{cc}' '\n'
+        r'\hline' '\n'
+        r'A & B \\' '\n'
+        r'\hline' '\n'
+        r'a & b \\' '\n'
+        r'\hline' '\n'
+        r'\end{tabular}' '\n'
+        r'\caption{Cap}' '\n'
+        r'\label{tab:foo}' '\n'
+        r'\end{table}' '\n'
+        r'\end{frame}' '\n'
+    )
+    out = _process_text(src)
+    # No marker — frame is a skip-set ancestor, so the table float
+    # inside it is left for pandoc to handle.
+    assert '<!--TABLE' not in out
+    # Original LaTeX preserved.
+    assert r'\begin{table}' in out
+
+
+@pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
+def test_process_text_passes_through_tabu_variant():
+    """``\\begin{tabu}`` is intentionally NOT recognised as a tabular
+    variant by ``_TABULAR_OPEN_RE`` — the tabu package's syntax is
+    too variable (``\\begin{tabu}{cols}``, ``\\begin{tabu} to <len>
+    {cols}``, ``\\begin{tabu} spread <len> {cols}``) for the
+    balanced-brace extractor to handle generically. A ``\\begin{tabu}``
+    block must pass through the preprocessor unchanged so pandoc /
+    ``convert_simple_tables`` can take a shot at it.
+
+    Surfaced by Copilot review of PR #60. None of the test corpora
+    use ``\\begin{tabu}`` so this is purely a defensive guarantee."""
+    src = (
+        r'\begin{tabu}{cc}' '\n'
+        r'a & b \\' '\n'
+        r'\end{tabu}' '\n'
+    )
+    out = _process_text(src)
+    # No marker emitted — tabu is not in the recognised set.
+    assert '<!--TABLE' not in out
+    # Original LaTeX preserved unchanged.
+    assert r'\begin{tabu}' in out
+
+
+@pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
 def test_process_text_skips_tabular_with_deep_skip_ancestor():
     """A tabular's NEAREST ancestor may be safe (``center``) but a
     deeper wrapper (``frame``, ``tikzpicture``, etc.) may be in the

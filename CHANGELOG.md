@@ -25,9 +25,15 @@ haven't validated. Everything below is on `main` and available now.
   blocks containing a tabular (the common-symbols-style notation-list
   and ch06_ha_youngs histogram shapes); (c) bare ``\\begin{tabular}``
   not inside any wrapper. Tabular-family variants
-  (``\\begin{tabular*}``, ``\\begin{tabularx}``, ``\\begin{tabulary}``,
-  ``\\begin{tabu}``) are recognised — parsers handle their 2-arg
-  signature ``{width}{colspec}``. Tabulars whose ancestor stack
+  ``\\begin{tabular*}`` / ``\\begin{tabularx}`` / ``\\begin{tabulary}``
+  are recognised — parser handles their 2-arg signature
+  ``{width}{colspec}``. ``\\begin{tabu}`` is intentionally NOT in
+  the recognised set because its syntax is too variable
+  (``\\begin{tabu}{cols}``, ``\\begin{tabu} to <len> {cols}``,
+  ``\\begin{tabu} spread <len> {cols}`` — the ``to``/``spread``
+  prefix can't be skipped via balanced-brace extraction). Tabu
+  blocks fall through to the pandoc-output path; add a dedicated
+  handler if a consumer needs it. Tabulars whose ancestor stack
   contains a math env (``equation``, ``align``, ``array``, ...),
   Beamer slide env (``frame``, ``columns``, ``block``), TikZ
   diagram (``tikzpicture``), figure-family env (``figure``,
