@@ -8,18 +8,11 @@ title: "Table Simple Two Col"
 
 Common symbols used throughout.
 
-```{list-table}
-:header-rows: 1
-
-* - Symbol
-  - Meaning
-* - $X$
-  - State space
-* - $A$
-  - Action space
-* - $\pi$
-  - Policy
-```
+| Symbol | Meaning |
+|---|---|
+| $X$ | State space |
+| $A$ | Action space |
+| $\pi$ | Policy |
 ````
 
 Body prose continues.

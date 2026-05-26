@@ -30,6 +30,15 @@ from ._helpers import convert_label_colons
 # single-or-more spaces.
 _RULE_RE = re.compile(r'^(\s+)(-+(?: +-+)+)\s*$')
 
+# A "broad" single-group dash-rule (≥10 dashes, no internal spaces) —
+# pandoc emits these for ``\toprule``/``\bottomrule`` when the source
+# table has no per-column rules between header and body. They bound
+# the table but carry no column-position info, so they bypass
+# ``_rule_columns`` (which requires 2+ groups). Detected separately
+# to bound ``_collect_header_above`` and to terminate the forward
+# scan; see PR #41 v8 (``tab-bm_vs_irbc`` shape).
+_BROAD_RULE_RE = re.compile(r'^\s+-{10,}\s*$')
+
 # A pandoc table caption line: indented, then ``: text``.
 _CAPTION_RE = re.compile(r'^\s*:\s+\S')
 
@@ -40,6 +49,61 @@ def _rule_columns(line: str) -> list[tuple[int, int]] | None:
     if not _RULE_RE.match(line):
         return None
     return [(m.start(), m.end()) for m in re.finditer(r'-+', line)]
+
+
+def _is_broad_dash_rule(line: str) -> bool:
+    """True if ``line`` is a single-group dash-rule with ≥10 dashes —
+    pandoc's broad ``\\toprule``/``\\bottomrule`` shape. Used to
+    bound table regions when there's no per-column rule on either
+    end. Excludes the multi-group case (``_rule_columns`` covers
+    that)."""
+    return _BROAD_RULE_RE.match(line) is not None
+
+
+def _escape_pipe_cell(cell: str) -> str:
+    """Escape pipe characters in a pipe-table cell. mystmd treats ``|``
+    as a column separator; cell content that contains literal pipes
+    (e.g. inline math ``|x|``, code spans with ``|``) must be
+    escaped as ``\\|`` to round-trip through the parser."""
+    return cell.replace('|', r'\|')
+
+
+def _emit_pipe_table(all_rows: list[list[str]], header_rows_count: int) -> list[str]:
+    """Emit ``all_rows`` as a markdown pipe-table.
+
+    Pipe tables aren't directives — when nested inside a ``{table}``
+    container, mystmd renders them as a regular HTML ``<table>`` and
+    does NOT register a separate enumerable container. This avoids
+    the phantom-enumerator regression (R2 in PR #41) where the inner
+    ``{list-table}`` directive consumed the next table-counter slot,
+    making ``{numref}`tab-X`` text drift off-by-one.
+
+    Pipe tables require exactly one header row. When
+    ``header_rows_count == 1`` the first row is the header; when
+    ``header_rows_count == 0`` an empty header row is synthesised so
+    the resulting markdown is structurally valid. ``header_rows_count
+    >= 2`` is handled by the caller (falls back to ``{list-table}``).
+    """
+    if not all_rows:
+        return []
+    ncols = max(len(row) for row in all_rows)
+
+    def fmt_row(row: list[str]) -> str:
+        padded = row + [''] * (ncols - len(row))
+        return '| ' + ' | '.join(_escape_pipe_cell(c) for c in padded) + ' |'
+
+    out: list[str] = []
+    if header_rows_count == 1:
+        header = all_rows[0]
+        body = all_rows[1:]
+    else:  # header_rows_count == 0
+        header = [''] * ncols
+        body = all_rows
+    out.append(fmt_row(header))
+    out.append('|' + '|'.join('---' for _ in range(ncols)) + '|')
+    for row in body:
+        out.append(fmt_row(row))
+    return out
 
 
 def _is_fence_boundary(line: str) -> bool:
@@ -102,7 +166,7 @@ def _collect_header_above(
     rule_idx: int,
     opener_indent: int,
     col_starts: list[int],
-) -> list[str]:
+) -> tuple[list[str], int]:
     """Look back from ``rule_idx`` for non-blank, non-rule lines that
     belong to the header. These are header rows of a Shape-B table
     (pandoc emits this for ``\\begin{table}`` floats with no
@@ -130,13 +194,25 @@ def _collect_header_above(
     for PR #41 silent failures).
 
     Stops at: blank line, start of file, indent left of the rule
-    opener, or another rule line.
+    opener, or another rule line (multi-group OR broad single-group
+    like pandoc's ``\\toprule``).
+
+    Returns ``(header_lines, lines_consumed_above)`` — ``header_lines``
+    is the parseable header content (excludes any broad rule);
+    ``lines_consumed_above`` is the count of lines that belong to the
+    table region above the opener (header + any broad top rule), used
+    by the caller to remove them from ``out``. ``lines_consumed_above``
+    can exceed ``len(header_lines)`` when a broad rule sits above the
+    header — the rule is dropped from parsing but still needs to be
+    removed from ``out`` so it doesn't appear as stray dashes above
+    the emitted directive. See PR #41 v8 (``tab-bm_vs_irbc`` shape).
 
     ``col_starts`` is unused in the current implementation but kept in
     the signature for compatibility with existing callers.
     """
     del col_starts  # unused — see docstring
     header: list[str] = []
+    consumed = 0
     k = rule_idx - 1
     while k >= 0:
         prev = lines[k]
@@ -147,9 +223,17 @@ def _collect_header_above(
             break
         if _rule_columns(prev) is not None:
             break
+        if _is_broad_dash_rule(prev):
+            # Broad ``\toprule``-style rule. Include in the
+            # consumed-line count so it's removed from ``out``, but
+            # don't parse it as a header row, and stop the look-back
+            # — content above the rule belongs outside the table.
+            consumed += 1
+            break
         header.insert(0, prev)
+        consumed += 1
         k -= 1
-    return header
+    return header, consumed
 
 
 def convert_simple_tables(text: str) -> str:
@@ -175,16 +259,22 @@ def convert_simple_tables(text: str) -> str:
     are not the same table.
     """
     lines = text.split('\n')
-    out: list[str] = []
+    out: list[str | None] = []
     in_fence = False
-    # Stack of enclosing ``::: {#id}`` div ids. When we emit a table
+    # Stack of enclosing ``::: {#id}`` div frames. When we emit a table
     # directive, the top of the stack is the table's containing div id
     # — used as ``:name:`` on the directive so MyST attaches the table
     # AST node's identifier canonically (Mode B fix for PR #41 silent
-    # failures). The ``(tab-X)=`` standalone anchor emitted downstream
-    # by ``convert_environment_divs`` is redundant in this case but
-    # harmless — both point to the same label.
-    div_id_stack: list[str] = []
+    # failures).
+    #
+    # When ``:name:`` is emitted from a stack frame, the wrapping
+    # ``::: {#id}`` opener and matching ``:::`` closer are SUPPRESSED
+    # from the output (set to ``None`` here, filtered at return). This
+    # prevents ``convert_environment_divs`` downstream from emitting a
+    # redundant ``(tab-X)=`` standalone anchor that would collide with
+    # ``:name:`` and fire mystmd's ``duplicate label`` warning on every
+    # build. ``:name:`` is the single source of truth for the label.
+    div_id_stack: list[dict] = []
     i = 0
 
     # Matches ``::: {#id}`` (id-only fence opener) only — not
@@ -205,16 +295,27 @@ def convert_simple_tables(text: str) -> str:
             continue
 
         # Track ``::: {#id}`` ... ``:::`` div nesting so the table
-        # directive emitted below carries the correct ``:name:``.
+        # directive emitted below carries the correct ``:name:``. When
+        # ``:name:`` is emitted, the frame's ``suppress`` flag is set
+        # and both the opener (already in ``out``) and the matching
+        # closer are elided from the output (see R1 in PR #41).
         if _is_fence_boundary(line):
             id_m = _id_div_open_re.match(line)
             if id_m:
-                div_id_stack.append(id_m.group(1))
+                div_id_stack.append({
+                    'id': id_m.group(1),
+                    'opener_idx': len(out),
+                    'suppress': False,
+                })
+                out.append(line)
             elif div_id_stack and line.strip() == ':::':
-                div_id_stack.pop()
-            # Other shapes (``::: {.class}`` etc.) don't carry an id;
-            # leave the stack alone.
-            out.append(line)
+                frame = div_id_stack.pop()
+                if not frame['suppress']:
+                    out.append(line)
+            else:
+                # Other shapes (``::: {.class}`` etc.) don't carry an
+                # id and don't push to the stack; pass through.
+                out.append(line)
             i += 1
             continue
 
@@ -229,8 +330,14 @@ def convert_simple_tables(text: str) -> str:
         opener_indent = len(line) - len(line.lstrip())
 
         # Shape-B header rows above (popped off ``out`` below if we
-        # actually emit a list-table).
-        header_above = _collect_header_above(lines, i, opener_indent, col_starts)
+        # actually emit a list-table). ``header_above_consumed`` may
+        # exceed ``len(header_above)`` when a broad ``\toprule`` sits
+        # above the header — rule is dropped from parsing but counted
+        # for ``out`` removal so stray dashes don't appear above the
+        # directive.
+        header_above, header_above_consumed = _collect_header_above(
+            lines, i, opener_indent, col_starts
+        )
 
         # Forward scan. Three possible terminators (mutually exclusive):
         rule_positions: list[int] = []
@@ -264,6 +371,32 @@ def convert_simple_tables(text: str) -> str:
                     closer_idx = j
                     break
                 # Otherwise this rule is interior (header separator).
+                j += 1
+                continue
+
+            # Broad single-group dash-rule (pandoc's ``\bottomrule``
+            # in no-borders emit). Carries no column info — not added
+            # to ``rule_positions`` — but bounds the table region.
+            # Treat as closer when next non-blank is caption / fence /
+            # different-indent content / EOF. See PR #41 v8
+            # (``tab-bm_vs_irbc`` shape).
+            if cand_spans is None and _is_broad_dash_rule(cand):
+                m = j + 1
+                while m < len(lines) and not lines[m].strip():
+                    m += 1
+                if m >= len(lines):
+                    closer_idx = j
+                    break
+                nxt = lines[m]
+                if _is_fence_boundary(nxt) or _CAPTION_RE.match(nxt):
+                    closer_idx = j
+                    break
+                nxt_indent = len(nxt) - len(nxt.lstrip())
+                if nxt_indent != opener_indent:
+                    closer_idx = j
+                    break
+                # Otherwise next is same-indent content; treat the
+                # rule as within-body filler and continue.
                 j += 1
                 continue
 
@@ -320,10 +453,13 @@ def convert_simple_tables(text: str) -> str:
 
         # Rules inside the table body: all collected positions minus the
         # closer (if any). These slice the body into header/body blocks.
-        interior_rules = (
-            rule_positions[:-1] if closer_idx is not None
-            else list(rule_positions)
-        )
+        # A broad-rule closer isn't tracked in ``rule_positions`` (no
+        # column info), so check whether the closer's index matches the
+        # last entry before slicing it off.
+        if closer_idx is not None and rule_positions and rule_positions[-1] == closer_idx:
+            interior_rules = rule_positions[:-1]
+        else:
+            interior_rules = list(rule_positions)
 
         blocks: list[list[str]] = []
         last_rule = i
@@ -366,10 +502,11 @@ def convert_simple_tables(text: str) -> str:
             i += 1
             continue
 
-        # Pop Shape-B header rows from ``out`` (they were appended in
-        # earlier iterations as ordinary non-rule lines).
-        if header_above:
-            del out[-len(header_above):]
+        # Pop Shape-B header rows + any broad ``\toprule`` from
+        # ``out`` (they were appended in earlier iterations as
+        # ordinary non-rule lines).
+        if header_above_consumed:
+            del out[-header_above_consumed:]
 
         if closer_idx is not None:
             next_i = closer_idx + 1
@@ -414,18 +551,24 @@ def convert_simple_tables(text: str) -> str:
         # produces a table AST node and cross-refs resolve.
         #
         # 4-backtick outer fence so the inner 3-backtick ``{list-table}``
-        # closes cleanly inside it. ``(label)=`` anchors emitted by
-        # ``convert_environment_divs`` (downstream) attach to the next
-        # block — ``{table}`` is enumerable, so ``{numref}`tab-X``
-        # renders as "Table N" via the wrapper's auto-counter.
-        # ``:name:`` from the enclosing ``::: {#id}`` div fence, if
-        # any. Explicit name on the directive ensures the table AST
-        # node carries the identifier even when standalone-anchor
-        # attachment misfires (Mode B fix). Wrapped in ``convert_label_colons``
-        # for the colon→hyphen normalisation MyST expects.
+        # closes cleanly inside it. ``:name:`` on the directive carries
+        # the identifier from the enclosing ``::: {#id}`` div fence, if
+        # any — this is the canonical Mode B fix (v6). When we emit
+        # ``:name:`` we also flag the stack frame for fence
+        # suppression: the wrapping ``::: {#id}`` ... ``:::`` is dropped
+        # from the output so ``convert_environment_divs`` doesn't emit
+        # a competing ``(tab-X)=`` standalone anchor (R1 in PR #41,
+        # which fires ``duplicate label`` on every captioned table).
+        # Wrapped in ``convert_label_colons`` for the colon→hyphen
+        # normalisation MyST expects.
         directive_name = (
-            convert_label_colons(div_id_stack[-1]) if div_id_stack else None
+            convert_label_colons(div_id_stack[-1]['id'])
+            if div_id_stack else None
         )
+        if directive_name and div_id_stack:
+            frame = div_id_stack[-1]
+            out[frame['opener_idx']] = None
+            frame['suppress'] = True
 
         if caption:
             # Caption is emitted as the FIRST PARAGRAPH inside the
@@ -448,20 +591,35 @@ def convert_simple_tables(text: str) -> str:
             # — the body is regular markdown so inline roles, backticks,
             # and math all parse normally. Closes PR #41 silent-fail
             # and explicit-error classes for captioned tables.
+            #
+            # The body table is emitted as a markdown pipe-table when
+            # possible (header_rows ≤ 1). Pipe tables aren't
+            # directives, so mystmd treats the inner table as part of
+            # the ``{table}`` container — only ONE enumerable per
+            # captioned table, not two. This closes R2 in PR #41
+            # (the inner ``{list-table}`` was consuming the next
+            # table-counter slot, drifting ``{numref}`` text
+            # off-by-one). For header_rows ≥ 2 (rare — would require
+            # multiline_table emit with multiple header rows joined
+            # via internal blanks) we fall back to ``{list-table}``
+            # since pipe tables only support a single header row.
             out.append('````{table}')
             if directive_name:
                 out.append(f':name: {directive_name}')
             out.append('')
             out.append(caption)
             out.append('')
-            out.append('```{list-table}')
-            out.append(f':header-rows: {header_rows_count}')
-            out.append('')
-            for row in all_rows:
-                out.append(f'* - {row[0]}')
-                for cell in row[1:]:
-                    out.append(f'  - {cell}')
-            out.append('```')
+            if header_rows_count <= 1:
+                out.extend(_emit_pipe_table(all_rows, header_rows_count))
+            else:
+                out.append('```{list-table}')
+                out.append(f':header-rows: {header_rows_count}')
+                out.append('')
+                for row in all_rows:
+                    out.append(f'* - {row[0]}')
+                    for cell in row[1:]:
+                        out.append(f'  - {cell}')
+                out.append('```')
             out.append('````')
         else:
             out.append('```{list-table}')
@@ -477,4 +635,4 @@ def convert_simple_tables(text: str) -> str:
 
         i = next_i
 
-    return '\n'.join(out)
+    return '\n'.join(line for line in out if line is not None)

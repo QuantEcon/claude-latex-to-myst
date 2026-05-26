@@ -207,7 +207,25 @@ haven't validated. Everything below is on `main` and available now.
   in a single book (`Deep_Learning_for_Solving_And_Estimating_
   Dynamic_Economic_Models`). Alignment encoding from dash-rule
   widths is deliberately NOT included — `{list-table}` defaults
-  cover the prose-heavy book cases.
+  cover the prose-heavy book cases. The captioned-table emit now
+  wraps a markdown pipe-table inside a `{table}` directive (rather
+  than nesting `{list-table}` inside `{table}`) — pipe tables aren't
+  directives, so the inner table no longer consumes a phantom
+  table-enumerator slot. Cross-references via `{numref}` resolve
+  with sequential `Table N.1, N.2, N.3, …` enumeration rather than
+  the off-by-one `N.1, N.3, N.5, …` pattern. When the source `\label`
+  produces a `::: {#tab:foo}` fence, the `:name:` directive option
+  is emitted on the table and the wrapping fence is suppressed — so
+  `convert_environment_divs` doesn't emit a competing `(tab-foo)=`
+  standalone anchor, eliminating the `duplicate label` warning that
+  fired on every captioned table at build time.
+  `_collect_header_above` and the forward scan now recognise
+  pandoc's broad-single-group `\toprule`/`\bottomrule` shape
+  (≥10-dash rules with no column separators) — these were
+  previously absorbed into the header block as content, producing
+  cells like `------ **Brock-Mirman**` in `\begin{table}` tables
+  that lacked per-column rules. Surfaced by the Deep-Learning book's
+  `tab-bm_vs_irbc` and identical no-borders shapes.
 
 ### Fixed
 

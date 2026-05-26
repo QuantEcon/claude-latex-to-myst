@@ -13,25 +13,12 @@ table's indent immediately above the dash-rule, with the body below.
 
 Lineage from plain SGD to AdamW.
 
-```{list-table}
-:header-rows: 1
-
-* - Optimizer
-  - Update rule
-  - Reference
-* - SGD
-  - plain SGD
-  - standard
-* - SGD+momentum
-  - adds inertia
-  - follow-up
-* - Adam
-  - per-param adaptive
-  - widely used
-* - AdamW
-  - Adam plus decay
-  - current default
-```
+| Optimizer | Update rule | Reference |
+|---|---|---|
+| SGD | plain SGD | standard |
+| SGD+momentum | adds inertia | follow-up |
+| Adam | per-param adaptive | widely used |
+| AdamW | Adam plus decay | current default |
 ````
 
 See {numref}`tab-optimizer-family` for the table above.
