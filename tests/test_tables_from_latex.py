@@ -544,6 +544,78 @@ def test_longtable_skips_commented_block():
     assert find_table_blocks(src) == []
 
 
+def test_longtable_caption_with_optional_short_arg():
+    """PR #66 Copilot review (line 472) — ``\\caption[short]{long}``
+    is valid LaTeX (the ``[short]`` arg supplies the LoF/LoT text).
+    Pre-fix ``_CAPTION_RE`` required ``\\caption{`` and missed this
+    form, leaving the unstripped ``\\caption[short]{long}`` to leak
+    into the row parser as a body cell."""
+    src = (
+        r'\begin{longtable}{lc}' '\n'
+        r'\caption[Short]{The long-form caption}\label{tab:opt} \\' '\n'
+        r'\toprule' '\n'
+        r'H1 & H2 \\' '\n'
+        r'\midrule' '\n'
+        r'a & b \\' '\n'
+        r'\bottomrule' '\n'
+        r'\end{longtable}'
+    )
+    spec = parse_table_block(find_table_blocks(src)[0][2])
+    assert spec is not None
+    assert spec.name == 'tab-opt'
+    assert spec.caption == 'The long-form caption'
+    # Caption row must NOT have leaked into the data rows.
+    assert spec.header_rows == [['H1', 'H2']]
+    assert spec.body_rows == [['a', 'b']]
+
+
+def test_longtable_cell_local_label_not_promoted_to_name():
+    """PR #66 Copilot review (line 486) — when an unlabelled longtable
+    has a ``\\label{}`` inside a body cell (legitimately present for
+    downstream ``\\ref``), the fallback sibling-label scan must NOT
+    pick it up as the table's ``:name:``. The fallback is scoped to
+    the header zone (text before the first rule / pagination marker)."""
+    src = (
+        r'\begin{longtable}{lc}' '\n'
+        r'\caption{Unlabelled table} \\' '\n'
+        r'\toprule' '\n'
+        r'H1 & H2 \\' '\n'
+        r'\midrule' '\n'
+        r'cell \label{eq:foo} & b \\' '\n'
+        r'c & d \\' '\n'
+        r'\bottomrule' '\n'
+        r'\end{longtable}'
+    )
+    spec = parse_table_block(find_table_blocks(src)[0][2])
+    assert spec is not None
+    # No table-level label in the header zone → ``:name:`` stays None
+    # despite the body cell carrying ``\label{eq:foo}``.
+    assert spec.name is None
+    assert spec.caption == 'Unlabelled table'
+
+
+def test_longtable_cell_local_label_survives_strip():
+    """PR #66 Copilot review (line 490) — the label-strip that
+    removes the longtable's OWN ``\\label{}`` from the caption row
+    must not blanket-strip cell-local labels deeper in the body.
+    Those carry semantic meaning for ``\\ref`` from elsewhere."""
+    src = (
+        r'\begin{longtable}{lc}' '\n'
+        r'\caption{Captioned}\label{tab:keep} \\' '\n'
+        r'\toprule' '\n'
+        r'H1 & H2 \\' '\n'
+        r'\midrule' '\n'
+        r'cell \label{eq:foo} & b \\' '\n'
+        r'\bottomrule' '\n'
+        r'\end{longtable}'
+    )
+    spec = parse_table_block(find_table_blocks(src)[0][2])
+    assert spec.name == 'tab-keep'
+    # Header zone's \label (tab:keep) is stripped; cell-local
+    # \label{eq:foo} survives into the body cell.
+    assert spec.body_rows == [[r'cell \label{eq:foo}', 'b']]
+
+
 def test_interior_hline_in_body_keeps_rows_together():
     """A visual ``\\hline`` between body groups should NOT cause a
     second header section — the FIRST interior rule is the

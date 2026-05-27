@@ -92,6 +92,18 @@ _LONGTABLE_PAGE_MARKER_RE = re.compile(
     r'\\(?:endfirsthead|endhead|endfoot|endlastfoot)\b'
 )
 
+# Boundary commands that close the longtable's "caption / header zone".
+# The longtable's own ``\caption`` and sibling ``\label`` sit in the
+# prefix BEFORE any of these — anything past them is data rows (where
+# cell-level ``\label`` for cross-refs can legitimately appear and must
+# NOT be promoted to the table's ``:name:``). Includes rule commands
+# (``\toprule`` / ``\midrule`` / ``\bottomrule`` / ``\hline`` /
+# ``\cmidrule``) and pagination markers.
+_LONGTABLE_HEADER_ZONE_BOUNDARY_RE = re.compile(
+    r'\\(?:toprule|midrule|bottomrule|cmidrule|hline'
+    r'|endfirsthead|endhead|endfoot|endlastfoot)\b'
+)
+
 # Tabular-family environment names. ``tabular`` is the bare form.
 # ``tabular*`` takes an extra ``{total-width}`` arg before the colspec.
 # ``tabularx`` / ``tabulary`` (package variants) take a ``{width}``
@@ -124,8 +136,10 @@ def _tabular_end_re(env_name: str) -> re.Pattern:
     return re.compile(r'\\end\{' + re.escape(env_name) + r'\}')
 
 # Caption + label extraction. Both can appear in any order before or
-# after the tabular environment.
-_CAPTION_RE = re.compile(r'\\caption\{')
+# after the tabular environment. ``\caption`` accepts an optional
+# ``[short]`` arg used for the LoF/LoT entry — match both shapes so
+# the long-form argument's opening brace is still at ``cap_m.end() - 1``.
+_CAPTION_RE = re.compile(r'\\caption(?:\[[^\]]*\])?\s*\{')
 _LABEL_RE = re.compile(r'\\label\{([^}]+)\}')
 
 
@@ -375,11 +389,23 @@ def _split_into_rows(text: str) -> list[list[str]]:
     return rows
 
 
-def _strip_balanced_command(text: str, command_name: str) -> str:
+def _strip_balanced_command(
+    text: str,
+    command_name: str,
+    *,
+    has_optional_arg: bool = False,
+) -> str:
     """Remove every ``\\command{...}`` (with balanced-brace argument)
     from ``text``. Used to strip ``\\caption{}`` out of a longtable
-    body so the caption row doesn't leak into the parsed cells."""
-    cmd_re = re.compile(rf'\\{re.escape(command_name)}\s*\{{')
+    body so the caption row doesn't leak into the parsed cells.
+
+    ``has_optional_arg=True`` also skips an optional ``[...]`` arg
+    between the command and the ``{`` — required for ``\\caption``,
+    which accepts a short-form list-entry text:
+    ``\\caption[short]{long}``.
+    """
+    opt = r'(?:\[[^\]]*\])?' if has_optional_arg else ''
+    cmd_re = re.compile(rf'\\{re.escape(command_name)}{opt}\s*\{{')
     out_parts: list[str] = []
     last_end = 0
     for m in cmd_re.finditer(text):
@@ -391,6 +417,24 @@ def _strip_balanced_command(text: str, command_name: str) -> str:
         last_end = close + 1
     out_parts.append(text[last_end:])
     return ''.join(out_parts)
+
+
+def _longtable_header_zone(body: str) -> tuple[str, str]:
+    """Slice a longtable body at the first rule or pagination marker.
+
+    Returns ``(header_zone, rest)``. The longtable's own ``\\caption``
+    and any sibling ``\\label`` sit in ``header_zone``; ``rest``
+    contains data rows and pagination boilerplate.
+
+    Used to bound both the fallback-label search and the label-strip
+    so cell-local ``\\label{}`` (legitimately present for ``\\ref``
+    cross-references from elsewhere) are neither promoted to the
+    table's ``:name:`` nor blanket-stripped from cell content.
+    """
+    m = _LONGTABLE_HEADER_ZONE_BOUNDARY_RE.search(body)
+    if m is None:
+        return body, ''
+    return body[:m.start()], body[m.start():]
 
 
 def _split_longtable_by_pagination(body: str) -> tuple[str, str]:
@@ -463,9 +507,14 @@ def _parse_longtable_block(block_body: str) -> TableSpec | None:
     lt_body = block_body[spec_close + 1 : end_m.start()]
 
     # Caption + label scan. Label may be inside the caption OR as a
-    # sibling. Mirrors the logic in ``parse_table_block``.
+    # sibling. Mirrors the logic in ``parse_table_block``. The
+    # sibling-label fallback is scoped to the header zone (text before
+    # the first rule / pagination marker) so a cell-level
+    # ``\label{eq:foo}`` deeper in the body isn't misidentified as the
+    # table's own name.
     caption: str | None = None
     name: str | None = None
+    header_zone, _ = _longtable_header_zone(lt_body)
     cap_m = _CAPTION_RE.search(lt_body)
     if cap_m:
         arg, _ = _extract_balanced_arg(lt_body, cap_m.end() - 1)
@@ -480,14 +529,25 @@ def _parse_longtable_block(block_body: str) -> TableSpec | None:
             else:
                 caption = caption_text or None
     if name is None:
-        lbl_m = _LABEL_RE.search(lt_body)
+        lbl_m = _LABEL_RE.search(header_zone)
         if lbl_m:
             name = lbl_m.group(1).replace(':', '-')
 
     # Strip the caption row's commands so the row-parser doesn't see
-    # ``\caption{…}\label{…} \\`` as a body row.
-    lt_body_clean = _strip_balanced_command(lt_body, 'caption')
-    lt_body_clean = re.sub(r'\\label\{[^}]+\}', '', lt_body_clean)
+    # ``\caption{…}\label{…} \\`` as a body row. ``\caption`` also
+    # accepts an optional ``[short]`` arg — ``has_optional_arg=True``
+    # handles the ``\caption[short]{long}`` shape. The ``\label``
+    # strip is bounded to the header zone so legitimately cell-local
+    # labels deeper in the body survive for downstream ``\ref``
+    # resolution.
+    lt_body_clean = _strip_balanced_command(
+        lt_body, 'caption', has_optional_arg=True
+    )
+    header_zone_clean, rest_clean = _longtable_header_zone(lt_body_clean)
+    header_zone_clean = re.sub(
+        r'\\label\{[^}]+\}', '', header_zone_clean
+    )
+    lt_body_clean = header_zone_clean + rest_clean
 
     colspec = _parse_colspec(colspec_str)
     spec = TableSpec(name=name, caption=caption, colspec=colspec)
