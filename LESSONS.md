@@ -34,7 +34,7 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 025 | [Multiline-table forward scan needs the ::: fenced-div boundary or it eats the next table](lessons/025-multiline-table-forward-scan-needs-fenced-div-bound.md) | post-processing | 🔴 | codified |
 | 026 | [Pandoc emits `<img>` for \\includegraphics and `<embed>` for \\input{tikz/…} — both must be recognised as figure sources](lessons/026-pandoc-img-vs-embed-for-includegraphics.md) | post-processing | 🟡 | codified |
 | 027 | [Pandoc's empty `<!-- -->`{=html} lexer-defeat separator survives into rendered HTML](lessons/027-pandoc-empty-html-comment-separator-artifact.md) | pandoc | 🟢 | codified |
-| 028 | [Custom preamble text macros (\\DeclareUrlCommand, \\newcommand wrapping \\textcolor) pandoc drops silently along with their argument](lessons/028-preamble-text-macros-pandoc-silently-drops.md) | preprocess | 🟡 | codified |
+| 028 | [Custom preamble + package-imported text macros (\\DeclareUrlCommand, \\newcommand wrapping \\textcolor, \\ding, \\faIcon) pandoc drops silently along with their argument](lessons/028-preamble-text-macros-pandoc-silently-drops.md) | preprocess | 🟡 | codified |
 | 029 | [Nested \\item markers inside a description body consumed by the description preprocess — cascades into dropped figures](lessons/029-nested-list-item-markers-consumed-by-description-preprocess.md) | preprocess | 🔴 | codified |
 | 030 | [Inline \\itemsep&lt;dim&gt; on a list opener cascades into 'Unknown environment' when nested](lessons/030-inline-itemsep-on-list-opener-cascades-pandoc.md) | preprocess | 🟡 | codified |
 | 031 | [Textual @key citation regex truncates at the first `:` — JabRef/Mendeley keys broken](lessons/031-textual-citation-regex-truncates-at-colon.md) | regex-safety | 🟡 | codified |

@@ -121,6 +121,36 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Added — config-driven features
 
+- **Package-imported text macros detected by `_warn_dropped_text_macros`**
+  ([#50], extends [#22]): the dropped-text-macro warner now flags
+  ``\ding{N}`` (from ``pifont``), ``\faIcon{X}`` (from ``fontawesome``),
+  ``\checkmark`` (from ``amssymb``) and similar package-imported text
+  macros pandoc silently drops along with their argument. Detection is
+  by-name against a curated registry; for ``\ding`` known glyph numbers
+  (51, 52, 55, 56, 108, 109) come with suggested unicode replacements
+  (``✓``, ``✔``, ``✗``, ``✘``, …) so the warning's paste-ready
+  ``preprocess.rewrites`` block needs no editing. Unknown ``\ding``
+  numbers or ``\faIcon`` icons are listed for manual fill-in. Same UX
+  contract as #22 — one warning per book run, opt-in by design. New
+  entries can be added to ``_PACKAGE_DROP_REGISTRY`` as books surface
+  them. Surfaced converting book-dp2's ``ch_adps.tex`` where 10×
+  ``\ding{51}`` in a captioned 4-column convergence table were silently
+  emptied by pandoc.
+- **`regen: false`** ([#63]) on `chapters[]` / `extra_files[]` entries.
+  Opts a stem out of the regen flow entirely — `convert.sh` skips
+  pre-process + pandoc + postprocess and leaves any curated copy in
+  `output_dir` untouched. Closes the audit gap where the previous
+  workaround was to silently drop the stem from `extra_files:` (which
+  works mechanically but hides intent — a future maintainer has no
+  signal that `common_symbols.md` is part of the book and was
+  deliberately curated outside the regen flow). The stem is logged
+  once in the convert banner and once in the Stage 1 preprocess
+  output. Passing the stem on the convert.sh CLI bypasses the gate
+  for stages 2+ (the escape hatch for an occasional force-regen).
+  Validation still folds the file's anchors into the cross-reference
+  pool but skips per-chapter LaTeX↔MyST counts for it (curated and
+  source diverge by design). Surfaced by book-dp1's `common_symbols`
+  re-curation (book-dp1#347 + commit d5e3254).
 - **`cross_ref_routing:`** (P1b) extends `make_ref`'s label-prefix →
   MyST role mapping. Books that use `lst:` instead of `list:` for
   listings (or similar idiosyncratic conventions) no longer need to
@@ -871,6 +901,7 @@ haven't validated. Everything below is on `main` and available now.
 [#47]: https://github.com/QuantEcon/claude-latex-to-myst/issues/47
 [#48]: https://github.com/QuantEcon/claude-latex-to-myst/issues/48
 [#49]: https://github.com/QuantEcon/claude-latex-to-myst/issues/49
+[#50]: https://github.com/QuantEcon/claude-latex-to-myst/issues/50
 [#51]: https://github.com/QuantEcon/claude-latex-to-myst/issues/51
 [#54]: https://github.com/QuantEcon/claude-latex-to-myst/issues/54
 [#55]: https://github.com/QuantEcon/claude-latex-to-myst/issues/55
@@ -878,6 +909,7 @@ haven't validated. Everything below is on `main` and available now.
 [#59]: https://github.com/QuantEcon/claude-latex-to-myst/issues/59
 [#60]: https://github.com/QuantEcon/claude-latex-to-myst/pull/60
 [#62]: https://github.com/QuantEcon/claude-latex-to-myst/pull/62
+[#63]: https://github.com/QuantEcon/claude-latex-to-myst/issues/63
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
