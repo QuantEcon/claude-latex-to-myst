@@ -340,16 +340,24 @@ def format_package_warning(usage: dict[str, dict]) -> str:
                     )
         else:
             rep = spec.get('replacement')
+            # Trailing guard: must match the detector's negative-lookahead
+            # so the rewrite covers every counted occurrence. ``\b`` would
+            # also block trailing digits (``\checkmark2``), so a usage we
+            # detect wouldn't be rewritten — inconsistent. Lookahead only
+            # blocks letters and ``@`` (the chars that can extend a macro
+            # name).
             if rep:
                 glyph, label = rep
                 lines.append(f"      → {glyph}  ({label})")
                 suggested.append(
-                    f"    - {{ from: '\\\\{macro}\\b', to: '{glyph}' }}"
+                    f"    - {{ from: '\\\\{macro}(?![A-Za-z@])', "
+                    f"to: '{glyph}' }}"
                 )
             else:
                 manual.append(
                     f"    # \\{macro} → choose replacement\n"
-                    f"    # - {{ from: '\\\\{macro}\\b', to: '???' }}"
+                    f"    # - {{ from: '\\\\{macro}(?![A-Za-z@])', "
+                    f"to: '???' }}"
                 )
 
     if suggested or manual:

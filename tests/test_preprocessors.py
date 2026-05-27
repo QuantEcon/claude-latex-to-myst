@@ -790,7 +790,7 @@ def test_warn_package_ding_detected_with_arg_glyphs():
     assert found["ding"]["arg_counts"]["55"] == 1
 
 
-def test_warn_package_unknown_arg_flagged_for_manual_fill():
+def test_warn_package_unknown_arg_flagged_for_manual_fill(tmp_path):
     """An unknown ``\\ding`` number — no default glyph in the registry —
     must still be reported so the author can pick a replacement, but
     NOT auto-suggested (we don't want to invent glyph mappings)."""
@@ -799,49 +799,52 @@ def test_warn_package_unknown_arg_flagged_for_manual_fill():
     assert found["ding"]["arg_counts"]["999"] == 1
     msg = wdtm.format_package_warning(
         wdtm.scan_package_macros(
-            _files_with_content(text)
+            _files_with_content(tmp_path, text)
         )
     )
     assert "999" in msg
     assert "no default" in msg
 
 
-def test_warn_package_zero_arg_replacement_suggested():
+def test_warn_package_zero_arg_replacement_suggested(tmp_path):
     """``\\checkmark`` (from ``amssymb``) is a zero-arg macro with a
     fixed unicode equivalent — registry provides the replacement
-    directly."""
+    directly. The suggested rewrite pattern uses the same trailing
+    negative-lookahead as the detector so every counted occurrence
+    is covered (see ``_package_bare_pattern``)."""
     text = r"All good \checkmark here."
     found = wdtm.find_package_macro_usages(text)
     assert found["checkmark"]["count"] == 1
     assert found["checkmark"]["arg_counts"] is None
-    usage = wdtm.scan_package_macros(_files_with_content(text))
+    usage = wdtm.scan_package_macros(_files_with_content(tmp_path, text))
     msg = wdtm.format_package_warning(usage)
-    assert r"\\checkmark\b" in msg
+    assert r"\\checkmark(?![A-Za-z@])" in msg
     assert "✓" in msg
 
 
 def test_warn_package_macro_word_boundary():
     """``\\ding`` must not match ``\\dingbat`` (or any longer macro name
-    with the same prefix). Regex uses a trailing ``[^A-Za-z@]`` guard."""
+    with the same prefix). Regex uses a trailing ``(?![A-Za-z@])``
+    negative lookahead."""
     text = r"\dingbat{x} should not flag, but \ding{51} should."
     found = wdtm.find_package_macro_usages(text)
     assert found["ding"]["count"] == 1
     assert found["ding"]["arg_counts"]["51"] == 1
 
 
-def test_warn_package_no_usage_is_quiet():
+def test_warn_package_no_usage_is_quiet(tmp_path):
     text = "Plain prose."
     assert wdtm.find_package_macro_usages(text) == {}
     assert wdtm.format_package_warning(
-        wdtm.scan_package_macros(_files_with_content(text))
+        wdtm.scan_package_macros(_files_with_content(tmp_path, text))
     ) == ""
 
 
-def test_warn_package_warning_contains_paste_ready_rewrite():
+def test_warn_package_warning_contains_paste_ready_rewrite(tmp_path):
     """Smoke test: the warning text contains paste-ready
     ``preprocess.rewrites`` entries with the correct regex shape."""
     usage = wdtm.scan_package_macros(_files_with_content(
-        r"\ding{51} and \ding{55}."
+        tmp_path, r"\ding{51} and \ding{55}."
     ))
     msg = wdtm.format_package_warning(usage)
     # The rewrite shape matches what `_apply_rewrites.py` consumes.
@@ -850,11 +853,10 @@ def test_warn_package_warning_contains_paste_ready_rewrite():
     assert "preprocess.rewrites" in msg
 
 
-def _files_with_content(text: str):
-    """Helper: stash ``text`` into a temp ``.tex`` file and return the
-    path list ``scan_package_macros`` expects. Used by package-macro
-    tests above."""
-    import tempfile, pathlib
-    tmp = pathlib.Path(tempfile.mkdtemp()) / "ch.tex"
-    tmp.write_text(text, encoding="utf-8")
-    return [tmp]
+def _files_with_content(tmp_path, text: str):
+    """Helper: stash ``text`` into a temp ``.tex`` file under pytest's
+    ``tmp_path`` fixture (auto-cleaned at end of test) and return the
+    path list ``scan_package_macros`` expects."""
+    ch = tmp_path / "ch.tex"
+    ch.write_text(text, encoding="utf-8")
+    return [ch]
