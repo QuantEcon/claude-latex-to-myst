@@ -37,7 +37,12 @@ haven't validated. Everything below is on `main` and available now.
   route through the same ``prf:ref`` path. Conservative trigger:
   only enumerates where every ``\item`` carries an ``ex:``-prefixed
   ``\label{}`` are rewritten; mixed and non-exercise lists fall
-  through to pandoc unchanged.
+  through to pandoc unchanged. Item splitting and block pairing are
+  depth-aware: a multi-part exercise whose statement nests an
+  ``itemize`` / ``enumerate`` (its sub-``\item`` are unlabelled and a
+  nested ``enumerate``'s ``\end`` would otherwise close the outer block
+  early) is still rewritten, with the nested list carried intact inside
+  the parent exercise body.
 - **`\begin{longtable}` extraction in the marker preprocessor**
   ([#54], follow-on to [#51] / [#55]): multi-page tables from the
   ``longtable`` package now run through the same structural-extraction

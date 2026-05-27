@@ -55,11 +55,19 @@ from pathlib import Path
 
 
 # ``\begin{enumerate}`` with an optional ``[opts]`` arg (``[itemsep=4pt,
-# leftmargin=*]`` is common in book sources).
-_ENUM_RE = re.compile(
-    r'\\begin\{enumerate\}(?:\[[^\]]*\])?(.*?)\\end\{enumerate\}',
-    re.DOTALL,
-)
+# leftmargin=*]`` is common in book sources) and its matching close. A
+# single non-greedy regex can't balance nested enumerates, so the two
+# delimiters are matched separately and paired by depth counting in
+# ``_iter_top_level_enumerates``.
+_ENUM_OPEN_RE = re.compile(r'\\begin\{enumerate\}(?:\[[^\]]*\])?')
+_ENUM_CLOSE_RE = re.compile(r'\\end\{enumerate\}')
+
+# Any list env that introduces a nested ``\item`` scope. ``\item`` tokens
+# inside one of these belong to the inner list and must not be treated as
+# exercise boundaries (mirrors ``_apply_description_markers._split_items``,
+# GH #29).
+_NEST_OPEN_RE = re.compile(r'\\begin\{(?:itemize|enumerate|description)\}')
+_NEST_CLOSE_RE = re.compile(r'\\end\{(?:itemize|enumerate|description)\}')
 
 # ``\item`` followed (with optional whitespace) by ``\label{ex:...}``.
 # Captures the label name; the rest of the item body sits after the
@@ -67,6 +75,36 @@ _ENUM_RE = re.compile(
 _ITEM_LABELED_RE = re.compile(
     r'\\item\s*\\label\{(ex:[^}]+)\}'
 )
+
+
+def _iter_top_level_enumerates(text: str):
+    """Yield ``(block_start, body_start, body_end, block_end)`` spans for
+    each *outermost* ``\\begin{enumerate}...\\end{enumerate}`` block.
+
+    Begin/end tokens are paired by depth counting so a nested
+    ``enumerate`` inside an exercise body (common for ``(a)/(b)``
+    sub-parts) doesn't let its inner ``\\end{enumerate}`` prematurely
+    close the outer block — the failure mode of a single non-greedy
+    ``.*?`` regex.
+    """
+    events = sorted(
+        [(m.start(), m.end(), 'open') for m in _ENUM_OPEN_RE.finditer(text)]
+        + [(m.start(), m.end(), 'close') for m in _ENUM_CLOSE_RE.finditer(text)]
+    )
+    depth = 0
+    block_start = body_start = None
+    for start, end, kind in events:
+        if kind == 'open':
+            if depth == 0:
+                block_start, body_start = start, end
+            depth += 1
+        else:  # close
+            if depth == 0:
+                continue  # stray \end{enumerate}; ignore rather than crash
+            depth -= 1
+            if depth == 0 and block_start is not None:
+                yield (block_start, body_start, start, end)
+                block_start = body_start = None
 
 
 def _starts_in_comment(text: str, pos: int) -> bool:
@@ -87,10 +125,31 @@ def _starts_in_comment(text: str, pos: int) -> bool:
 
 def parse_enum_items(body: str) -> list[tuple[str, str]] | None:
     """Parse the body of an enumerate. Returns ``[(label, content), ...]``
-    when every ``\\item`` carries an ``ex:``-prefixed ``\\label{}``;
-    returns ``None`` otherwise (mixed / unlabelled enumerates are left
-    alone)."""
-    item_positions = [m.start() for m in re.finditer(r'\\item\b', body)]
+    when every top-level ``\\item`` carries an ``ex:``-prefixed
+    ``\\label{}``; returns ``None`` otherwise (mixed / unlabelled
+    enumerates are left alone).
+
+    Only depth-0 ``\\item`` tokens are exercise boundaries. ``\\item``
+    inside a nested ``itemize`` / ``enumerate`` / ``description`` (e.g. a
+    multi-part exercise statement) belongs to the inner list and rides
+    along inside its parent exercise's content untouched. Counting those
+    as boundaries used to disqualify the whole block — the original GH #69
+    bug then persisted for every nested-list exercise.
+    """
+    events = sorted(
+        [(m.start(), 'open') for m in _NEST_OPEN_RE.finditer(body)]
+        + [(m.start(), 'close') for m in _NEST_CLOSE_RE.finditer(body)]
+        + [(m.start(), 'item') for m in re.finditer(r'\\item\b', body)]
+    )
+    item_positions: list[int] = []
+    depth = 0
+    for pos, kind in events:
+        if kind == 'open':
+            depth += 1
+        elif kind == 'close':
+            depth = max(0, depth - 1)
+        elif depth == 0:  # 'item' at top level
+            item_positions.append(pos)
     if not item_positions:
         return None
 
@@ -127,24 +186,28 @@ def emit_exercise_markers(items: list[tuple[str, str]]) -> str:
 
 
 def process_text(text: str) -> str:
-    """Rewrite every fully-``ex:``-labelled enumerate in ``text`` into
-    marker form. Non-qualifying enumerates and comment-line blocks
-    pass through unchanged."""
-
-    def replace(m: re.Match) -> str:
-        if _starts_in_comment(text, m.start()):
-            return m.group(0)
-        body = m.group(1)
-        items = parse_enum_items(body)
+    """Rewrite every fully-``ex:``-labelled top-level enumerate in
+    ``text`` into marker form. Non-qualifying enumerates and comment-line
+    blocks pass through unchanged."""
+    out: list[str] = []
+    cursor = 0
+    for block_start, body_start, body_end, block_end in _iter_top_level_enumerates(text):
+        if block_start < cursor:
+            continue  # already consumed inside an earlier rewritten block
+        if _starts_in_comment(text, block_start):
+            continue  # commented-out block stays verbatim in a later slice
+        items = parse_enum_items(text[body_start:body_end])
         if items is None:
-            return m.group(0)
+            continue  # mixed / unlabelled — leave for pandoc
+        out.append(text[cursor:block_start])
         # Wrap with blank lines so the first marker is block-isolated
         # from any preceding paragraph and the last is separated from
         # following prose (mirrors the algorithm / listing / table
         # marker emit convention).
-        return f'\n\n{emit_exercise_markers(items)}\n\n'
-
-    return _ENUM_RE.sub(replace, text)
+        out.append(f'\n\n{emit_exercise_markers(items)}\n\n')
+        cursor = block_end
+    out.append(text[cursor:])
+    return ''.join(out)
 
 
 def main() -> None:

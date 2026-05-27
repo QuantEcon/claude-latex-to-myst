@@ -981,3 +981,83 @@ def test_enum_marker_handles_multiline_item_body():
         "Second paragraph still inside the same item.\n"
         "<!--EXERCISE-END-->"
     ) in out
+
+
+def test_enum_marker_preserves_nested_itemize_in_exercise():
+    """GH #69 regression — an exercise statement that contains a nested
+    ``itemize`` must still be rewritten. The nested ``\\item`` tokens are
+    unlabelled, but they're depth-1: they belong to the inner list and
+    ride along inside their parent exercise's body, so they must NOT
+    disqualify the block. (A flat ``\\item`` scan counted them and left
+    the whole block to pandoc, dropping the ``ex:`` labels — the very bug
+    #69 set out to fix.)"""
+    tex = (
+        "\\begin{enumerate}\n"
+        "\\item\\label{ex:ch1:1} Consider the following cases:\n"
+        "  \\begin{itemize}\n"
+        "  \\item first sub-point\n"
+        "  \\item second sub-point\n"
+        "  \\end{itemize}\n"
+        "\\item\\label{ex:ch1:2} A simpler exercise.\n"
+        "\\end{enumerate}\n"
+    )
+    out = enum_m.process_text(tex)
+    # Two top-level exercises → two marker pairs.
+    assert out.count("<!--EXERCISE-START label=ex-ch1-1-->") == 1
+    assert out.count("<!--EXERCISE-START label=ex-ch1-2-->") == 1
+    assert out.count("<!--EXERCISE-END-->") == 2
+    # The nested itemize travels intact inside the first exercise body.
+    assert "\\begin{itemize}" in out
+    assert "\\item first sub-point" in out
+    assert "\\item second sub-point" in out
+    # The outer enumerate wrapper is gone.
+    assert "\\begin{enumerate}" not in out
+
+
+def test_enum_marker_preserves_nested_enumerate_subparts():
+    """GH #69 regression — a multi-part exercise whose sub-parts are a
+    nested ``enumerate`` (``(a)/(b)``). Two hazards at once: a flat scan
+    counts the nested ``\\item`` (depth must gate them out), and a
+    non-greedy ``\\begin..\\end`` regex stops at the inner
+    ``\\end{enumerate}`` (block pairing must balance by depth)."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "\\item\\label{ex:ch2:1} Prove each of the following:\n"
+        "  \\begin{enumerate}\n"
+        "  \\item part a\n"
+        "  \\item part b\n"
+        "  \\end{enumerate}\n"
+        "\\item\\label{ex:ch2:2} Second exercise.\n"
+        "\\end{enumerate}\n"
+    )
+    out = enum_m.process_text(tex)
+    assert out.count("<!--EXERCISE-START label=ex-ch2-1-->") == 1
+    assert out.count("<!--EXERCISE-START label=ex-ch2-2-->") == 1
+    assert out.count("<!--EXERCISE-END-->") == 2
+    # The inner enumerate (with its own unlabelled items) survives inside
+    # the first exercise's body, not lifted to a top-level exercise.
+    assert "\\begin{enumerate}" in out
+    assert "\\end{enumerate}" in out
+    assert "\\item part a" in out
+    assert "\\item part b" in out
+
+
+def test_enum_parse_ignores_nested_item_boundaries():
+    """Direct unit test for the depth-aware parse: only the two
+    depth-0 ``\\item`` tokens are exercise boundaries; the nested
+    ``itemize`` items stay inside the first exercise's content."""
+    body = (
+        "\n"
+        "\\item\\label{ex:a} stem a\n"
+        "\\begin{itemize}\n"
+        "\\item nested 1\n"
+        "\\item nested 2\n"
+        "\\end{itemize}\n"
+        "\\item\\label{ex:b} stem b\n"
+    )
+    items = enum_m.parse_enum_items(body)
+    assert items is not None
+    assert len(items) == 2
+    assert items[0][0] == "ex:a" and items[1][0] == "ex:b"
+    assert items[0][1].count("\\item nested") == 2
+    assert "\\begin{itemize}" in items[0][1]
