@@ -46,7 +46,21 @@ def count_latex(text: str) -> dict:
         'labeled_eqs':     len(re.findall(r'\\label\{eq:', text)),
         'theorems':        len(re.findall(r'\\begin\{(box)?(theorem|lemma|corollary|proposition|definition)\}', text)),
         'figures':         _count_figures_latex(text),
-        'citations':       len(re.findall(r'\\cite[pt]?\{', text)),
+        # Match the full natbib family — every variant the pipeline
+        # round-trips, with or without optional ``[prenote][postnote]``
+        # args. The narrow ``\cite[pt]?{`` form caught only
+        # ``\cite``/``\citet``/``\citep`` and missed
+        # ``\citealp``/``\citealt``/``\citeauthor``/``\citeyear``/
+        # ``\citeyearpar`` — each of which the pipeline converts to a
+        # ``{cite:*}`` MyST role. The trailing ``{`` also has to allow
+        # 0–2 optional bracket args between command and key, matching
+        # ``_NATBIB_OPT`` in ``_apply_rewrites.py``; without that, any
+        # cite written as ``\citep[see][ch. 2]{key}`` is under-counted
+        # (1 instance in book-dp1, 1 in book-dp2, 28 in the
+        # Deep_Learning corpus — #67's Copilot review).
+        'citations':       len(re.findall(
+            r'\\cite[a-z]*(?:\s*\[[^\]]*\]){0,2}\s*\{', text
+        )),
         'cross_refs':      len(re.findall(r'\\(cref|Cref|ref|eqref|autoref)\{', text)),
     }
 
@@ -63,7 +77,13 @@ def count_myst(text: str) -> dict:
         'labeled_eqs':     labeled_close,
         'theorems':        len(re.findall(r'\{prf:(theorem|lemma|corollary|proposition|definition)\}', text)),
         'figures':         len(re.findall(r'\{figure\}', text)),
-        'citations':       len(re.findall(r'\{cite(?::t)?\}', text)),
+        # Match every ``{cite:*}`` role the pipeline emits — not just
+        # ``{cite}`` / ``{cite:t}``. ``{cite:p}`` (from ``\citep``),
+        # ``{cite:author}`` (from ``\citeauthor``), ``{cite:year}``
+        # (from ``\citeyear`` / ``\citeyearpar`` / pandoc's ``[-@key]``)
+        # were previously skipped, producing phantom validation
+        # mismatches in every book that used those natbib variants (#67).
+        'citations':       len(re.findall(r'\{cite(?::[a-z]+)?\}', text)),
         'cross_refs':      len(re.findall(r'\{(prf:)?(ref|eq|numref)\}', text)),
     }
 
