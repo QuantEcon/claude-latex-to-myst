@@ -325,6 +325,23 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **`convert_pandoc_attr_code_blocks` doubles backslashes in lstlisting
+  captions** ([#71]): pandoc serialises ``\`` and ``"`` inside a quoted
+  attribute value as ``\\`` and ``\"`` respectively. The resolver's
+  ``parse_attrs`` stripped the outer quotes but didn't decode those
+  escapes, so a source caption like
+  ``\begin{lstlisting}[caption={$s \in (0,1)$ via \emph{sigmoid}}]``
+  arrived in MyST as ``:caption: $s \\in (0,1)$ via \\emph{sigmoid}`` —
+  KaTeX then rendered the doubled ``\\`` inside math mode as the
+  "function with no arguments" error and the caption failed to render.
+  Surfaced in book-dp-deep-learning's R7 pass (1 affected listing in
+  ch02_deqns). Resolution adds a ``re.sub(r'\\(.)', r'\1', val[1:-1])``
+  pass after the quote-strip, decoding pandoc's escape syntax back to
+  the literal characters the caption originally carried. Two pre-existing
+  tests had been masking the bug by using single-backslash inputs that
+  don't match pandoc's actual output — updated to the doubled form
+  pandoc emits, plus two new regression tests for the inline-math and
+  embedded-quote cases.
 - **`validate.py` silently no-ops on `preprocess.split:` books** ([#68]):
   the per-chapter loop resolved each stem's source ``.tex`` against
   ``source_dir`` only. Books that consolidate chapters in a monolithic
@@ -950,6 +967,7 @@ haven't validated. Everything below is on `main` and available now.
 [#63]: https://github.com/QuantEcon/claude-latex-to-myst/issues/63
 [#67]: https://github.com/QuantEcon/claude-latex-to-myst/issues/67
 [#68]: https://github.com/QuantEcon/claude-latex-to-myst/issues/68
+[#71]: https://github.com/QuantEcon/claude-latex-to-myst/issues/71
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md

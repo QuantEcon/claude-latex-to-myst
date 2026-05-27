@@ -91,7 +91,16 @@ def convert_pandoc_attr_code_blocks(text: str) -> str:
                 key = m.group(1)
                 val = m.group(2)
                 if val.startswith('"') and val.endswith('"'):
-                    val = val[1:-1]
+                    # Pandoc serialises ``"`` and ``\`` inside a quoted
+                    # attribute value as ``\"`` and ``\\`` respectively
+                    # (the regex above accepts those escape sequences).
+                    # After stripping the outer quotes, decode the
+                    # escapes — otherwise math captions like
+                    # ``caption={$\alpha$}`` arrive here as ``$\\alpha$``
+                    # and survive into MyST's ``:caption:`` field as
+                    # doubled backslashes, which KaTeX then renders as
+                    # "function with no arguments" errors (#71).
+                    val = re.sub(r'\\(.)', r'\1', val[1:-1])
                 out['kv'][key] = val
                 i += m.end()
                 continue
