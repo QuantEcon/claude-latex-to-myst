@@ -373,6 +373,11 @@ def main():
             bib_keys = parse_bib_keys(bib_path)
 
     for entry in chapters:
+        # ``regen: false`` files are curated outside the pipeline (#63);
+        # the LaTeX↔MyST counts won't match by design. Their anchors are
+        # still folded into ``all_anchors`` above so cross-refs resolve.
+        if entry.get('regen') is False:
+            continue
         stem = entry['stem']
         tex = source_dir / f"{stem}.tex"
         md = output_dir / f"{stem}.md"
