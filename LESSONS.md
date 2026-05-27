@@ -45,13 +45,14 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 036 | [Pandoc-attr fence regex stops at the first `}` inside a quoted caption value](lessons/036-attr-fence-regex-chokes-on-braces-in-caption-values.md) | regex-safety | 🟡 | codified |
 | 037 | [`\label{}` extraction not applied to `multline` / `gather` (incompleteness from #30)](lessons/037-multline-gather-label-extraction-incomplete.md) | post-processing | 🟢 | codified |
 | 038 | [Late-import of `postprocess` from transform modules loads a second copy when run as `__main__`](lessons/038-postprocess-main-module-double-load.md) | tooling | 🔴 | codified |
+| 039 | [Enumerate-exercise preprocessor: flat \\item scan AND non-greedy block regex both break on nested lists inside an exercise](lessons/039-enumerate-exercise-markers-nested-list-depth-and-block-pairing.md) | preprocess | 🔴 | codified |
 
 ## By category
 
 - **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037
 - **regex-safety:** 002, 017, 024, 031, 035, 036
 - **pandoc:** 027
-- **preprocess:** 028, 029, 030
+- **preprocess:** 028, 029, 030, 039
 - **katex:** 003, 006
 - **myst:** 013
 - **tooling:** 009, 010, 038
