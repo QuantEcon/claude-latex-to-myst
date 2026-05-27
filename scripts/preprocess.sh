@@ -162,6 +162,16 @@ for ch in "${CHAPTER_STEMS[@]}"; do
   # sources that contain no description envs (GH #19).
   python3 "$SCRIPT_DIR/_apply_description_markers.py" "$dst"
 
+  # Replace \begin{enumerate} blocks whose every \item carries
+  # \label{ex:...} with EXERCISE marker pairs. Pandoc's enumerate
+  # parser discards interior \label{} calls, so every exercise label
+  # vanishes by the time the markdown is produced — back-references
+  # from a solutions appendix (typically {prf:ref}`ex-chN-M`) then
+  # dangle. The postprocess step decodes the markers into
+  # {exercise} directives. No-op for enumerates that aren't
+  # fully-labelled-exercise lists (GH #69).
+  python3 "$SCRIPT_DIR/_apply_enumerate_markers.py" "$dst"
+
   # Replace \begin{table}...\end{table} (LaTeX float) with TABLE marker
   # comments. Pandoc's LaTeX reader collapses ALL interior \hline/\midrule
   # separators in simple_tables format — the LaTeX-side header row

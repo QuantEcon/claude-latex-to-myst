@@ -132,6 +132,68 @@ def test_resolve_algorithms_handles_unescaped_marker():
     assert ":label: algo-x" in out
 
 
+# ── Exercise markers (#69) ───────────────────────────────────────────────────
+
+
+def test_resolve_exercise_markers_emits_exercise_directive():
+    """GH #69 — ``<!--EXERCISE-START label=X-->`` / ``<!--EXERCISE-END-->``
+    marker pair decodes to a MyST ``{exercise}`` directive carrying
+    the original label, with the markdown content as the body."""
+    src = (
+        "Before.\n\n"
+        "<!--EXERCISE-START label=ex-ch1-1-->\n"
+        "**[Core] Backprop.** Derive the gradient.\n"
+        "<!--EXERCISE-END-->\n\n"
+        "After.\n"
+    )
+    out = postprocess.resolve_exercise_markers(src)
+    assert "```{exercise}" in out
+    assert ":label: ex-ch1-1" in out
+    assert "**[Core] Backprop.** Derive the gradient." in out
+    # Markers are gone — no leakage into the body.
+    assert "EXERCISE-START" not in out
+    assert "EXERCISE-END" not in out
+
+
+def test_resolve_exercise_markers_tolerates_pandoc_escaped_brackets():
+    """Pandoc may escape ``<`` and ``>`` in HTML comments as ``\\<``
+    and ``\\>`` when round-tripping through markdown. The resolver
+    regex must accept both forms (mirrors the ``resolve_listings``
+    pattern)."""
+    src = (
+        r"\<!--EXERCISE-START label=ex-a--\> "
+        "body content "
+        r"\<!--EXERCISE-END--\>"
+    )
+    out = postprocess.resolve_exercise_markers(src)
+    assert "```{exercise}" in out
+    assert ":label: ex-a" in out
+    assert "body content" in out
+
+
+def test_resolve_exercise_markers_handles_multiple_pairs():
+    """A series of marker pairs (the common case — every exercise
+    in a chapter) each decodes independently into its own directive."""
+    src = (
+        "<!--EXERCISE-START label=ex-1-->\n"
+        "first body\n"
+        "<!--EXERCISE-END-->\n\n"
+        "<!--EXERCISE-START label=ex-2-->\n"
+        "second body\n"
+        "<!--EXERCISE-END-->\n"
+    )
+    out = postprocess.resolve_exercise_markers(src)
+    assert out.count("```{exercise}") == 2
+    assert ":label: ex-1" in out
+    assert ":label: ex-2" in out
+
+
+def test_resolve_exercise_markers_idempotent_no_markers():
+    """No markers in the input → no-op."""
+    src = "Just some markdown with no markers.\n"
+    assert postprocess.resolve_exercise_markers(src) == src
+
+
 # ── Minted listings (gap #015) ───────────────────────────────────────────────
 
 

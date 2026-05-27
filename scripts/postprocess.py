@@ -132,6 +132,7 @@ from transforms.figures import (  # noqa: E402  (re-exports for P3a)
 from transforms.envs import (  # noqa: E402  (re-exports for P3a)
     convert_environment_divs,
     convert_description_lists,
+    resolve_exercise_markers,
 )
 from transforms.algorithms import (  # noqa: E402  (re-exports for P3a)
     resolve_algorithms,
@@ -586,6 +587,7 @@ def process_text(text: str, stem: str, title: str | None = None,
     text = convert_simple_tables(text)
     text = convert_environment_divs(text)
     text = convert_description_lists(text)         # decode DESCITEM markers (lesson 022)
+    text = resolve_exercise_markers(text)          # decode EXERCISE markers (closes #69)
     text = convert_equations(text)
     text = decode_natbib_markers(text)              # before cross-refs (lesson 020)
     text = convert_cross_references(text)

@@ -267,3 +267,56 @@ def convert_description_lists(text: str) -> str:
         return '\n\n'.join(rendered) + '\n'
 
     return block_pattern.sub(render_block, text)
+
+
+# ── Exercise markers (#69) ───────────────────────────────────────────────────
+#
+# The companion ``scripts/_apply_enumerate_markers.py`` rewrites
+# ``\begin{enumerate}`` blocks whose every ``\item`` carries
+# ``\label{ex:...}`` into pairs of ``<!--EXERCISE-START -->`` /
+# ``<!--EXERCISE-END-->`` markers, dissolving the list wrapper. Pandoc
+# converts the item content to markdown and passes the markers
+# through verbatim (escaping the angle brackets as ``\<`` / ``\>``).
+# This resolver decodes each pair into a ``{exercise}`` MyST directive
+# carrying the original label.
+
+_EXERCISE_MARKER_RE = re.compile(
+    r'\\?<!--EXERCISE-START\s+label=(?P<label>\S+)--\\?>'
+    r'\s*(?P<content>.*?)\s*'
+    r'\\?<!--EXERCISE-END--\\?>',
+    re.DOTALL,
+)
+
+
+def resolve_exercise_markers(text: str) -> str:
+    """Decode EXERCISE marker pairs into ``{exercise}`` directives.
+
+    Marker format (from ``_apply_enumerate_markers.py``):
+
+        <!--EXERCISE-START label=ex-ch1-1-->
+        Markdown content (pandoc-converted item body)
+        <!--EXERCISE-END-->
+
+    becomes::
+
+        ```{exercise}
+        :label: ex-ch1-1
+
+        Markdown content
+        ```
+
+    Pandoc may escape ``<`` to ``\\<`` and ``>`` to ``\\>``; the regex
+    tolerates both forms (mirrors ``resolve_listings``).
+    """
+    def repl(m: re.Match) -> str:
+        label = m.group('label')
+        content = (m.group('content') or '').strip()
+        return (
+            '```{exercise}\n'
+            f':label: {label}\n'
+            '\n'
+            f'{content}\n'
+            '```'
+        )
+
+    return _EXERCISE_MARKER_RE.sub(repl, text)

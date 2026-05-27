@@ -17,6 +17,27 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Added — pipeline transforms
 
+- **`\item\label{ex:...}` enumerate → `{exercise}` directive marker
+  pipeline** ([#69]): exercise labels written as
+  ``\begin{enumerate}\item\label{ex:chN:M} ...\end{enumerate}`` (the
+  dominant textbook convention) were silently dropped by pandoc —
+  ``\label{}`` has no place in pandoc's enumerate AST, so any later
+  ``{prf:ref}`ex-chN-M`` (typically a solutions-appendix back-link)
+  dangled. Surfaced in book-dp-deep-learning's R7 pass: 87 exercise
+  labels in source, 96 unresolved ``{prf:ref}`` in the build log.
+  New ``scripts/_apply_enumerate_markers.py`` (wired into Stage 1 of
+  ``preprocess.sh`` after ``_apply_description_markers.py``)
+  rewrites fully-``ex:``-labelled enumerates into pairs of
+  ``<!--EXERCISE-START label=ex-X-->`` / ``<!--EXERCISE-END-->``
+  markers and dissolves the list wrapper. Post-pandoc,
+  ``resolve_exercise_markers`` (new, in ``transforms/envs.py``)
+  decodes each pair into a ``{exercise}`` directive with
+  ``:label: ex-X`` — semantically aligned with the project's
+  existing ``\begin{Exercise}`` env handling so ``ex-`` cross-refs
+  route through the same ``prf:ref`` path. Conservative trigger:
+  only enumerates where every ``\item`` carries an ``ex:``-prefixed
+  ``\label{}`` are rewritten; mixed and non-exercise lists fall
+  through to pandoc unchanged.
 - **`\begin{longtable}` extraction in the marker preprocessor**
   ([#54], follow-on to [#51] / [#55]): multi-page tables from the
   ``longtable`` package now run through the same structural-extraction
@@ -990,6 +1011,7 @@ haven't validated. Everything below is on `main` and available now.
 [#63]: https://github.com/QuantEcon/claude-latex-to-myst/issues/63
 [#67]: https://github.com/QuantEcon/claude-latex-to-myst/issues/67
 [#68]: https://github.com/QuantEcon/claude-latex-to-myst/issues/68
+[#69]: https://github.com/QuantEcon/claude-latex-to-myst/issues/69
 [#70]: https://github.com/QuantEcon/claude-latex-to-myst/issues/70
 [#71]: https://github.com/QuantEcon/claude-latex-to-myst/issues/71
 [023]: lessons/023-algpseudocode-native-parser.md
