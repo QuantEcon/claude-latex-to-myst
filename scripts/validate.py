@@ -338,6 +338,13 @@ def main():
     base = args.config.resolve().parent
     source_dir = (base / config.get('source_dir', '..')).resolve()
     output_dir = (base / config.get('output_dir', '.')).resolve()
+    # ``preprocess.split:`` fans a monolithic source ``.tex`` out into
+    # per-stem files under ``tmp_dir`` BEFORE pandoc runs. By Stage 6
+    # (this script) those files are guaranteed present. We look for
+    # each stem's ``.tex`` in ``source_dir`` first and fall back to
+    # ``tmp_dir`` so the validator's per-chapter loop doesn't silently
+    # skip every entry on books that use ``preprocess.split:`` (#68).
+    tmp_dir = (base / (config.get('tmp_dir') or './tmp')).resolve()
 
     checks = config.get('validate') or {}
     fields = [k for k, v in [
@@ -357,6 +364,7 @@ def main():
     broken_math_total = 0
     unresolved_total = 0
     type_mismatch_total = 0
+    validated_count = 0  # tracks chapters that actually ran through the loop
     check_broken_math = checks.get('broken_inline_math', True)
     check_resolution_flag = checks.get('cross_ref_resolution', True)
     # Type-compatibility (P1a-prime) is opt-out separately because it
@@ -399,13 +407,33 @@ def main():
         if entry.get('regen') is False:
             continue
         stem = entry['stem']
+        # Source ``.tex`` resolution: pristine source first, ``tmp_dir``
+        # fallback for ``preprocess.split:`` per-stem files that don't
+        # exist in ``source_dir`` (#68).
         tex = source_dir / f"{stem}.tex"
+        if not tex.exists():
+            tex = tmp_dir / f"{stem}.tex"
         md = output_dir / f"{stem}.md"
-        if not tex.exists() or not md.exists():
+        # Warn rather than silently skip — the previous silent ``continue``
+        # let the entire loop no-op on ``preprocess.split:`` books while
+        # still printing the vacuous-pass summary at the end (#68).
+        if not tex.exists():
+            print(
+                f"  WARN: {stem}.tex not found in source_dir or tmp_dir — "
+                f"skipping validation for this stem",
+                file=sys.stderr,
+            )
+            continue
+        if not md.exists():
+            print(
+                f"  WARN: {md} not found — skipping validation for this stem",
+                file=sys.stderr,
+            )
             continue
         md_text = md.read_text(encoding='utf-8')
         lcounts = count_latex(tex.read_text(encoding='utf-8'))
         mcounts = count_myst(md_text)
+        validated_count += 1
         cells = []
         for f in fields:
             l = lcounts.get(f, 0)
@@ -474,6 +502,22 @@ def main():
     if any_mismatch:
         print('  Mismatches detected (marked with `!`). Investigate before shipping.')
     if any_mismatch or broken_math_total or unresolved_total or type_mismatch_total:
+        sys.exit(1)
+    # Vacuous-pass guard (#68). The previous unconditional "All counts
+    # match" message printed even when every chapter's per-loop iteration
+    # skipped — the silent ``preprocess.split:`` bug let books go
+    # unvalidated for an entire round before the contradiction with
+    # ``myst build`` warnings surfaced. Refuse to claim "all clean"
+    # without having actually checked anything, and exit non-zero so
+    # CI catches the misconfiguration.
+    if validated_count == 0:
+        print(
+            '  ERROR: no chapters were validated — every entry was '
+            'skipped before its counts could be checked. Verify '
+            'source_dir / tmp_dir / output_dir paths in config.yaml '
+            'and that preprocess.sh has run.',
+            file=sys.stderr,
+        )
         sys.exit(1)
     print('  All counts match. All cross-references resolve and are well-typed.')
 

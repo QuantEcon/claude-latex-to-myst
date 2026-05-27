@@ -443,3 +443,139 @@ def test_check_resolution_numref_to_figure_passes():
         "See {numref}`fig-bar`.\n"
     )
     assert v.check_resolution(md, 'ch.md') == []
+
+
+# ── main() end-to-end (#68 preprocess.split: blindspot) ──────────────────────
+#
+# These shell out to ``validate.py`` because the bug lives in ``main()`` —
+# specifically the per-chapter loop's source-``.tex`` resolution and the
+# vacuous-pass branch at the bottom. Unit-testing the counter helpers
+# (above) won't surface either failure mode.
+
+
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+
+_VALIDATE = Path(__file__).resolve().parent.parent / "scripts" / "validate.py"
+
+
+def _run_validate(config: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(_VALIDATE), "--config", str(config)],
+        capture_output=True,
+        text=True,
+    )
+
+
+def _layout_split_book(tmp_path: Path) -> Path:
+    """Set up a minimal ``preprocess.split:``-style book under
+    ``tmp_path``. The pristine source contains a monolithic ``.tex``;
+    the per-chapter ``.tex`` files live only in ``tmp_dir`` (where
+    ``preprocess.sh`` would have written them). Returns the config
+    path."""
+    src = tmp_path / "src"
+    out = tmp_path / "out"
+    tmp = tmp_path / "tmp"
+    src.mkdir()
+    out.mkdir()
+    tmp.mkdir()
+
+    # Monolithic source — exists in src/ but no per-stem files there.
+    (src / "monolith.tex").write_text("\\chapter{Intro}\n", encoding="utf-8")
+
+    # Per-stem split outputs in tmp/ (where preprocess.sh would write them).
+    (tmp / "ch_a.tex").write_text(
+        "\\chapter{A}\n\\cite{x}\n", encoding="utf-8"
+    )
+
+    # Converted markdown in output_dir.
+    (out / "ch_a.md").write_text(
+        "# A\n\n{cite}`x`\n", encoding="utf-8"
+    )
+
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "source_dir: ./src\n"
+        "output_dir: ./out\n"
+        "tmp_dir: ./tmp\n"
+        "chapters:\n"
+        "  - { stem: ch_a, title: A }\n",
+        encoding="utf-8",
+    )
+    return config
+
+
+def test_validate_falls_back_to_tmp_dir_for_split_books(tmp_path):
+    """GH #68 — when a chapter's ``.tex`` lives in ``tmp_dir`` (because
+    ``preprocess.split:`` fans the monolithic source out there) the
+    validator must find it. Pre-fix the per-chapter loop silently
+    skipped every stem on books that use ``preprocess.split:``."""
+    config = _layout_split_book(tmp_path)
+    result = _run_validate(config)
+    assert result.returncode == 0, (
+        f"validate exited {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    # The chapter row appears in the table — the loop actually ran.
+    assert "ch_a" in result.stdout
+    assert "All counts match" in result.stdout
+    # No vacuous-pass error.
+    assert "no chapters were validated" not in result.stderr
+
+
+def test_validate_warns_when_tex_truly_missing(tmp_path):
+    """GH #68 — when a stem's ``.tex`` is missing from BOTH
+    ``source_dir`` and ``tmp_dir`` the validator must emit a WARN
+    (not silently skip) so the regression class can't recur unseen."""
+    src = tmp_path / "src"
+    out = tmp_path / "out"
+    tmp = tmp_path / "tmp"
+    src.mkdir(); out.mkdir(); tmp.mkdir()
+
+    # Only the .md exists — .tex is missing everywhere.
+    (out / "ch_b.md").write_text("# B\n", encoding="utf-8")
+
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "source_dir: ./src\n"
+        "output_dir: ./out\n"
+        "tmp_dir: ./tmp\n"
+        "chapters:\n"
+        "  - { stem: ch_b, title: B }\n",
+        encoding="utf-8",
+    )
+    result = _run_validate(config)
+    assert "ch_b.tex not found" in result.stderr, (
+        f"Expected WARN about missing .tex, got:\n{result.stderr}"
+    )
+
+
+def test_validate_vacuous_pass_guard_exits_nonzero(tmp_path):
+    """GH #68 — when every chapter is skipped (so ``validated_count == 0``)
+    the validator must NOT print "All counts match" and must exit
+    non-zero. Pre-fix it printed a happy success message under those
+    conditions, masking the real problem."""
+    src = tmp_path / "src"
+    out = tmp_path / "out"
+    tmp = tmp_path / "tmp"
+    src.mkdir(); out.mkdir(); tmp.mkdir()
+
+    # Stem listed in config but neither .tex nor .md present.
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "source_dir: ./src\n"
+        "output_dir: ./out\n"
+        "tmp_dir: ./tmp\n"
+        "chapters:\n"
+        "  - { stem: ch_missing, title: M }\n",
+        encoding="utf-8",
+    )
+    result = _run_validate(config)
+    assert result.returncode != 0, (
+        f"Expected non-zero exit when nothing validated, got 0\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert "no chapters were validated" in result.stderr
+    assert "All counts match" not in result.stdout
