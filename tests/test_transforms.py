@@ -722,6 +722,31 @@ def test_doubled_noun_refs_validation_rejects_missing_prefix():
         })
 
 
+def test_regen_flag_validated_as_bool():
+    """``regen`` must be a boolean when present — anything else is a typo
+    waiting to silently bypass the gate (#63)."""
+    with pytest.raises(SystemExit, match=r"regen must be a boolean"):
+        postprocess.apply_config({
+            "source_dir": ".",
+            "extra_files": [
+                {"stem": "preface", "regen": "false"},  # str, not bool
+            ],
+        })
+
+
+def test_regen_flag_accepts_bool():
+    """``regen: false`` (bool) is the only accepted form; missing field
+    is also fine (defaults to regen-enabled)."""
+    postprocess.apply_config({
+        "source_dir": ".",
+        "extra_files": [
+            {"stem": "preface"},  # missing → default regen
+            {"stem": "common_symbols", "regen": False},
+            {"stem": "glossary", "regen": True},
+        ],
+    })
+
+
 def test_chapter_styles_populated_from_config():
     """apply_config should pick up per-stem `frontmatter_style` from
     chapters[] and extra_files[] entries, and leave unspecified stems

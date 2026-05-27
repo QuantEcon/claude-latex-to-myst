@@ -56,6 +56,20 @@ extra_files:
     title: "Notation"
   # extra_files entries accept the same `frontmatter_style:` override as
   # `chapters:` entries.
+  #
+  # ``regen: false`` opts a file out of the regen flow. convert.sh
+  # skips preprocess + pandoc + postprocess for the stem, leaving any
+  # curated copy in ``output_dir`` untouched. Use for front-matter pages
+  # whose Markdown has diverged from the LaTeX source through editorial
+  # rewrites that can't be expressed as ``postprocess.rewrites``. The
+  # stem remains in ``myst.yml``'s TOC and renders normally (#63).
+  #
+  # Example:
+  #   - { stem: common_symbols, title: "Symbols", regen: false }
+  #
+  # ``regen: false`` is also accepted on ``chapters:`` entries; passing
+  # the stem explicitly on the convert.sh CLI bypasses the gate for
+  # stages 2+ (useful for an occasional force-regen).
 
 # --- Environments (extend the defaults) -------------------------------------
 
