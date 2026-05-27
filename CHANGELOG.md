@@ -17,6 +17,21 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Added — pipeline transforms
 
+- **`\begin{longtable}` extraction in the marker preprocessor**
+  ([#54], follow-on to [#51] / [#55]): multi-page tables from the
+  ``longtable`` package now run through the same structural-extraction
+  path as ``\begin{table}`` floats. Differences from the regular
+  ``\begin{table}`` case: ``longtable`` is its OWN float container
+  (caption + label sit inside the env, typically on the first row
+  before ``\\``), the colspec is the sole arg (no width spec like
+  ``tabularx``), and PDF-pagination directives
+  (``\endfirsthead`` / ``\endhead`` / ``\endfoot`` /
+  ``\endlastfoot``) delimit repeated continuation-page header /
+  footer rows. MyST renders a longtable as a single block, so the
+  pagination boilerplate is stripped — only the pre-``\endfirsthead``
+  header and the post-``\endlastfoot`` body survive. Simpler shapes
+  (no pagination markers) fall back to the same first-section-is-header
+  rule convention used for regular tabulars. Closes [#54].
 - **Unified tabular extraction via marker preprocessor** ([#55],
   follow-up to [#51]): ``_apply_table_markers.py`` now extracts EVERY
   ``\\begin{tabular}`` variant in source ``.tex`` — not just those
@@ -888,6 +903,7 @@ haven't validated. Everything below is on `main` and available now.
 [#49]: https://github.com/QuantEcon/claude-latex-to-myst/issues/49
 [#50]: https://github.com/QuantEcon/claude-latex-to-myst/issues/50
 [#51]: https://github.com/QuantEcon/claude-latex-to-myst/issues/51
+[#54]: https://github.com/QuantEcon/claude-latex-to-myst/issues/54
 [#55]: https://github.com/QuantEcon/claude-latex-to-myst/issues/55
 [#58]: https://github.com/QuantEcon/claude-latex-to-myst/pull/58
 [#59]: https://github.com/QuantEcon/claude-latex-to-myst/issues/59

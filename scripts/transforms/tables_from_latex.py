@@ -17,10 +17,14 @@ row identity before pandoc even produces output. By extracting the
 block ourselves we keep full structural fidelity.
 
 Scope:
-- ``\\begin{table}[pos]?...\\end{table}`` floats only.
-- ``\\begin{center}\\begin{tabular}`` (no float wrapper) is handled by
-  ``convert_simple_tables`` via pandoc's output — pandoc preserves
-  enough structure for that case and rewriting it would be redundant.
+- ``\\begin{table}[pos]?...\\end{table}`` floats.
+- ``\\begin{center}\\begin{tabular}`` (no float wrapper) — substituted
+  whole so pandoc doesn't wrap the MyST emit in a ``::: center`` div.
+- Bare ``\\begin{tabular}`` (and variants) outside the above.
+- ``\\begin{longtable}{colspec}...\\end{longtable}`` (#54) — multi-page
+  tables from the ``longtable`` package. Pagination directives
+  (``\\endfirsthead`` etc.) are stripped since MyST renders as a
+  single block.
 - ``\\multicolumn``/``\\multirow`` are NOT handled in this initial
   cut (rare in book content; reachable as a follow-up).
 
@@ -69,6 +73,37 @@ _CENTER_BLOCK_RE = re.compile(
     re.DOTALL,
 )
 
+# The opener for ``\begin{longtable}`` (from the ``longtable`` package).
+# longtable is its OWN float container — caption and label sit INSIDE
+# the env (typically on the first row before ``\\``), not in an outer
+# ``\begin{table}`` wrapper. The colspec is the sole arg (no width
+# spec like ``tabularx``). See ``_parse_longtable_block`` for the
+# parsing differences (#54).
+_LONGTABLE_OPEN_RE = re.compile(r'\\begin\{longtable\}')
+
+# Pagination markers internal to a longtable. ``\endfirsthead`` ends
+# the real (first-page) header; ``\endhead`` / ``\endfoot`` /
+# ``\endlastfoot`` delimit the repeated continuation-page header and
+# footer rows. MyST renders a longtable as a single block (no
+# pagination), so the boilerplate between these markers is stripped —
+# only the pre-``\endfirsthead`` header and the post-final-marker
+# body survive. See ``_split_longtable_by_pagination``.
+_LONGTABLE_PAGE_MARKER_RE = re.compile(
+    r'\\(?:endfirsthead|endhead|endfoot|endlastfoot)\b'
+)
+
+# Boundary commands that close the longtable's "caption / header zone".
+# The longtable's own ``\caption`` and sibling ``\label`` sit in the
+# prefix BEFORE any of these — anything past them is data rows (where
+# cell-level ``\label`` for cross-refs can legitimately appear and must
+# NOT be promoted to the table's ``:name:``). Includes rule commands
+# (``\toprule`` / ``\midrule`` / ``\bottomrule`` / ``\hline`` /
+# ``\cmidrule``) and pagination markers.
+_LONGTABLE_HEADER_ZONE_BOUNDARY_RE = re.compile(
+    r'\\(?:toprule|midrule|bottomrule|cmidrule|hline'
+    r'|endfirsthead|endhead|endfoot|endlastfoot)\b'
+)
+
 # Tabular-family environment names. ``tabular`` is the bare form.
 # ``tabular*`` takes an extra ``{total-width}`` arg before the colspec.
 # ``tabularx`` / ``tabulary`` (package variants) take a ``{width}``
@@ -101,8 +136,10 @@ def _tabular_end_re(env_name: str) -> re.Pattern:
     return re.compile(r'\\end\{' + re.escape(env_name) + r'\}')
 
 # Caption + label extraction. Both can appear in any order before or
-# after the tabular environment.
-_CAPTION_RE = re.compile(r'\\caption\{')
+# after the tabular environment. ``\caption`` accepts an optional
+# ``[short]`` arg used for the LoF/LoT entry — match both shapes so
+# the long-form argument's opening brace is still at ``cap_m.end() - 1``.
+_CAPTION_RE = re.compile(r'\\caption(?:\[[^\]]*\])?\s*\{')
 _LABEL_RE = re.compile(r'\\label\{([^}]+)\}')
 
 
@@ -352,6 +389,200 @@ def _split_into_rows(text: str) -> list[list[str]]:
     return rows
 
 
+def _strip_balanced_command(
+    text: str,
+    command_name: str,
+    *,
+    has_optional_arg: bool = False,
+) -> str:
+    """Remove every ``\\command{...}`` (with balanced-brace argument)
+    from ``text``. Used to strip ``\\caption{}`` out of a longtable
+    body so the caption row doesn't leak into the parsed cells.
+
+    ``has_optional_arg=True`` also skips an optional ``[...]`` arg
+    between the command and the ``{`` — required for ``\\caption``,
+    which accepts a short-form list-entry text:
+    ``\\caption[short]{long}``.
+    """
+    opt = r'(?:\[[^\]]*\])?' if has_optional_arg else ''
+    cmd_re = re.compile(rf'\\{re.escape(command_name)}{opt}\s*\{{')
+    out_parts: list[str] = []
+    last_end = 0
+    for m in cmd_re.finditer(text):
+        # The matched ``{`` is at m.end() - 1.
+        close = _find_balanced_brace(text, m.end() - 1)
+        if close == -1:
+            continue
+        out_parts.append(text[last_end:m.start()])
+        last_end = close + 1
+    out_parts.append(text[last_end:])
+    return ''.join(out_parts)
+
+
+def _longtable_header_zone(body: str) -> tuple[str, str]:
+    """Slice a longtable body at the first rule or pagination marker.
+
+    Returns ``(header_zone, rest)``. The longtable's own ``\\caption``
+    and any sibling ``\\label`` sit in ``header_zone``; ``rest``
+    contains data rows and pagination boilerplate.
+
+    Used to bound both the fallback-label search and the label-strip
+    so cell-local ``\\label{}`` (legitimately present for ``\\ref``
+    cross-references from elsewhere) are neither promoted to the
+    table's ``:name:`` nor blanket-stripped from cell content.
+    """
+    m = _LONGTABLE_HEADER_ZONE_BOUNDARY_RE.search(body)
+    if m is None:
+        return body, ''
+    return body[:m.start()], body[m.start():]
+
+
+def _split_longtable_by_pagination(body: str) -> tuple[str, str]:
+    """Slice a longtable body around its pagination markers.
+
+    Returns ``(header_section, body_section)``. The text BEFORE the
+    first marker is the real (first-page) header; the text AFTER the
+    last marker is the body. Repeated-header and footer boilerplate
+    between markers is discarded — MyST has no pagination concept so
+    those rows don't translate.
+
+    If no markers are present, returns ``('', body)`` and the caller
+    falls back to rule-based section parsing (just like a regular
+    ``\\begin{tabular}``).
+    """
+    markers = list(_LONGTABLE_PAGE_MARKER_RE.finditer(body))
+    if not markers:
+        return '', body
+    header_section = body[:markers[0].start()]
+    body_section = body[markers[-1].end():]
+    return header_section, body_section
+
+
+def _parse_longtable_block(block_body: str) -> TableSpec | None:
+    """Parse a ``\\begin{longtable}{colspec}...\\end{longtable}`` block.
+
+    ``block_body`` is the WHOLE longtable including the ``\\begin``
+    opener and ``\\end`` closer (same convention as the bare-tabular
+    case — see ``find_table_blocks`` shape 4).
+
+    Differences from ``\\begin{table}`` + ``\\begin{tabular}`` floats
+    (#54):
+
+    1. No outer wrapper — ``\\begin{longtable}`` IS the float container,
+       so caption + label sit on a row INSIDE the env (typically the
+       first row, ending in ``\\\\``).
+    2. Colspec is the sole arg to the opener; no width arg like
+       ``tabularx``.
+    3. Pagination markers (``\\endfirsthead`` / ``\\endhead`` /
+       ``\\endfoot`` / ``\\endlastfoot``) delimit repeated header /
+       footer rows for PDF continuation pages. They have no MyST
+       analogue and are stripped via
+       ``_split_longtable_by_pagination``.
+    """
+    open_m = _LONGTABLE_OPEN_RE.search(block_body)
+    if not open_m:
+        return None
+
+    cursor = open_m.end()
+    # ``\begin{longtable}`` doesn't accept a ``[pos]`` arg in standard
+    # usage, but tolerate one defensively (some sources include it).
+    if cursor < len(block_body) and block_body[cursor] == '[':
+        bracket_close = block_body.find(']', cursor)
+        if bracket_close == -1:
+            return None
+        cursor = bracket_close + 1
+    while cursor < len(block_body) and block_body[cursor] in ' \t\n':
+        cursor += 1
+    if cursor >= len(block_body) or block_body[cursor] != '{':
+        return None
+    spec_open = cursor
+    spec_close = _find_balanced_brace(block_body, spec_open)
+    if spec_close == -1:
+        return None
+    colspec_str = block_body[spec_open + 1 : spec_close]
+
+    end_m = _tabular_end_re('longtable').search(block_body, spec_close + 1)
+    if not end_m:
+        return None
+    lt_body = block_body[spec_close + 1 : end_m.start()]
+
+    # Caption + label scan. Label may be inside the caption OR as a
+    # sibling. Mirrors the logic in ``parse_table_block``. The
+    # sibling-label fallback is scoped to the header zone (text before
+    # the first rule / pagination marker) so a cell-level
+    # ``\label{eq:foo}`` deeper in the body isn't misidentified as the
+    # table's own name.
+    caption: str | None = None
+    name: str | None = None
+    header_zone, _ = _longtable_header_zone(lt_body)
+    cap_m = _CAPTION_RE.search(lt_body)
+    if cap_m:
+        arg, _ = _extract_balanced_arg(lt_body, cap_m.end() - 1)
+        if arg:
+            caption_text = arg.strip()
+            lbl_inside = _LABEL_RE.search(caption_text)
+            if lbl_inside:
+                name = lbl_inside.group(1).replace(':', '-')
+                caption = re.sub(
+                    r'\\label\{[^}]+\}\s*', '', caption_text
+                ).strip() or None
+            else:
+                caption = caption_text or None
+    if name is None:
+        lbl_m = _LABEL_RE.search(header_zone)
+        if lbl_m:
+            name = lbl_m.group(1).replace(':', '-')
+
+    # Strip the caption row's commands so the row-parser doesn't see
+    # ``\caption{…}\label{…} \\`` as a body row. ``\caption`` also
+    # accepts an optional ``[short]`` arg — ``has_optional_arg=True``
+    # handles the ``\caption[short]{long}`` shape. The ``\label``
+    # strip is bounded to the header zone so legitimately cell-local
+    # labels deeper in the body survive for downstream ``\ref``
+    # resolution.
+    lt_body_clean = _strip_balanced_command(
+        lt_body, 'caption', has_optional_arg=True
+    )
+    header_zone_clean, rest_clean = _longtable_header_zone(lt_body_clean)
+    header_zone_clean = re.sub(
+        r'\\label\{[^}]+\}', '', header_zone_clean
+    )
+    lt_body_clean = header_zone_clean + rest_clean
+
+    colspec = _parse_colspec(colspec_str)
+    spec = TableSpec(name=name, caption=caption, colspec=colspec)
+
+    header_section, body_section = _split_longtable_by_pagination(
+        lt_body_clean
+    )
+
+    if header_section.strip():
+        # Pagination markers present — explicit header / body split.
+        # Both sections may still contain interior rules (toprule,
+        # midrule, bottomrule) that we want to honour as visual
+        # boundaries; the row parser already handles those.
+        for _, rows in _split_rows_by_rules(header_section):
+            if rows:
+                spec.header_rows.extend(rows)
+        for _, rows in _split_rows_by_rules(body_section):
+            if rows:
+                spec.body_rows.extend(rows)
+    else:
+        # No pagination markers — fall back to the regular-tabular
+        # convention: first non-empty rule-bounded section is header,
+        # the rest is body.
+        sections = _split_rows_by_rules(body_section)
+        non_empty = [(k, rows) for k, rows in sections if rows]
+        if len(non_empty) == 1:
+            spec.body_rows = non_empty[0][1]
+        elif non_empty:
+            spec.header_rows = non_empty[0][1]
+            for _, rows in non_empty[1:]:
+                spec.body_rows.extend(rows)
+
+    return spec
+
+
 def parse_table_block(block_body: str) -> TableSpec | None:
     """Parse a ``\\begin{table}...\\end{table}`` block's interior.
 
@@ -368,7 +599,16 @@ def parse_table_block(block_body: str) -> TableSpec | None:
     - The boundary between header and body is the FIRST interior rule
       that has non-empty content above it. Empty sections (just
       whitespace) are skipped.
+
+    For ``\\begin{longtable}`` blocks (a different LaTeX env with its
+    own pagination semantics), dispatches to ``_parse_longtable_block``
+    — see #54.
     """
+    # Dispatch by environment shape: longtable has its own caption /
+    # pagination conventions and parses differently.
+    if _LONGTABLE_OPEN_RE.search(block_body):
+        return _parse_longtable_block(block_body)
+
     # Find the tabular-variant environment opener.
     open_m = _TABULAR_OPEN_RE.search(block_body)
     if not open_m:
@@ -564,7 +804,16 @@ def find_table_blocks(text: str) -> list[tuple[int, int, str]]:
     """Find all tabular-bearing blocks in ``text`` that should be
     extracted via the marker preprocessor.
 
-    Three discovery shapes (in priority order):
+    Four discovery shapes (in priority order):
+
+    0. **Longtable** (#54): ``\\begin{longtable}{colspec}...\\end{longtable}``.
+       Multi-page table from the ``longtable`` package — own float
+       container, caption and label sit inside the env. Pagination
+       markers (``\\endfirsthead`` / ``\\endhead`` / ``\\endfoot`` /
+       ``\\endlastfoot``) delimit repeated continuation-page rows
+       that are stripped. Discovered first so the consumed-range
+       guard catches nested tabular variants the longtable body may
+       contain.
 
     1. **Table float**: ``\\begin{table}[pos]?...\\end{table}``. The
        block body is the content inside, which carries the caption
@@ -588,13 +837,30 @@ def find_table_blocks(text: str) -> list[tuple[int, int, str]]:
     Returns ``(start_idx, end_idx, body)`` tuples in source order.
     ``body`` is the content fed to ``parse_table_block`` for each
     shape — for shapes 1 and 2 it's the WHOLE wrapper's inside; for
-    shape 3 it's the tabular itself including ``\\begin``/``\\end``.
+    shapes 0 and 3 it's the whole env including ``\\begin``/``\\end``.
     """
     blocks: list[tuple[int, int, str]] = []
     consumed_ranges: list[tuple[int, int]] = []  # ranges already claimed
 
     def _claimed(pos: int) -> bool:
         return any(s <= pos < e for s, e in consumed_ranges)
+
+    # 0. Longtable environments (#54). Own container — no outer
+    # ``\begin{table}`` wrapper. Discovered before bare tabulars so
+    # the consumed-range guard catches any nested tabular variants the
+    # body might contain (unusual but legal).
+    for m in _LONGTABLE_OPEN_RE.finditer(text):
+        if _starts_in_comment(text, m.start()):
+            continue
+        if _has_skip_ancestor(text, m.start()):
+            continue
+        end_m = _tabular_end_re('longtable').search(text, m.end())
+        if end_m is None:
+            continue
+        start = m.start()
+        end = end_m.end()
+        blocks.append((start, end, text[start:end]))
+        consumed_ranges.append((start, end))
 
     # 1. Table floats (existing behaviour). Also subject to the
     # whole-ancestor-stack skip check so e.g.

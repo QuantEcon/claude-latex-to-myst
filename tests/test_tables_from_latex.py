@@ -357,6 +357,265 @@ def test_emits_top_and_bottom_rule_sections_drop_when_empty():
     assert spec.body_rows == [['a', 'b']]
 
 
+# ── Longtable (#54) ──────────────────────────────────────────────────────────
+
+
+def test_finds_longtable_block():
+    """``\\begin{longtable}`` is its own float container — discovered
+    independently of the ``\\begin{table}`` regex."""
+    src = (
+        r'\begin{longtable}{lcc}' '\n'
+        r'\caption{Test}\label{tab:lt1} \\' '\n'
+        r'\toprule' '\n'
+        r'A & B & C \\' '\n'
+        r'\midrule' '\n'
+        r'1 & 2 & 3 \\' '\n'
+        r'\bottomrule' '\n'
+        r'\end{longtable}'
+    )
+    blocks = find_table_blocks(src)
+    assert len(blocks) == 1
+    start, end, _ = blocks[0]
+    assert src[start:end] == src  # whole src is the block
+
+
+def test_longtable_full_pagination_markers_parses():
+    """Full longtable shape from the issue — caption + label in first
+    row, ``\\endfirsthead`` / ``\\endhead`` / ``\\endfoot`` /
+    ``\\endlastfoot`` boilerplate around the repeated header/footer
+    rows. The boilerplate must be stripped — only the real header
+    (pre-``\\endfirsthead``) and body (post-``\\endlastfoot``) survive."""
+    src = (
+        r'\begin{longtable}{lcc}' '\n'
+        r'\caption{Multi-page table caption}\label{tab:big} \\' '\n'
+        r'\toprule' '\n'
+        r'H1 & H2 & H3 \\' '\n'
+        r'\midrule' '\n'
+        r'\endfirsthead' '\n'
+        r'\multicolumn{3}{c}{\textit{Continued}} \\' '\n'
+        r'\toprule' '\n'
+        r'H1 & H2 & H3 \\' '\n'
+        r'\midrule' '\n'
+        r'\endhead' '\n'
+        r'\midrule' '\n'
+        r'\multicolumn{3}{r}{\textit{Continued on next page}} \\' '\n'
+        r'\endfoot' '\n'
+        r'\bottomrule' '\n'
+        r'\endlastfoot' '\n'
+        r'row1 & a & b \\' '\n'
+        r'row2 & c & d \\' '\n'
+        r'\end{longtable}'
+    )
+    blocks = find_table_blocks(src)
+    assert len(blocks) == 1
+    spec = parse_table_block(blocks[0][2])
+    assert spec is not None
+    assert spec.name == 'tab-big'
+    assert spec.caption == 'Multi-page table caption'
+    assert spec.colspec == ['l', 'c', 'c']
+    # Only the real header survives — boilerplate dropped.
+    assert spec.header_rows == [['H1', 'H2', 'H3']]
+    # Only the post-\endlastfoot rows are body content.
+    assert spec.body_rows == [['row1', 'a', 'b'], ['row2', 'c', 'd']]
+
+
+def test_longtable_no_pagination_markers_uses_rule_split():
+    """Simpler longtable without ``\\endhead`` etc. — fall back to the
+    same first-section-is-header convention used for ``\\begin{tabular}``."""
+    src = (
+        r'\begin{longtable}{ll}' '\n'
+        r'\caption{Simple} \\' '\n'
+        r'\toprule' '\n'
+        r'key & value \\' '\n'
+        r'\midrule' '\n'
+        r'a & 1 \\' '\n'
+        r'b & 2 \\' '\n'
+        r'\bottomrule' '\n'
+        r'\end{longtable}'
+    )
+    blocks = find_table_blocks(src)
+    spec = parse_table_block(blocks[0][2])
+    assert spec.caption == 'Simple'
+    assert spec.name is None
+    assert spec.header_rows == [['key', 'value']]
+    assert spec.body_rows == [['a', '1'], ['b', '2']]
+
+
+def test_longtable_sibling_label_after_caption():
+    """``\\label{}`` outside the ``\\caption{}`` braces — same shape as
+    algorithm2e's sibling-label convention (lesson 028 → GH #39)."""
+    src = (
+        r'\begin{longtable}{ll}' '\n'
+        r'\caption{Title}' '\n'
+        r'\label{tab:sib} \\' '\n'
+        r'\toprule' '\n'
+        r'A & B \\' '\n'
+        r'\midrule' '\n'
+        r'x & y \\' '\n'
+        r'\bottomrule' '\n'
+        r'\end{longtable}'
+    )
+    blocks = find_table_blocks(src)
+    spec = parse_table_block(blocks[0][2])
+    assert spec.name == 'tab-sib'
+    assert spec.caption == 'Title'
+
+
+def test_longtable_label_inside_caption():
+    """The other convention — ``\\caption{\\label{X}Text}`` — must
+    also extract the label correctly. Mirrors the existing
+    ``test_label_inside_caption_extracted`` for regular tables."""
+    src = (
+        r'\begin{longtable}{ll}' '\n'
+        r'\caption{\label{tab:inside}Text} \\' '\n'
+        r'\toprule' '\n'
+        r'A & B \\' '\n'
+        r'\midrule' '\n'
+        r'x & y \\' '\n'
+        r'\bottomrule' '\n'
+        r'\end{longtable}'
+    )
+    spec = parse_table_block(find_table_blocks(src)[0][2])
+    assert spec.name == 'tab-inside'
+    assert spec.caption == 'Text'
+
+
+def test_longtable_plain_no_caption_no_rules():
+    """Degenerate but valid: ``\\begin{longtable}`` with just body
+    rows, no caption, no rules. Should still produce a TableSpec
+    with all rows in body."""
+    src = (
+        r'\begin{longtable}{cc}' '\n'
+        r'foo & bar \\' '\n'
+        r'baz & qux \\' '\n'
+        r'\end{longtable}'
+    )
+    spec = parse_table_block(find_table_blocks(src)[0][2])
+    assert spec.caption is None
+    assert spec.name is None
+    assert spec.header_rows == []
+    assert spec.body_rows == [['foo', 'bar'], ['baz', 'qux']]
+
+
+def test_longtable_skipped_inside_skip_ancestor():
+    """A longtable inside an env in ``_SKIP_ANCESTOR_ENVS`` (here a
+    TikZ picture, atypical but legal) is left for pandoc — same
+    contract as tabulars."""
+    src = (
+        r'\begin{tikzpicture}' '\n'
+        r'\begin{longtable}{cc}' '\n'
+        r'a & b \\' '\n'
+        r'\end{longtable}' '\n'
+        r'\end{tikzpicture}'
+    )
+    assert find_table_blocks(src) == []
+
+
+def test_longtable_emits_table_directive_with_caption():
+    """End-to-end emit check: a captioned longtable becomes a
+    ``{table}`` wrapper with a single-header pipe-table body."""
+    src = (
+        r'\begin{longtable}{lc}' '\n'
+        r'\caption{Cap}\label{tab:e2e} \\' '\n'
+        r'\toprule' '\n'
+        r'H1 & H2 \\' '\n'
+        r'\midrule' '\n'
+        r'1 & 2 \\' '\n'
+        r'\bottomrule' '\n'
+        r'\end{longtable}'
+    )
+    spec = parse_table_block(find_table_blocks(src)[0][2])
+    out = emit_myst(spec)
+    assert '````{table}' in out
+    assert ':name: tab-e2e' in out
+    assert 'Cap' in out
+    assert '| H1 | H2 |' in out
+    assert '| 1 | 2 |' in out
+
+
+def test_longtable_skips_commented_block():
+    """Commented-out ``\\begin{longtable}`` must NOT be extracted (same
+    convention as the other shapes)."""
+    src = (
+        r'% \begin{longtable}{l}' '\n'
+        r'% a \\' '\n'
+        r'% \end{longtable}' '\n'
+    )
+    assert find_table_blocks(src) == []
+
+
+def test_longtable_caption_with_optional_short_arg():
+    """PR #66 Copilot review (line 472) — ``\\caption[short]{long}``
+    is valid LaTeX (the ``[short]`` arg supplies the LoF/LoT text).
+    Pre-fix ``_CAPTION_RE`` required ``\\caption{`` and missed this
+    form, leaving the unstripped ``\\caption[short]{long}`` to leak
+    into the row parser as a body cell."""
+    src = (
+        r'\begin{longtable}{lc}' '\n'
+        r'\caption[Short]{The long-form caption}\label{tab:opt} \\' '\n'
+        r'\toprule' '\n'
+        r'H1 & H2 \\' '\n'
+        r'\midrule' '\n'
+        r'a & b \\' '\n'
+        r'\bottomrule' '\n'
+        r'\end{longtable}'
+    )
+    spec = parse_table_block(find_table_blocks(src)[0][2])
+    assert spec is not None
+    assert spec.name == 'tab-opt'
+    assert spec.caption == 'The long-form caption'
+    # Caption row must NOT have leaked into the data rows.
+    assert spec.header_rows == [['H1', 'H2']]
+    assert spec.body_rows == [['a', 'b']]
+
+
+def test_longtable_cell_local_label_not_promoted_to_name():
+    """PR #66 Copilot review (line 486) — when an unlabelled longtable
+    has a ``\\label{}`` inside a body cell (legitimately present for
+    downstream ``\\ref``), the fallback sibling-label scan must NOT
+    pick it up as the table's ``:name:``. The fallback is scoped to
+    the header zone (text before the first rule / pagination marker)."""
+    src = (
+        r'\begin{longtable}{lc}' '\n'
+        r'\caption{Unlabelled table} \\' '\n'
+        r'\toprule' '\n'
+        r'H1 & H2 \\' '\n'
+        r'\midrule' '\n'
+        r'cell \label{eq:foo} & b \\' '\n'
+        r'c & d \\' '\n'
+        r'\bottomrule' '\n'
+        r'\end{longtable}'
+    )
+    spec = parse_table_block(find_table_blocks(src)[0][2])
+    assert spec is not None
+    # No table-level label in the header zone → ``:name:`` stays None
+    # despite the body cell carrying ``\label{eq:foo}``.
+    assert spec.name is None
+    assert spec.caption == 'Unlabelled table'
+
+
+def test_longtable_cell_local_label_survives_strip():
+    """PR #66 Copilot review (line 490) — the label-strip that
+    removes the longtable's OWN ``\\label{}`` from the caption row
+    must not blanket-strip cell-local labels deeper in the body.
+    Those carry semantic meaning for ``\\ref`` from elsewhere."""
+    src = (
+        r'\begin{longtable}{lc}' '\n'
+        r'\caption{Captioned}\label{tab:keep} \\' '\n'
+        r'\toprule' '\n'
+        r'H1 & H2 \\' '\n'
+        r'\midrule' '\n'
+        r'cell \label{eq:foo} & b \\' '\n'
+        r'\bottomrule' '\n'
+        r'\end{longtable}'
+    )
+    spec = parse_table_block(find_table_blocks(src)[0][2])
+    assert spec.name == 'tab-keep'
+    # Header zone's \label (tab:keep) is stripped; cell-local
+    # \label{eq:foo} survives into the body cell.
+    assert spec.body_rows == [[r'cell \label{eq:foo}', 'b']]
+
+
 def test_interior_hline_in_body_keeps_rows_together():
     """A visual ``\\hline`` between body groups should NOT cause a
     second header section — the FIRST interior rule is the
