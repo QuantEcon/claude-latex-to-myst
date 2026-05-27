@@ -42,7 +42,11 @@ haven't validated. Everything below is on `main` and available now.
   ``itemize`` / ``enumerate`` (its sub-``\item`` are unlabelled and a
   nested ``enumerate``'s ``\end`` would otherwise close the outer block
   early) is still rewritten, with the nested list carried intact inside
-  the parent exercise body.
+  the parent exercise body. The emitted directive fence widens to
+  outrank any code fence in the exercise body (a nested ```` ```python ````
+  block yields a four-backtick ``````` ````{exercise} ``````` wrapper),
+  matching the lecture-source convention so the inner fence can't close
+  the directive early.
 - **`\begin{longtable}` extraction in the marker preprocessor**
   ([#54], follow-on to [#51] / [#55]): multi-page tables from the
   ``longtable`` package now run through the same structural-extraction

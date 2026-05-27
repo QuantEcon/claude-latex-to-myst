@@ -188,6 +188,32 @@ def test_resolve_exercise_markers_handles_multiple_pairs():
     assert ":label: ex-2" in out
 
 
+def test_resolve_exercise_markers_widens_fence_around_nested_code_block():
+    """An exercise whose body contains a ```` ```python ```` code fence
+    must be wrapped in a *four*-backtick directive fence — the lecture
+    source convention — so the inner ``` doesn't close the directive
+    early (CommonMark fence-nesting rule)."""
+    src = (
+        "<!--EXERCISE-START label=ex-code-->\n"
+        "Implement the loss:\n"
+        "\n"
+        "```python\n"
+        "def loss(y, yhat):\n"
+        "    return ((y - yhat) ** 2).mean()\n"
+        "```\n"
+        "<!--EXERCISE-END-->\n"
+    )
+    out = postprocess.resolve_exercise_markers(src)
+    # Outer directive opens and closes with four backticks.
+    assert "````{exercise}" in out
+    assert out.rstrip().endswith("````")
+    # The inner three-backtick block survives intact inside the body.
+    assert "```python" in out
+    assert ":label: ex-code" in out
+    # No marker leakage.
+    assert "EXERCISE-START" not in out and "EXERCISE-END" not in out
+
+
 def test_resolve_exercise_markers_idempotent_no_markers():
     """No markers in the input → no-op."""
     src = "Just some markdown with no markers.\n"

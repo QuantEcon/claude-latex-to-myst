@@ -288,6 +288,24 @@ _EXERCISE_MARKER_RE = re.compile(
 )
 
 
+_FENCE_LINE_RE = re.compile(r'[ \t]*(`{3,})')
+
+
+def _outer_fence(content: str) -> str:
+    """Pick a backtick fence at least one tick longer than the longest
+    code fence inside ``content`` — CommonMark/MyST require the
+    enclosing directive's fence to outrank any nested fence, else the
+    inner ``` closes the directive early. Minimum three backticks;
+    a body with a nested ```` ```python ```` block yields four
+    (the lecture-source convention)."""
+    inner = 0
+    for line in content.splitlines():
+        m = _FENCE_LINE_RE.match(line)
+        if m:
+            inner = max(inner, len(m.group(1)))
+    return '`' * max(3, inner + 1)
+
+
 def resolve_exercise_markers(text: str) -> str:
     """Decode EXERCISE marker pairs into ``{exercise}`` directives.
 
@@ -305,18 +323,23 @@ def resolve_exercise_markers(text: str) -> str:
         Markdown content
         ```
 
+    When the body itself contains a fenced code block the directive
+    fence widens to outrank it (``_outer_fence``), so a nested
+    ```` ```python ```` block doesn't terminate the exercise early.
+
     Pandoc may escape ``<`` to ``\\<`` and ``>`` to ``\\>``; the regex
     tolerates both forms (mirrors ``resolve_listings``).
     """
     def repl(m: re.Match) -> str:
         label = m.group('label')
         content = (m.group('content') or '').strip()
+        fence = _outer_fence(content)
         return (
-            '```{exercise}\n'
+            f'{fence}{{exercise}}\n'
             f':label: {label}\n'
             '\n'
             f'{content}\n'
-            '```'
+            f'{fence}'
         )
 
     return _EXERCISE_MARKER_RE.sub(repl, text)
