@@ -136,6 +136,23 @@ def test_count_myst_citations_all_roles():
     assert v.count_myst(md)['citations'] == 5
 
 
+def test_count_latex_citations_with_optional_args():
+    """Natbib ``\\cite*`` variants accept 0-2 optional ``[prenote][postnote]``
+    args between the command and the key (``\\citep[see][ch. 2]{key}``).
+    Pre-fix the regex required ``{`` immediately after the command name
+    so every optional-arg cite was under-counted, producing phantom
+    LaTeX↔MyST mismatches in books that use them (1 instance in
+    book-dp1, 1 in book-dp2, 28 in the Deep_Learning corpus). Mirrors
+    ``_NATBIB_OPT`` in ``scripts/_apply_rewrites.py``."""
+    tex = (
+        r"\citep[see][ch.~2]{a} and "      # two optional args
+        r"\citep[e.g.,][]{b} and "         # one filled + one empty
+        r"\citet[\S 7.5]{c} and "          # single optional
+        r"\citep{d}"                       # no optional
+    )
+    assert v.count_latex(tex)['citations'] == 4
+
+
 def test_citation_counts_balance_natbib_round_trip():
     """End-to-end fairness — for every natbib variant the pipeline
     rewrites to a ``{cite:*}`` role, the LaTeX count and the MyST

@@ -46,15 +46,21 @@ def count_latex(text: str) -> dict:
         'labeled_eqs':     len(re.findall(r'\\label\{eq:', text)),
         'theorems':        len(re.findall(r'\\begin\{(box)?(theorem|lemma|corollary|proposition|definition)\}', text)),
         'figures':         _count_figures_latex(text),
-        # Match the full natbib family. The narrow ``\cite[pt]?{`` form
-        # caught only ``\cite``/``\citet``/``\citep`` and missed
+        # Match the full natbib family — every variant the pipeline
+        # round-trips, with or without optional ``[prenote][postnote]``
+        # args. The narrow ``\cite[pt]?{`` form caught only
+        # ``\cite``/``\citet``/``\citep`` and missed
         # ``\citealp``/``\citealt``/``\citeauthor``/``\citeyear``/
         # ``\citeyearpar`` — each of which the pipeline converts to a
-        # ``{cite:*}`` MyST role. Without the wider pattern those
-        # variants under-counted the LaTeX side and surfaced as
-        # phantom validation mismatches once ``count_myst`` was
-        # widened to match them on the MyST side (#67).
-        'citations':       len(re.findall(r'\\cite[a-z]*\{', text)),
+        # ``{cite:*}`` MyST role. The trailing ``{`` also has to allow
+        # 0–2 optional bracket args between command and key, matching
+        # ``_NATBIB_OPT`` in ``_apply_rewrites.py``; without that, any
+        # cite written as ``\citep[see][ch. 2]{key}`` is under-counted
+        # (1 instance in book-dp1, 1 in book-dp2, 28 in the
+        # Deep_Learning corpus — #67's Copilot review).
+        'citations':       len(re.findall(
+            r'\\cite[a-z]*(?:\s*\[[^\]]*\]){0,2}\s*\{', text
+        )),
         'cross_refs':      len(re.findall(r'\\(cref|Cref|ref|eqref|autoref)\{', text)),
     }
 
