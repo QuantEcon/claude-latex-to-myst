@@ -1,13 +1,14 @@
 ---
 id: 028
-title: "Custom preamble text macros (\\DeclareUrlCommand, \\newcommand wrapping \\textcolor) pandoc drops silently along with their argument"
+title: "Custom preamble + package-imported text macros (\\DeclareUrlCommand, \\newcommand wrapping \\textcolor, \\ding from pifont, \\faIcon) pandoc drops silently along with their argument"
 category: preprocess
-tags: [pandoc, preamble, custom-macros, declareurlcommand, newcommand, warning]
-source_project: external book (Deep_Learning_for_Solving_And_Estimating_Dynamic_Economic_Models)
+tags: [pandoc, preamble, custom-macros, declareurlcommand, newcommand, pifont, ding, faIcon, warning]
+source_project: external book (Deep_Learning_for_Solving_And_Estimating_Dynamic_Economic_Models); book-dp2 (ch_adps \ding{51})
 status: codified
 codified_in: scripts/_warn_dropped_text_macros.py
 severity: medium
 date: 2026-05-24
+updated: 2026-05-27
 ---
 
 ## Symptom
@@ -63,15 +64,32 @@ Pandoc can sometimes expand `\newcommand` definitions, but not when
 the body uses commands it doesn't know (`\textcolor`, custom
 spacing, etc.). The whole expansion fails and the macro is dropped.
 
-The result is the same in both cases: macro and argument both gone,
-no warning.
+**Shape C — package-imported macros (added #50).**
+
+```latex
+\usepackage{pifont}
+% ... in body:
+$\rho < 1$ & \ding{51} & \ding{55} \\
+```
+
+There is no `\newcommand` in user code to scan — the macro arrives
+via `\usepackage{}`. Same end state: pandoc has no handler, drops
+the macro and its argument. Surfaced converting book-dp2's
+`ch_adps.tex` where 10× `\ding{51}` checkmarks in a captioned
+convergence table were silently emptied (`grep -c '\\ding'` on the
+preprocessed tex returned 10; on the postprocessed markdown, 0).
+
+The result is the same in all three cases: macro and argument both
+gone, no warning.
 
 ## Fix
 
-`scripts/_warn_dropped_text_macros.py` scans the source preamble(s)
-for these definitions, counts usages across chapter files, and
-prints a single warning with a paste-ready `preprocess.rewrites`
-block:
+`scripts/_warn_dropped_text_macros.py` handles all three shapes.
+For Shapes A and B it scans the source preamble(s) for definitions;
+for Shape C it checks a curated registry (`_PACKAGE_DROP_REGISTRY`)
+of known package-imported macros by name in chapter body text. In
+all cases it counts usages and prints a single warning with a
+paste-ready `preprocess.rewrites` block:
 
 ```
 WARNING: custom text macros pandoc may drop silently:
@@ -87,6 +105,17 @@ To apply, add to config.yaml under preprocess.rewrites:
         to:   '\texttt{\1}' }
     - { from: '\\emphc\{((?:\\.|[^{}])*)\}',
         to:   '\textbf{\1}' }
+
+WARNING: package-imported text macros pandoc may drop silently:
+
+  \ding  — used 10× (package `pifont`) across ch_adps.tex
+      \ding{51}: 7× — suggested → ✓  (U+2713 check mark)
+      \ding{55}: 3× — suggested → ✗  (U+2717 ballot x)
+
+To apply, add to config.yaml under preprocess.rewrites:
+
+    - { from: '\\ding\{51\}', to: '✓' }
+    - { from: '\\ding\{55\}', to: '✗' }
 ```
 
 This is **Level 1 — warn** from the issue proposal. The pipeline
@@ -110,24 +139,43 @@ Tests in [tests/test_preprocessors.py](../tests/test_preprocessors.py):
 `test_warn_newcommand_textcolor_textbf_suggests_textbf`,
 `test_warn_newcommand_math_only_not_flagged`,
 `test_warn_count_usages_skips_definitions`,
-`test_warn_scan_end_to_end`, `test_warn_scan_no_macros_is_quiet`.
+`test_warn_scan_end_to_end`, `test_warn_scan_no_macros_is_quiet`,
+plus the package-macro tests `test_warn_package_ding_detected_with_arg_glyphs`,
+`test_warn_package_unknown_arg_flagged_for_manual_fill`,
+`test_warn_package_zero_arg_replacement_suggested`,
+`test_warn_package_macro_word_boundary`,
+`test_warn_package_no_usage_is_quiet`,
+`test_warn_package_warning_contains_paste_ready_rewrite`.
 
 ## How to detect (without running the warner)
 
 Manually, in any LaTeX source dir:
 
 ```bash
-# Custom URL-style monospace macros
+# Custom URL-style monospace macros (Shape A)
 grep -n '\\DeclareUrlCommand' *.tex
-# Custom \newcommand definitions whose body uses non-pandoc commands
+# Custom \newcommand definitions whose body uses non-pandoc commands (Shape B)
 grep -nE '\\(re)?newcommand.*\\textcolor' *.tex
 grep -nE '\\(re)?newcommand.*\\urlstyle' *.tex
+# Package-imported macros (Shape C) — by name in body
+grep -nE '\\(ding|faIcon|faicon|checkmark)\b' *.tex
 ```
 
 Any hit is a candidate for the silent-drop bug. Cross-check by
 greping the chapters for `\X{…}` uses; if the macro is used and not
 listed in the user's `preprocess.rewrites`, the converted markdown
 will be broken at every use site.
+
+Specifically for `\ding` (the most common Shape C offender), a fast
+sanity check after a conversion run:
+
+```bash
+grep -c '\\ding\|✓\|✗' mystmd/tmp/ch_*.tex   # inputs to pandoc
+grep -c '\\ding\|✓\|✗' mystmd/ch_*.md         # outputs from pandoc
+```
+
+If the first number is non-zero and the second is zero, every `\ding`
+silently vanished.
 
 ## Generalizable rule
 

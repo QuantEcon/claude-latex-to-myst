@@ -771,3 +771,90 @@ def test_warn_scan_no_macros_is_quiet(tmp_path):
     usage = wdtm.scan(src, [src / "ch01.tex"])
     assert usage == {}
     assert wdtm.format_warning(usage) == ""
+
+
+# ── Package-imported text macros (issue #50) ─────────────────────────────────
+
+
+def test_warn_package_ding_detected_with_arg_glyphs():
+    """GH #50 — ``\\ding{N}`` from ``pifont`` is silently dropped by
+    pandoc. Detector counts per-arg usage and suggests the unicode
+    glyph the project author can paste into ``preprocess.rewrites``."""
+    text = (
+        r"Hit \ding{51} miss \ding{55} hit \ding{51}."
+    )
+    found = wdtm.find_package_macro_usages(text)
+    assert "ding" in found
+    assert found["ding"]["count"] == 3
+    assert found["ding"]["arg_counts"]["51"] == 2
+    assert found["ding"]["arg_counts"]["55"] == 1
+
+
+def test_warn_package_unknown_arg_flagged_for_manual_fill():
+    """An unknown ``\\ding`` number — no default glyph in the registry —
+    must still be reported so the author can pick a replacement, but
+    NOT auto-suggested (we don't want to invent glyph mappings)."""
+    text = r"Special: \ding{999}."
+    found = wdtm.find_package_macro_usages(text)
+    assert found["ding"]["arg_counts"]["999"] == 1
+    msg = wdtm.format_package_warning(
+        wdtm.scan_package_macros(
+            _files_with_content(text)
+        )
+    )
+    assert "999" in msg
+    assert "no default" in msg
+
+
+def test_warn_package_zero_arg_replacement_suggested():
+    """``\\checkmark`` (from ``amssymb``) is a zero-arg macro with a
+    fixed unicode equivalent — registry provides the replacement
+    directly."""
+    text = r"All good \checkmark here."
+    found = wdtm.find_package_macro_usages(text)
+    assert found["checkmark"]["count"] == 1
+    assert found["checkmark"]["arg_counts"] is None
+    usage = wdtm.scan_package_macros(_files_with_content(text))
+    msg = wdtm.format_package_warning(usage)
+    assert r"\\checkmark\b" in msg
+    assert "✓" in msg
+
+
+def test_warn_package_macro_word_boundary():
+    """``\\ding`` must not match ``\\dingbat`` (or any longer macro name
+    with the same prefix). Regex uses a trailing ``[^A-Za-z@]`` guard."""
+    text = r"\dingbat{x} should not flag, but \ding{51} should."
+    found = wdtm.find_package_macro_usages(text)
+    assert found["ding"]["count"] == 1
+    assert found["ding"]["arg_counts"]["51"] == 1
+
+
+def test_warn_package_no_usage_is_quiet():
+    text = "Plain prose."
+    assert wdtm.find_package_macro_usages(text) == {}
+    assert wdtm.format_package_warning(
+        wdtm.scan_package_macros(_files_with_content(text))
+    ) == ""
+
+
+def test_warn_package_warning_contains_paste_ready_rewrite():
+    """Smoke test: the warning text contains paste-ready
+    ``preprocess.rewrites`` entries with the correct regex shape."""
+    usage = wdtm.scan_package_macros(_files_with_content(
+        r"\ding{51} and \ding{55}."
+    ))
+    msg = wdtm.format_package_warning(usage)
+    # The rewrite shape matches what `_apply_rewrites.py` consumes.
+    assert r"\\ding\{51\}" in msg
+    assert r"\\ding\{55\}" in msg
+    assert "preprocess.rewrites" in msg
+
+
+def _files_with_content(text: str):
+    """Helper: stash ``text`` into a temp ``.tex`` file and return the
+    path list ``scan_package_macros`` expects. Used by package-macro
+    tests above."""
+    import tempfile, pathlib
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "ch.tex"
+    tmp.write_text(text, encoding="utf-8")
+    return [tmp]

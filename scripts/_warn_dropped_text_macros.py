@@ -1,19 +1,29 @@
 #!/usr/bin/env python3
-"""Warn about custom text macros pandoc will silently drop.
+"""Warn about text macros pandoc will silently drop.
+
+Two families of macro produce the same end result — pandoc has no
+handler, drops the macro along with its argument, and leaves broken
+sentences scattered through the converted markdown:
+
+1. **Project-defined text macros** (GH #22). Defined with
+   ``\\DeclareUrlCommand`` or with a ``\\newcommand`` body that wraps
+   ``#1`` in formatting macros pandoc doesn't know about. Scanned out
+   of the source preamble(s).
+
+2. **Package-imported text macros** (GH #50). Macros like ``\\ding{N}``
+   from ``pifont`` or ``\\faIcon{X}`` from ``fontawesome`` that arrive
+   via ``\\usepackage{}`` — no definition in user code to detect.
+   Scanned by name against a curated registry of known-dropped macros.
 
 Pandoc handles a fixed set of text commands natively (``\\textbf``,
 ``\\textit``, ``\\texttt``, ``\\emph``, ``\\textsf``, ``\\underline``,
-…). Project-specific text macros — defined with ``\\DeclareUrlCommand``
-or with a ``\\newcommand`` body that wraps ``#1`` in formatting macros
-pandoc doesn't know about — are dropped silently *along with their
-argument*, leaving broken sentences scattered through the converted
-markdown.
+…) — anything else is a candidate.
 
-This pass scans the source LaTeX for those definitions, counts how
-many times each is used in the converted chapter sources, and prints
-a single warning summary recommending a ``preprocess.rewrites`` rule
-the user can paste into their ``config.yaml``. It does not modify any
-files — the actual rewrite is opt-in per project (GH #22).
+This pass detects both families, counts how many times each is used in
+the converted chapter sources, and prints a single warning summary
+recommending ``preprocess.rewrites`` rules the user can paste into
+``config.yaml``. It does not modify any files — the actual rewrite is
+opt-in per project.
 
 Usage::
 
@@ -24,6 +34,7 @@ from __future__ import annotations
 
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 # Pandoc natively converts these text commands. Anything else is a
@@ -177,6 +188,184 @@ def scan(source_dir: Path, chapter_files: list[Path]) -> dict[str, dict]:
     return usage
 
 
+# ── Package-imported text macros (#50) ───────────────────────────────────────
+#
+# Macros that come from ``\usepackage{}`` imports — pandoc has no handler
+# and silently drops the macro along with its argument. Unlike the
+# ``\newcommand`` case above there is no definition to scan; detection is
+# by macro name in the chapter body.
+#
+# The registry is intentionally small. Add entries as books surface them
+# (the warning is paste-ready, so each new macro fixes itself once).
+#
+# Each entry: macro_name → {
+#   'package':    LaTeX package the macro comes from (informational),
+#   'has_arg':    True if ``\macro{ARG}`` form (vs. zero-arg ``\macro``),
+#   'arg_glyphs': {arg_str: (unicode, label)} — replacements per arg
+#                 (only meaningful when has_arg=True).
+#   'replacement': (unicode, label) — fixed replacement (zero-arg only).
+# }
+
+_PACKAGE_DROP_REGISTRY: dict[str, dict] = {
+    'ding': {
+        'package': 'pifont',
+        'has_arg': True,
+        # Common pifont numbers seen in mathematical / data-science books.
+        # Numbers correspond to ZapfDingbats glyph positions; the unicode
+        # mappings here follow the pifont package manual.
+        'arg_glyphs': {
+            '51': ('✓', 'U+2713 check mark'),
+            '52': ('✔', 'U+2714 heavy check mark'),
+            '55': ('✗', 'U+2717 ballot x'),
+            '56': ('✘', 'U+2718 heavy ballot x'),
+            '108': ('●', 'U+25CF black circle'),
+            '109': ('❍', 'U+274D shadowed white circle'),
+        },
+    },
+    'faIcon': {
+        'package': 'fontawesome5',
+        'has_arg': True,
+        # No defaults — too many icons; user picks per project.
+        'arg_glyphs': {},
+    },
+    'faicon': {  # fontawesome (v4) lowercase variant
+        'package': 'fontawesome',
+        'has_arg': True,
+        'arg_glyphs': {},
+    },
+    'checkmark': {  # amssymb / dingbat fallback
+        'package': 'amssymb',
+        'has_arg': False,
+        'replacement': ('✓', 'U+2713 check mark'),
+    },
+}
+
+# Match ``\macro{ARG}`` where ARG has no nested braces. The macros in
+# the registry above all take simple one-token args by design.
+def _package_arg_pattern(name: str) -> re.Pattern[str]:
+    return re.compile(rf'\\{re.escape(name)}\s*\{{([^{{}}]*)\}}')
+
+
+def _package_bare_pattern(name: str) -> re.Pattern[str]:
+    # Word boundary: macro name not followed by a letter (so ``\ding`` doesn't
+    # also match ``\dingbat``).
+    return re.compile(rf'\\{re.escape(name)}(?![A-Za-z@])')
+
+
+def find_package_macro_usages(text: str) -> dict[str, dict]:
+    """Return ``{macro: {'count': N, 'arg_counts': Counter|None}}`` for
+    every registered package-imported macro that appears in ``text``."""
+    out: dict[str, dict] = {}
+    for name, spec in _PACKAGE_DROP_REGISTRY.items():
+        if spec['has_arg']:
+            args = _package_arg_pattern(name).findall(text)
+            if not args:
+                continue
+            out[name] = {'count': len(args), 'arg_counts': Counter(args)}
+        else:
+            n = len(_package_bare_pattern(name).findall(text))
+            if n == 0:
+                continue
+            out[name] = {'count': n, 'arg_counts': None}
+    return out
+
+
+def scan_package_macros(chapter_files: list[Path]) -> dict[str, dict]:
+    """Aggregate package-macro usage across chapters.
+
+    Shape: ``{macro: {'count': N, 'arg_counts': Counter|None, 'files': [..]}}``.
+    """
+    out: dict[str, dict] = {}
+    for ch in chapter_files:
+        try:
+            text = ch.read_text(encoding='utf-8', errors='replace')
+        except OSError:
+            continue
+        found = find_package_macro_usages(text)
+        for name, info in found.items():
+            entry = out.setdefault(name, {
+                'count': 0,
+                'arg_counts': Counter() if info['arg_counts'] is not None else None,
+                'files': [],
+            })
+            entry['count'] += info['count']
+            entry['files'].append(ch.name)
+            if info['arg_counts'] is not None:
+                entry['arg_counts'].update(info['arg_counts'])
+    return out
+
+
+def format_package_warning(usage: dict[str, dict]) -> str:
+    """Pretty-print package-macro usage + paste-ready rewrite suggestions."""
+    if not usage:
+        return ''
+    lines = [
+        '',
+        'WARNING: package-imported text macros pandoc may drop silently:',
+        '',
+    ]
+    suggested: list[str] = []  # paste-ready preprocess.rewrites entries
+    manual: list[str] = []     # entries the user still has to fill in
+
+    for macro, info in sorted(usage.items()):
+        spec = _PACKAGE_DROP_REGISTRY[macro]
+        pkg = spec.get('package') or 'unknown'
+        files = ', '.join(sorted(set(info['files'])))
+        lines.append(
+            f"  \\{macro}  — used {info['count']}× (package `{pkg}`) "
+            f"across {files}"
+        )
+        if spec['has_arg']:
+            for arg, n in info['arg_counts'].most_common():
+                glyph_info = spec.get('arg_glyphs', {}).get(arg)
+                if glyph_info:
+                    glyph, label = glyph_info
+                    lines.append(
+                        f"      \\{macro}{{{arg}}}: {n}× — suggested → "
+                        f"{glyph}  ({label})"
+                    )
+                    suggested.append(
+                        f"    - {{ from: '\\\\{macro}\\{{{re.escape(arg)}\\}}', "
+                        f"to: '{glyph}' }}"
+                    )
+                else:
+                    lines.append(
+                        f"      \\{macro}{{{arg}}}: {n}× — no default; "
+                        f"add a rewrite manually"
+                    )
+                    manual.append(
+                        f"    # \\{macro}{{{arg}}} → choose replacement\n"
+                        f"    # - {{ from: '\\\\{macro}\\{{{re.escape(arg)}\\}}',"
+                        f" to: '???' }}"
+                    )
+        else:
+            rep = spec.get('replacement')
+            if rep:
+                glyph, label = rep
+                lines.append(f"      → {glyph}  ({label})")
+                suggested.append(
+                    f"    - {{ from: '\\\\{macro}\\b', to: '{glyph}' }}"
+                )
+            else:
+                manual.append(
+                    f"    # \\{macro} → choose replacement\n"
+                    f"    # - {{ from: '\\\\{macro}\\b', to: '???' }}"
+                )
+
+    if suggested or manual:
+        lines.extend([
+            '',
+            'To apply, add to config.yaml under preprocess.rewrites:',
+            '',
+        ])
+        lines.extend(suggested)
+        if manual:
+            lines.append('')
+            lines.extend(manual)
+    lines.append('')
+    return '\n'.join(lines)
+
+
 def format_warning(usage: dict[str, dict]) -> str:
     if not usage:
         return ''
@@ -218,10 +407,18 @@ def main() -> None:
         )
     source_dir = Path(sys.argv[1])
     chapter_files = [Path(p) for p in sys.argv[2:]]
-    usage = scan(source_dir, chapter_files)
-    msg = format_warning(usage)
+
+    # (1) Custom macros defined in the preamble (#22).
+    custom = scan(source_dir, chapter_files)
+    msg = format_warning(custom)
     if msg:
         sys.stderr.write(msg)
+
+    # (2) Package-imported macros pandoc silently drops (#50).
+    pkg = scan_package_macros(chapter_files)
+    pkg_msg = format_package_warning(pkg)
+    if pkg_msg:
+        sys.stderr.write(pkg_msg)
 
 
 if __name__ == '__main__':
