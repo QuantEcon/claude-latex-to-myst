@@ -191,7 +191,16 @@ def convert_equations(text: str) -> str:
             if i == 0 and leading_label:
                 block = f'({convert_label_colons(leading_label)})=\n\n{block}'
             out_blocks.append(block)
-        return '\n\n'.join(out_blocks)
+        result = '\n\n'.join(out_blocks)
+        # If the joined output begins with a ``(name)=`` anchor (from
+        # ``leading_label`` or from the first row's stacked extras),
+        # prepend ``\n\n`` so MyST parses it as a block-level anchor
+        # rather than fusing it into the preceding prose paragraph —
+        # mirrors the labeled-align extra-anchor path's leading
+        # ``\n\n``. Caught by Copilot review on PR #77.
+        if result.startswith('('):
+            result = f'\n\n{result}'
+        return result
 
     # Pattern: $$\begin{align}\label{...} ... \end{align}$$
     # Leading label becomes the trailing ``(label)`` for the block; up

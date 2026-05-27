@@ -218,6 +218,54 @@ def test_labeled_align_extra_per_row_anchors_not_fused_into_prose():
     )
 
 
+def test_split_align_leading_label_anchor_not_fused_into_prose():
+    """Same fusion concern for #70's per-row split path: when an align
+    body has 2+ per-row labels AND a leading ``\\begin{align}\\label{}``,
+    the split path emits the leading label as a ``(name)=`` anchor
+    above the first per-row block. That anchor must still be
+    block-isolated (preceded by ``\\n\\n``) so it doesn't fuse into
+    a preceding prose paragraph and silently break the outer
+    ``{eq}``/``{ref}`` cross-reference.
+
+    Surfaced by Copilot's review of PR #77."""
+    src = (
+        'introductory prose with no blank line\n'
+        '$$\\begin{align}\\label{eq:outer}\n'
+        'a &= b, \\label{eq:row_a}\\\\\n'
+        'c &= d, \\label{eq:row_b}\n'
+        '\\end{align}$$\n'
+    )
+    out = postprocess.convert_equations(src)
+    # Leading anchor must not be glued onto the prose line.
+    assert not re.search(r'no blank line[ \t]*\(eq-outer\)=', out), (
+        f'leading anchor fused with prose:\n{out}'
+    )
+    # And the leading anchor must be preceded by ``\n\n`` so MyST
+    # parses it as a block-level anchor.
+    assert re.search(r'\n\n\(eq-outer\)=', out), (
+        f'expected block-isolated leading anchor:\n{out}'
+    )
+
+
+def test_split_align_first_row_extras_anchor_not_fused_into_prose():
+    """Defensive: the same split path also stacks extras for any row
+    that carries 2+ labels. If the FIRST row's extras land before the
+    first ``$$...$$`` block, they must be block-isolated too — same
+    Copilot-flagged failure mode as the leading-label case."""
+    src = (
+        'introductory prose with no blank line\n'
+        '$$\\begin{align}\n'
+        'a &= b \\label{eq:row_a_primary}\\label{eq:row_a_extra}\\\\\n'
+        'c &= d \\label{eq:row_b}\n'
+        '\\end{align}$$\n'
+    )
+    out = postprocess.convert_equations(src)
+    # The stacked extra anchor for row 0 must be block-isolated.
+    assert re.search(r'\n\n\(eq-row_a_extra\)=', out), (
+        f'expected block-isolated extra anchor on first row:\n{out}'
+    )
+
+
 def test_math_env_no_label_does_not_emit_spurious_anchors():
     """Regression guard: unlabelled envs must NOT produce a
     ``(eq-)=`` line. A bug that emits anchors for every block would
