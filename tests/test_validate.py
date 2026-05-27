@@ -104,6 +104,59 @@ def test_count_myst_equations_mixed_totals(n_unlabeled, n_labeled):
     assert v.count_myst(md)['labeled_eqs'] == n_labeled
 
 
+# ── Citation counters (#67) ──────────────────────────────────────────────────
+
+
+def test_count_latex_citations_all_natbib_variants():
+    """Every ``\\cite*`` variant the pipeline rewrites must be counted on
+    the LaTeX side. Pre-fix the narrow ``\\cite[pt]?\\{`` form caught
+    only three of the eight variants, leaving the other five
+    invisible to the validator and creating a phantom under-count on
+    the LaTeX side."""
+    tex = (
+        r"See \cite{a} and \citet{b} and \citep{c} and "
+        r"\citealp{d} and \citealt{e} and \citeauthor{f} and "
+        r"\citeyear{g} and \citeyearpar{h}."
+    )
+    # All 8 forms counted (one each).
+    assert v.count_latex(tex)['citations'] == 8
+
+
+def test_count_myst_citations_all_roles():
+    """``count_myst`` must match every ``{cite:*}`` role the pipeline
+    emits, not just ``{cite}`` / ``{cite:t}``. The previous narrow
+    regex missed ``{cite:p}`` (the ``\\citep`` form), ``{cite:author}``,
+    and ``{cite:year}`` — see #67 for the dp1 reproducer where four
+    chapters under-counted by one each."""
+    md = (
+        "{cite}`a` and {cite:t}`b` and {cite:p}`c` and "
+        "{cite:author}`d` and {cite:year}`e`."
+    )
+    # All 5 roles counted (one each).
+    assert v.count_myst(md)['citations'] == 5
+
+
+def test_citation_counts_balance_natbib_round_trip():
+    """End-to-end fairness — for every natbib variant the pipeline
+    rewrites to a ``{cite:*}`` role, the LaTeX count and the MyST
+    count must agree. Catches the kind of asymmetry that surfaced in
+    #67 where ``\\citep`` was counted on the LaTeX side but not on
+    the MyST side."""
+    cases = [
+        (r"\cite{k}",         "{cite}`k`"),
+        (r"\citet{k}",        "{cite:t}`k`"),
+        (r"\citep{k}",        "{cite:p}`k`"),
+        (r"\citealp{k}",      "{cite:t}`k`"),      # routes to {cite:t}
+        (r"\citealt{k}",      "{cite:t}`k`"),      # routes to {cite:t}
+        (r"\citeauthor{k}",   "{cite:author}`k`"),
+        (r"\citeyear{k}",     "{cite:year}`k`"),
+        (r"\citeyearpar{k}",  "{cite:year}`k`"),   # routes to {cite:year}
+    ]
+    tex = ' '.join(t for t, _ in cases)
+    md = ' '.join(m for _, m in cases)
+    assert v.count_latex(tex)['citations'] == v.count_myst(md)['citations']
+
+
 # ── Cross-reference resolution check (P1a) ───────────────────────────────────
 
 

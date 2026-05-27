@@ -325,6 +325,24 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **`validate.py` citation counter symmetry** ([#67]): both
+  `count_latex` and `count_myst` now match the full natbib /
+  ``{cite:*}`` family the pipeline already round-trips. The LaTeX
+  side was ``\cite[pt]?{`` — catching only ``\cite`` / ``\citet`` /
+  ``\citep`` and missing ``\citealp`` / ``\citealt`` /
+  ``\citeauthor`` / ``\citeyear`` / ``\citeyearpar``. The MyST side
+  was ``{cite(?::t)?}`` — catching only ``{cite}`` / ``{cite:t}``
+  and missing ``{cite:p}`` / ``{cite:author}`` / ``{cite:year}``.
+  The two asymmetries created opposite phantom mismatches: every
+  ``\citep`` under-counted on the MyST side (the symptom in #67's
+  dp1 reproducer — four chapters reporting "off by one"), while
+  every ``\citealp`` / ``\citealt`` over-counted on the MyST side
+  (silently cancelling the ``\citep`` undercount in dp2 and DL).
+  Widened to ``\cite[a-z]*{`` and ``{cite(?::[a-z]+)?}`` so each
+  natbib variant is counted on both sides and the totals line up
+  for any conversion the pipeline correctly performs. Cosmetic
+  only — no conversion defect was hidden by the bug; just a
+  noisier validation report.
 - **`\begin{center}\textbf{Title}\par\begin{tabular}` orphan + list-of-lists**
   ([#59]): the bold-paragraph-as-title-surrogate shape inside a
   `\begin{center}` block (no `\begin{table}` float, no `\caption{}`)
@@ -910,6 +928,7 @@ haven't validated. Everything below is on `main` and available now.
 [#60]: https://github.com/QuantEcon/claude-latex-to-myst/pull/60
 [#62]: https://github.com/QuantEcon/claude-latex-to-myst/pull/62
 [#63]: https://github.com/QuantEcon/claude-latex-to-myst/issues/63
+[#67]: https://github.com/QuantEcon/claude-latex-to-myst/issues/67
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
