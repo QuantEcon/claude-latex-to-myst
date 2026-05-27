@@ -2813,11 +2813,19 @@ def test_convert_equations_standalone_label_does_not_cross_paragraphs():
 
 
 def test_convert_equations_multirow_align_per_row_labels_emit_anchors():
-    """GH #30 — ``\\begin{align}`` with per-row ``\\label{}`` markers
-    (no leading label after ``\\begin{align}``). Each label must become
-    a ``(eq-X)=`` anchor above the math block; ``\\label{}`` must not
+    """GH #30 / #70 — ``\\begin{align}`` with 2+ per-row ``\\label{}``
+    markers (no leading label after ``\\begin{align}``). Each label
+    must yield its own resolvable anchor; ``\\label{}`` must not
     survive into the body (KaTeX silently drops it, leaving
-    ``\\eqref{}`` unresolved)."""
+    ``\\eqref{}`` unresolved).
+
+    Updated for #70: previously the converter emitted one ``aligned``
+    block with N ``(name)=`` anchors stacked above. MyST collapses
+    consecutive ``(name)=`` lines to one target — only the first
+    label survived; non-first refs dangled. The fix splits the align
+    body into per-row ``$$...$$`` blocks each with their own trailing
+    label. Column alignment (``&``) is lost as a result; per-row
+    cross-references are preserved."""
     text = (
         "$$\\begin{align}\n"
         "a &= b, \\label{eq:row_a}\\\\\n"
@@ -2825,13 +2833,16 @@ def test_convert_equations_multirow_align_per_row_labels_emit_anchors():
         "\\end{align}$$\n"
     )
     out = postprocess.convert_equations(text)
-    assert "(eq-row_a)=" in out
-    assert "(eq-row_b)=" in out
+    # Both labels resolve via the trailing-paren shape on their own
+    # split block.
+    assert "$$ (eq-row_a)" in out
+    assert "$$ (eq-row_b)" in out
     assert "\\label{" not in out
-    assert "\\begin{aligned}" in out
-    # Anchors precede the math block.
-    assert out.index("(eq-row_a)=") < out.index("$$")
-    assert out.index("(eq-row_b)=") < out.index("$$")
+    # The aligned wrapper is gone — split path emits bare $$...$$.
+    assert "\\begin{aligned}" not in out
+    # Each row's content survives into its own block.
+    assert "a = b" in out
+    assert "c = d" in out
 
 
 def test_convert_equations_align_leading_plus_per_row_labels():
@@ -2864,6 +2875,88 @@ def test_convert_equations_align_no_labels_unchanged_shape():
     out = postprocess.convert_equations(text)
     assert "\\begin{aligned}" in out
     assert "=" not in [line.strip() for line in out.splitlines() if line.strip().startswith("(")]
+
+
+def test_convert_equations_align_2plus_per_row_labels_splits_to_avoid_collision():
+    """GH #70 — when an align body has 2+ per-row ``\\label{}`` calls,
+    stacking them as ``(name)=`` anchors above a single
+    ``\\begin{aligned}`` block makes MyST collapse all anchors to the
+    SAME target (only the first survives, the rest get renamed and
+    non-first refs dangle). Reproducer mirrors dp-deep-learning's
+    ch11_climate temperature equations. The fix splits the align body
+    into per-row ``$$...$$`` blocks each carrying its own trailing
+    label — each anchor lands on a distinct block."""
+    text = (
+        "$$\\begin{align}\n"
+        "T^{\\mathrm{AT}}_{t+1} &= T^{\\mathrm{AT}}_t + c_1 X_t, \\label{eq:temp_at}\\\\\n"
+        "T^{\\mathrm{OC}}_{t+1} &= T^{\\mathrm{OC}}_t + c_4 Y_t. \\label{eq:temp_oc}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    # Both labels land on their own block (trailing-paren shape).
+    assert "$$ (eq-temp_at)" in out
+    assert "$$ (eq-temp_oc)" in out
+    # No `aligned` wrapper survives — split path takes over.
+    assert "\\begin{aligned}" not in out
+    # `&` alignment markers removed from each row.
+    assert "&=" not in out
+    # The bridging `,` before each `\label{}` is gone too (sentence-
+    # style separator, not part of the equation).
+    assert "c_1 X_t," not in out
+    # Original `\label{}` calls do not survive.
+    assert "\\label{" not in out
+
+
+def test_convert_equations_align_2plus_tags_splits_to_avoid_multiple_tag_error():
+    """GH #46 — when an align body has 2+ per-row ``\\tag*{}`` calls,
+    keeping them inside one ``\\begin{aligned}`` triggers KaTeX's
+    ``Multiple \\tag`` error (KaTeX allows at most one tag per equation
+    env). Mirrors dp-deep-learning's ch11_climate IAM-loss block (8
+    rows, 8 tags). The fix shares the per-row split with #70 — each
+    tag now lives in its own ``$$...$$`` block where one tag per env
+    is the supported shape."""
+    text = (
+        "$$\\begin{align}\n"
+        "l_1 &= F_1(x) \\tag*{(capital Euler)}\\\\\n"
+        "l_2 &= F_2(x) \\tag*{(budget)}\\\\\n"
+        "l_3 &= F_3(x) \\tag*{(atm. carbon)}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    # Aligned wrapper is gone — each tagged row gets its own block.
+    assert "\\begin{aligned}" not in out
+    # Three separate $$...$$ blocks emitted.
+    assert out.count("$$\n") + out.count("\n$$") >= 6  # 3 opens + 3 closes
+    # All three tags survive (the `\tag*{}` content itself is left
+    # intact in the per-row content — KaTeX renders it as the row's
+    # equation label).
+    assert "\\tag*{(capital Euler)}" in out
+    assert "\\tag*{(budget)}" in out
+    assert "\\tag*{(atm. carbon)}" in out
+
+
+def test_convert_equations_align_leading_plus_2plus_per_row_splits():
+    """When a labeled-align (``\\begin{align}\\label{X}``) ALSO has
+    2+ per-row labels in its body, the per-row collision still
+    applies — fall back to the split path. The leading label becomes
+    a ``(name)=`` anchor above the first per-row block (no other
+    natural place to attach an "outer" label once the aligned wrapper
+    is dissolved)."""
+    text = (
+        "$$\\begin{align}\\label{eq:outer}\n"
+        "a &= b, \\label{eq:row_a}\\\\\n"
+        "c &= d. \\label{eq:row_b}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    # Leading label attaches as anchor above the first block.
+    assert "(eq-outer)=" in out
+    # Per-row labels each get their own trailing form.
+    assert "$$ (eq-row_a)" in out
+    assert "$$ (eq-row_b)" in out
+    # Outer-anchor sits before the first per-row block.
+    assert out.index("(eq-outer)=") < out.index("$$ (eq-row_a)")
+    assert "\\begin{aligned}" not in out
 
 
 def test_convert_equations_multline_trailing_label_extracted():
