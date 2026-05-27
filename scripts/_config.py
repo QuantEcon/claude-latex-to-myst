@@ -30,14 +30,16 @@ def load(path: Path):
 
 def lookup(obj, dotted_key: str):
     """Resolve a.b.c.field. If an intermediate value is a list of dicts,
-    return the list of values at the final field."""
+    return the list of values at the final field. Missing dict fields
+    yield ``None`` (so callers can supply defaults) rather than raising
+    ``KeyError`` — relied on for optional flags like ``regen``."""
     parts = dotted_key.split('.')
     cur = obj
     for i, p in enumerate(parts):
         if isinstance(cur, list):
             # Project field from each dict
             field = '.'.join(parts[i:])
-            return [item[field] if isinstance(item, dict) else item for item in cur]
+            return [item.get(field) if isinstance(item, dict) else item for item in cur]
         if cur is None:
             return None
         cur = cur.get(p)
@@ -52,8 +54,11 @@ def main():
     if result is None:
         return
     if isinstance(result, list):
+        # Print one item per line. Missing dict fields project to None;
+        # emit a blank line so paired list queries (e.g. ``extra_files.stem``
+        # alongside ``extra_files.regen``) stay index-aligned in callers.
         for item in result:
-            print(item)
+            print('' if item is None else item)
     else:
         print(result)
 

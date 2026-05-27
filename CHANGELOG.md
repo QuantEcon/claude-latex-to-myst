@@ -106,6 +106,21 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Added — config-driven features
 
+- **`regen: false`** ([#63]) on `chapters[]` / `extra_files[]` entries.
+  Opts a stem out of the regen flow entirely — `convert.sh` skips
+  pre-process + pandoc + postprocess and leaves any curated copy in
+  `output_dir` untouched. Closes the audit gap where the previous
+  workaround was to silently drop the stem from `extra_files:` (which
+  works mechanically but hides intent — a future maintainer has no
+  signal that `common_symbols.md` is part of the book and was
+  deliberately curated outside the regen flow). The stem is logged
+  once in the convert banner and once in the Stage 1 preprocess
+  output. Passing the stem on the convert.sh CLI bypasses the gate
+  for stages 2+ (the escape hatch for an occasional force-regen).
+  Validation still folds the file's anchors into the cross-reference
+  pool but skips per-chapter LaTeX↔MyST counts for it (curated and
+  source diverge by design). Surfaced by book-dp1's `common_symbols`
+  re-curation (book-dp1#347 + commit d5e3254).
 - **`cross_ref_routing:`** (P1b) extends `make_ref`'s label-prefix →
   MyST role mapping. Books that use `lst:` instead of `list:` for
   listings (or similar idiosyncratic conventions) no longer need to
@@ -862,6 +877,7 @@ haven't validated. Everything below is on `main` and available now.
 [#59]: https://github.com/QuantEcon/claude-latex-to-myst/issues/59
 [#60]: https://github.com/QuantEcon/claude-latex-to-myst/pull/60
 [#62]: https://github.com/QuantEcon/claude-latex-to-myst/pull/62
+[#63]: https://github.com/QuantEcon/claude-latex-to-myst/issues/63
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md

@@ -351,7 +351,10 @@ def validate_config(config: dict) -> None:
     # Nested validation for chapters / extra_files: each entry needs at
     # minimum a ``stem``. ``frontmatter_style`` is optional but, when
     # present, must be one of the two recognised styles — same vocabulary
-    # as the top-level ``frontmatter_style`` key.
+    # as the top-level ``frontmatter_style`` key. ``regen`` is optional
+    # and must be a bool when present; it gates whether convert.sh
+    # regenerates the file from LaTeX or leaves the curated copy alone
+    # (see #63).
     for list_key in ('chapters', 'extra_files'):
         for i, entry in enumerate(config.get(list_key) or []):
             if not isinstance(entry, dict) or 'stem' not in entry:
@@ -363,6 +366,12 @@ def validate_config(config: dict) -> None:
                 raise SystemExit(
                     f"config.{list_key}[{i}].frontmatter_style must be "
                     f"'absorbed' or 'standalone', got {style!r}"
+                )
+            regen = entry.get('regen')
+            if regen is not None and not isinstance(regen, bool):
+                raise SystemExit(
+                    f"config.{list_key}[{i}].regen must be a boolean, "
+                    f"got {type(regen).__name__}"
                 )
 
 
@@ -648,9 +657,13 @@ def main():
             process_file(path)
         return
 
-    # Process every chapter + extra file from config
+    # Process every chapter + extra file from config. Entries marked
+    # ``regen: false`` are skipped — they're curated outside the regen
+    # flow (#63).
     all_files = (config.get('chapters') or []) + (config.get('extra_files') or [])
     for entry in all_files:
+        if entry.get('regen') is False:
+            continue
         md = output_dir / f"{entry['stem']}.md"
         if md.exists():
             process_file(md)

@@ -69,16 +69,54 @@ SOURCE_DIR="$(cd "$CONFIG_DIR/$(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" sourc
 OUTPUT_DIR="$(cd "$CONFIG_DIR/$(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" output_dir)" && pwd)"
 TMP_DIR="$CONFIG_DIR/$(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" tmp_dir)"
 
-# Determine which chapters to process
+# Determine which chapters to process. Entries marked ``regen: false``
+# are skipped — they're curated outside the regen flow and convert.sh
+# must not overwrite them (#63). Stems and regen flags are pulled as
+# parallel lists (blank lines preserved so indices stay aligned).
+# bash 3.2 (macOS default) — no namerefs, so the filter is inlined.
 ALL_STEMS=()
-while IFS= read -r line; do
-  [[ -n "$line" ]] && ALL_STEMS+=("$line")
-done < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" chapters.stem)
-while IFS= read -r line; do
-  [[ -n "$line" ]] && ALL_STEMS+=("$line")
-done < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" extra_files.stem)
+SKIPPED_STEMS=()
+
+CH_STEMS=()
+while IFS= read -r line; do CH_STEMS+=("$line"); done \
+  < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" chapters.stem)
+CH_REGEN=()
+while IFS= read -r line; do CH_REGEN+=("$line"); done \
+  < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" chapters.regen)
+
+for i in "${!CH_STEMS[@]}"; do
+  stem="${CH_STEMS[$i]}"
+  regen="${CH_REGEN[$i]:-}"
+  [[ -n "$stem" ]] || continue
+  if [[ "$regen" == "False" ]]; then
+    SKIPPED_STEMS+=("$stem")
+    continue
+  fi
+  ALL_STEMS+=("$stem")
+done
+
+EF_STEMS=()
+while IFS= read -r line; do EF_STEMS+=("$line"); done \
+  < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" extra_files.stem)
+EF_REGEN=()
+while IFS= read -r line; do EF_REGEN+=("$line"); done \
+  < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" extra_files.regen)
+
+for i in "${!EF_STEMS[@]}"; do
+  stem="${EF_STEMS[$i]}"
+  regen="${EF_REGEN[$i]:-}"
+  [[ -n "$stem" ]] || continue
+  if [[ "$regen" == "False" ]]; then
+    SKIPPED_STEMS+=("$stem")
+    continue
+  fi
+  ALL_STEMS+=("$stem")
+done
 
 if [[ ${#SINGLE_CHAPTERS[@]} -gt 0 ]]; then
+  # When the user names specific chapters, honour the request — even
+  # ``regen: false`` stems can be force-converted this way (the gate is
+  # for the default whole-book run).
   STEMS=("${SINGLE_CHAPTERS[@]}")
 else
   STEMS=("${ALL_STEMS[@]}")
@@ -91,6 +129,9 @@ echo "  Config:   $CONFIG"
 echo "  Source:   $SOURCE_DIR"
 echo "  Output:   $OUTPUT_DIR"
 echo "  Chapters: ${#STEMS[@]}"
+if [[ ${#SKIPPED_STEMS[@]} -gt 0 && ${#SINGLE_CHAPTERS[@]} -eq 0 ]]; then
+  echo "  Skipped (regen: false): ${SKIPPED_STEMS[*]}"
+fi
 echo ""
 
 # ---------------------------------------------------------------------------

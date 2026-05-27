@@ -57,15 +57,58 @@ SOURCE_DIR="$(cd "$SOURCE_DIR" && pwd)"
 rm -rf "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 
-# Read chapter stems (chapters + extra_files)
+# Read chapter stems (chapters + extra_files). Entries marked
+# ``regen: false`` are skipped — they're curated outside the regen
+# flow and convert.sh must not overwrite them (#63). Stems and regen
+# flags are pulled as parallel lists (blank lines preserved so indices
+# stay aligned). bash 3.2 (macOS default) — no namerefs.
 CHAPTER_STEMS=()
-while IFS= read -r line; do
-  [[ -n "$line" ]] && CHAPTER_STEMS+=("$line")
-done < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" chapters.stem)
+SKIPPED_STEMS=()
 
-while IFS= read -r line; do
-  [[ -n "$line" ]] && CHAPTER_STEMS+=("$line")
-done < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" extra_files.stem)
+# Inlined twice (once for chapters, once for extra_files) — namerefs would
+# fold this into a helper but they're bash 4.3+; macOS still ships 3.2.
+
+CH_STEMS=()
+while IFS= read -r line; do CH_STEMS+=("$line"); done \
+  < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" chapters.stem)
+CH_REGEN=()
+while IFS= read -r line; do CH_REGEN+=("$line"); done \
+  < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" chapters.regen)
+
+for i in "${!CH_STEMS[@]}"; do
+  stem="${CH_STEMS[$i]}"
+  regen="${CH_REGEN[$i]:-}"
+  [[ -n "$stem" ]] || continue
+  if [[ "$regen" == "False" ]]; then
+    SKIPPED_STEMS+=("$stem")
+    continue
+  fi
+  CHAPTER_STEMS+=("$stem")
+done
+
+EF_STEMS=()
+while IFS= read -r line; do EF_STEMS+=("$line"); done \
+  < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" extra_files.stem)
+EF_REGEN=()
+while IFS= read -r line; do EF_REGEN+=("$line"); done \
+  < <(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" extra_files.regen)
+
+for i in "${!EF_STEMS[@]}"; do
+  stem="${EF_STEMS[$i]}"
+  regen="${EF_REGEN[$i]:-}"
+  [[ -n "$stem" ]] || continue
+  if [[ "$regen" == "False" ]]; then
+    SKIPPED_STEMS+=("$stem")
+    continue
+  fi
+  CHAPTER_STEMS+=("$stem")
+done
+
+if [[ ${#SKIPPED_STEMS[@]} -gt 0 ]]; then
+  for stem in "${SKIPPED_STEMS[@]}"; do
+    echo "  Skipped (regen: false): ${stem}"
+  done
+fi
 
 # Stage 0: carve any consolidated multi-chapter .tex files (e.g. dp1's
 # appendix.tex) into per-chapter pieces before per-stem preprocessing.
