@@ -283,27 +283,36 @@ def test_pandoc_attr_code_block_caption_with_braces_in_value():
     ``caption="..."`` value. The original attribute group
     ``[^}\\n]+`` terminated at the first ``}``, so the block was
     skipped and the pandoc-attr fence survived into MyST unconverted
-    (anchorless code, ``\\ref{lst:X}`` broken)."""
+    (anchorless code, ``\\ref{lst:X}`` broken).
+
+    Note: pandoc serialises ``\\`` inside a quoted attribute value as
+    ``\\\\`` — the source fixture mirrors what pandoc actually emits,
+    and the assertions check that the caption decodes back to the
+    original single-backslash LaTeX shape (#71)."""
     src = (
-        '``` {#lst:demo caption="Autodiff Euler for \\texttt{Pi}; see '
-        '\\texttt{02_Brock.ipynb}." label="lst:demo" language="Python"}\n'
+        '``` {#lst:demo caption="Autodiff Euler for \\\\texttt{Pi}; see '
+        '\\\\texttt{02_Brock.ipynb}." label="lst:demo" language="Python"}\n'
         'def loss(): pass\n'
         '```\n'
     )
     out = postprocess.convert_pandoc_attr_code_blocks(src)
     assert '```{code-block} python' in out
     assert ':name: lst-demo' in out
-    # Caption survives end-to-end including the embedded braces.
+    # Caption decodes from pandoc's ``\\\\`` escape back to ``\\`` —
+    # the form MyST + KaTeX expect.
     assert 'Autodiff Euler for \\texttt{Pi}' in out
     assert '\\texttt{02_Brock.ipynb}' in out
+    # The pre-decoded doubled-backslash form must NOT survive.
+    assert '\\\\texttt' not in out
 
 
 def test_pandoc_attr_code_block_multiple_braced_macros_in_caption():
     """Regression guard: more than one brace-bearing macro in the
-    same caption still parses correctly."""
+    same caption still parses correctly. Mirrors the doubled-backslash
+    shape pandoc emits for ``\\`` inside the quoted attribute value (#71)."""
     src = (
-        '``` {#lst:demo caption="Use \\texttt{a}, \\textbf{b}, '
-        'and $\\mathbb{R}$." label="lst:demo"}\n'
+        '``` {#lst:demo caption="Use \\\\texttt{a}, \\\\textbf{b}, '
+        'and $\\\\mathbb{R}$." label="lst:demo"}\n'
         'x = 1\n'
         '```\n'
     )
@@ -312,6 +321,49 @@ def test_pandoc_attr_code_block_multiple_braced_macros_in_caption():
     assert '\\texttt{a}' in out
     assert '\\textbf{b}' in out
     assert '$\\mathbb{R}$' in out
+    assert '\\\\texttt' not in out
+
+
+def test_pandoc_attr_code_block_caption_with_inline_math_decodes_escapes():
+    """GH #71 — pandoc serialises ``\\`` inside a quoted attribute
+    value as ``\\\\``. Pre-fix the resolver stripped the outer quotes
+    but didn't decode the doubled backslash, so inline math in
+    lstlisting captions arrived in MyST as ``$s \\\\in (0,1)$``, which
+    KaTeX rendered as "function with no arguments" errors. The fix
+    decodes pandoc's ``\\X`` → ``X`` escape so math commands survive
+    with single backslashes — the form KaTeX expects.
+
+    Surfaced converting book-dp-deep-learning's ch02_deqns lstlisting
+    captioned ``Representative DEQN loss … savings share $s \\in (0,1)$
+    via a sigmoid …``."""
+    src = (
+        '``` {.python caption="Loss for $s \\\\in (0,1)$ via '
+        '\\\\emph{sigmoid}; \\\\(C > z K^\\\\alpha\\\\)."}\n'
+        'def loss(): pass\n'
+        '```\n'
+    )
+    out = postprocess.convert_pandoc_attr_code_blocks(src)
+    # Single-backslash math commands — the KaTeX-friendly form.
+    assert '$s \\in (0,1)$' in out
+    assert '\\emph{sigmoid}' in out
+    assert '\\(C > z K^\\alpha\\)' in out
+    # Doubled-backslash form must NOT survive into the caption.
+    assert '\\\\in' not in out
+    assert '\\\\emph' not in out
+    assert '\\\\alpha' not in out
+
+
+def test_pandoc_attr_code_block_caption_decodes_quoted_quote_escape():
+    """Pandoc serialises ``"`` inside a quoted attribute value as ``\\"``.
+    The decoder must round-trip that too — defensive guard against the
+    same class of double-escape bug surfacing for embedded quotes (#71)."""
+    src = (
+        '``` {.python caption="Run \\"foo\\" then \\"bar\\"."}\n'
+        'x = 1\n'
+        '```\n'
+    )
+    out = postprocess.convert_pandoc_attr_code_blocks(src)
+    assert ':caption: Run "foo" then "bar".' in out
 
 
 # ── Doubled-prefix strips (lessons #011 + #016) ──────────────────────────────
