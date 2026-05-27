@@ -325,6 +325,26 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **`validate.py` silently no-ops on `preprocess.split:` books** ([#68]):
+  the per-chapter loop resolved each stem's source ``.tex`` against
+  ``source_dir`` only. Books that consolidate chapters in a monolithic
+  source and use ``preprocess.split:`` to fan out per-stem ``.tex``
+  files into ``tmp_dir`` failed every ``tex.exists()`` check, hit a
+  silent ``continue`` for every iteration, never incremented any
+  counter, and still printed "All counts match. All cross-references
+  resolve and are well-typed." at the end. The contradiction with
+  ``myst build`` warnings surfaced in book-dp-deep-learning's R7 pass.
+  book-dp1 was equally affected via its consolidated-appendix split.
+  Resolution adds a ``tmp_dir`` fallback for the source ``.tex``
+  lookup (the splitter writes per-stem files there by Stage 1, so
+  they're guaranteed present by Stage 6), swaps the silent
+  ``continue`` for an explicit ``WARN: {stem}.tex not found in
+  source_dir or tmp_dir`` on stderr, and adds a vacuous-pass guard:
+  if every chapter was skipped before its counts could be checked,
+  validate exits non-zero with an ``ERROR: no chapters were
+  validated`` message rather than the cheery success line. Both the
+  silent skip and the vacuous-pass message are regression-tested
+  via subprocess end-to-end against synthetic configs.
 - **`validate.py` citation counter symmetry** ([#67]): both
   `count_latex` and `count_myst` now match the full natbib /
   ``{cite:*}`` family the pipeline already round-trips. The LaTeX
@@ -929,6 +949,7 @@ haven't validated. Everything below is on `main` and available now.
 [#62]: https://github.com/QuantEcon/claude-latex-to-myst/pull/62
 [#63]: https://github.com/QuantEcon/claude-latex-to-myst/issues/63
 [#67]: https://github.com/QuantEcon/claude-latex-to-myst/issues/67
+[#68]: https://github.com/QuantEcon/claude-latex-to-myst/issues/68
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
