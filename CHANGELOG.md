@@ -325,6 +325,28 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **Per-row labels and `\tag*{}` collide in multi-row align** ([#70],
+  also resolves [#46]): a ``\begin{align}`` body with 2+ per-row
+  ``\label{}`` calls was previously emitted as one ``$$ \begin{aligned}
+  ... \end{aligned} $$`` block with N ``(name)=`` anchors stacked above
+  it. MyST collapses consecutive ``(name)=`` lines to ONE anchor and
+  renames the rest, so only the first label survived — any
+  ``{eq}`eq-X`` to a non-first label dangled. Same env shape with 2+
+  per-row ``\tag*{}`` calls triggered KaTeX's ``Multiple \tag`` error
+  because ``aligned`` accepts at most one tag. Surfaced in
+  book-dp-deep-learning's R7 pass (15 collision cases across 5
+  chapters with 10 dangling refs; 1 ``Multiple \tag`` site in
+  ch11_climate's IAM-loss block). Resolution: ``_align_needs_split``
+  triggers a per-row split when the body has 2+ labels or 2+ tags;
+  ``_emit_split_align`` writes one ``$$...$$`` block per row, each
+  with its own trailing label. The ``&`` column alignment is replaced
+  with whitespace (cosmetic loss accepted in exchange for working
+  cross-refs and KaTeX rendering); the 0/1-label case still uses
+  ``aligned`` so non-colliding shapes preserve their LaTeX
+  presentation. Lesson 032 updated to reflect the corrected
+  trade-off — the previous "stacked anchors preserve every
+  cross-ref" framing was based on incomplete understanding of MyST
+  anchor semantics.
 - **`convert_pandoc_attr_code_blocks` doubles backslashes in lstlisting
   captions** ([#71]): pandoc serialises ``\`` and ``"`` inside a quoted
   attribute value as ``\\`` and ``\"`` respectively. The resolver's
@@ -955,6 +977,7 @@ haven't validated. Everything below is on `main` and available now.
 [#43]: https://github.com/QuantEcon/claude-latex-to-myst/issues/43
 [#47]: https://github.com/QuantEcon/claude-latex-to-myst/issues/47
 [#48]: https://github.com/QuantEcon/claude-latex-to-myst/issues/48
+[#46]: https://github.com/QuantEcon/claude-latex-to-myst/issues/46
 [#49]: https://github.com/QuantEcon/claude-latex-to-myst/issues/49
 [#50]: https://github.com/QuantEcon/claude-latex-to-myst/issues/50
 [#51]: https://github.com/QuantEcon/claude-latex-to-myst/issues/51
@@ -967,6 +990,7 @@ haven't validated. Everything below is on `main` and available now.
 [#63]: https://github.com/QuantEcon/claude-latex-to-myst/issues/63
 [#67]: https://github.com/QuantEcon/claude-latex-to-myst/issues/67
 [#68]: https://github.com/QuantEcon/claude-latex-to-myst/issues/68
+[#70]: https://github.com/QuantEcon/claude-latex-to-myst/issues/70
 [#71]: https://github.com/QuantEcon/claude-latex-to-myst/issues/71
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md

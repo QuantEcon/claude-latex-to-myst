@@ -122,15 +122,98 @@ def convert_equations(text: str) -> str:
         content = re.sub(r'\\label\{[^}]+\}', '', content).strip()
         return content, labels
 
+    # Per-row align handling (#70 / #46) ────────────────────────────────
+    #
+    # When an align body has 2+ per-row ``\label{}`` calls OR 2+
+    # per-row ``\tag*{}`` calls, keeping the whole body inside one
+    # ``\begin{aligned}`` block breaks downstream rendering:
+    #
+    # - MyST collapses N consecutive ``(name)=`` anchors stacked above
+    #   a single block to ONE anchor (only the first survives, the
+    #   rest get renamed and any cross-ref to them dangles — #70).
+    # - KaTeX errors with ``Multiple \\tag`` because ``\\tag*{}`` is
+    #   limited to one per equation env, and ``aligned`` counts as
+    #   one (#46).
+    #
+    # The fix: split per ``\\`` row into separate ``$$...$$`` blocks
+    # each with its own trailing label / inline ``\\tag*{}``. Cost:
+    # the LaTeX-side ``&`` column alignment is lost (replaced with
+    # whitespace). For independent equations grouped in an align for
+    # spacing this is acceptable; for tabular layouts it's a cosmetic
+    # degradation we accept in exchange for correct cross-refs and
+    # working KaTeX rendering.
+
+    def _align_needs_split(body: str) -> bool:
+        """``True`` when the body has 2+ per-row labels or 2+ per-row
+        ``\\tag*{}`` calls — the collision triggers from #70 / #46."""
+        n_labels = len(re.findall(r'\\label\{', body))
+        n_tags = len(re.findall(r'\\tag\*?\{', body))
+        return n_labels >= 2 or n_tags >= 2
+
+    def _split_align_rows(body: str) -> list[tuple[str, list[str]]]:
+        """Split an align body on ``\\\\`` row terminators. Return
+        per-row ``(content_clean, [labels])`` tuples. ``content_clean``
+        has ``\\label{}`` calls stripped, ``&`` alignment markers
+        replaced with whitespace, and bridging trailing punctuation
+        (``,``, ``;``) removed (a common LaTeX convention is
+        ``y = x + 1, \\label{eq:foo}`` where the comma is a
+        sentence-style separator, not part of the equation)."""
+        pieces = re.split(r'\\\\(?:\[[^\]]*\])?', body)
+        rows: list[tuple[str, list[str]]] = []
+        for piece in pieces:
+            row = piece.strip()
+            if not row:
+                continue
+            labels = re.findall(r'\\label\{([^}]+)\}', row)
+            row = re.sub(r'\\label\{[^}]+\}', '', row).strip()
+            row = re.sub(r'\s*(?<!\\)&\s*', ' ', row).strip()
+            row = re.sub(r'[,;]\s*$', '', row).strip()
+            rows.append((row, labels))
+        return rows
+
+    def _emit_split_align(body: str, leading_label: str | None = None) -> str:
+        """Emit one ``$$...$$`` block per row, each with its own
+        trailing label (when present). A leading ``\\begin{align}\\label{}``
+        becomes a ``(name)=`` anchor above the first row block."""
+        rows = _split_align_rows(body)
+        out_blocks: list[str] = []
+        for i, (content, labels) in enumerate(rows):
+            if labels:
+                primary = convert_label_colons(labels[0])
+                block = f'$$\n{content}\n$$ ({primary})'
+                # Multiple labels on the same row are rare but legal —
+                # stack any extras as ``(name)=`` anchors (one anchor
+                # → no collision risk).
+                for extra in labels[1:]:
+                    block = f'({convert_label_colons(extra)})=\n\n{block}'
+            else:
+                block = f'$$\n{content}\n$$'
+            if i == 0 and leading_label:
+                block = f'({convert_label_colons(leading_label)})=\n\n{block}'
+            out_blocks.append(block)
+        result = '\n\n'.join(out_blocks)
+        # If the joined output begins with a ``(name)=`` anchor (from
+        # ``leading_label`` or from the first row's stacked extras),
+        # prepend ``\n\n`` so MyST parses it as a block-level anchor
+        # rather than fusing it into the preceding prose paragraph —
+        # mirrors the labeled-align extra-anchor path's leading
+        # ``\n\n``. Caught by Copilot review on PR #77.
+        if result.startswith('('):
+            result = f'\n\n{result}'
+        return result
+
     # Pattern: $$\begin{align}\label{...} ... \end{align}$$
-    # The leading label becomes the trailing ``(label)`` for the block; any
-    # additional per-row labels in the body are emitted as stacked anchors
-    # above (multiple anchors targeting the same block — numbering
-    # collapses but cross-refs all resolve).
+    # Leading label becomes the trailing ``(label)`` for the block; up
+    # to one per-row label stacks as an anchor above. Beyond that the
+    # split path takes over (#70).
     def replace_labeled_align(m):
-        leading = convert_label_colons(m.group(1))
-        content, extra = _extract_math_labels(m.group(2).strip())
-        block = f'$$\n\\begin{{aligned}}\n{content}\n\\end{{aligned}}\n$$ ({leading})'
+        leading = m.group(1)
+        body = m.group(2)
+        if _align_needs_split(body):
+            return _emit_split_align(body, leading_label=leading)
+        content, extra = _extract_math_labels(body.strip())
+        leading_decoded = convert_label_colons(leading)
+        block = f'$$\n\\begin{{aligned}}\n{content}\n\\end{{aligned}}\n$$ ({leading_decoded})'
         if extra:
             anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in extra)
             return f'\n\n{anchors}\n\n{block}'
@@ -147,8 +230,12 @@ def convert_equations(text: str) -> str:
     # level, may carry an inner \label{} per #48 — emit as explicit anchor
     # form with surrounding blank lines so MyST parses it as a block-level
     # anchor rather than fusing it into the preceding prose paragraph).
+    # The split path takes over when the body has 2+ labels or 2+ tags (#70 / #46).
     def replace_unlabeled_align(m):
-        content, labels = _extract_math_labels(m.group(1).strip())
+        body = m.group(1)
+        if _align_needs_split(body):
+            return _emit_split_align(body)
+        content, labels = _extract_math_labels(body.strip())
         block = f'$$\n\\begin{{aligned}}\n{content}\n\\end{{aligned}}\n$$'
         if labels:
             anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in labels)

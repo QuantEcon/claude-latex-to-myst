@@ -1,13 +1,14 @@
 ---
 id: 032
-title: "Per-row \\label{} inside multi-row \\begin{align} lost — extract to anchors above the block"
+title: "Per-row \\label{} inside multi-row \\begin{align} — split into per-row $$ blocks (2+ labels) or stack above (≤1 label)"
 category: post-processing
-tags: [katex, equations, align, labels, cross-refs]
+tags: [katex, equations, align, labels, cross-refs, myst-anchors]
 source_project: external book (Deep_Learning_for_Solving_And_Estimating_Dynamic_Economic_Models)
 status: codified
-codified_in: scripts/postprocess.py::convert_equations
+codified_in: scripts/transforms/math.py::convert_equations
 severity: high
 date: 2026-05-25
+updated: 2026-05-27
 ---
 
 ## Symptom
@@ -77,19 +78,44 @@ return block
 for the leading label and stacks any additional per-row labels as
 anchors above.
 
-**Tradeoff (deliberate):** all per-row anchors target the *same*
-math block, so the eq-number rendered by sphinx-proof / MyST is
-identical for every label. This collapses the per-row numbering the
-original LaTeX had — but it preserves every cross-reference. The
-alternative (split each labelled row into its own `$$ ... $$` block)
-breaks the `\begin{aligned}` alignment, which is the visual reason
-the author used `align` in the first place. Broken anchors are
-much worse than collapsed numbering.
+## Followup (#70 — 2026-05-27)
+
+The "stacked anchors above one aligned block" fix above turned out
+to be **broken in a different way**: MyST treats two or more
+consecutive `(name)=` lines as competing labels for the same next
+block element, collapses them to ONE anchor, and renames the rest
+(the non-first labels survive as anchors but with auto-generated
+names, NOT the names the source declared). Any `{eq}\`eq-X\`` to a
+non-first label then dangles. Surfaced in dp-deep-learning's R7 pass:
+15 collision cases across 5 chapters, 10 of which had a dangling
+`{eq}` ref somewhere in the book.
+
+The original lesson's claim that "broken anchors are much worse
+than collapsed numbering" assumed the stacked-anchor approach
+preserved every cross-reference. It didn't. Both the column-
+alignment compromise AND the cross-ref breakage applied — the
+worst combination.
+
+**Updated approach (#70):**
+
+- 0 or 1 per-row label / tag → keep the original `aligned` block
+  (column alignment preserved, single anchor doesn't collide).
+- 2+ per-row labels OR 2+ per-row `\tag*{}` → SPLIT into per-row
+  `$$...$$` blocks each with its own trailing `(name)`. The `&`
+  alignment is lost; cross-refs all resolve. Same split also
+  resolves #46 (KaTeX `Multiple \tag` error on per-row `\tag*{}`
+  inside `\begin{aligned}`).
+
+The split logic lives in `_align_needs_split` / `_split_align_rows`
+/ `_emit_split_align` inside `convert_equations`.
 
 Tests in `tests/test_transforms.py`:
 `test_convert_equations_multirow_align_per_row_labels_emit_anchors`,
 `test_convert_equations_align_leading_plus_per_row_labels`,
-`test_convert_equations_align_no_labels_unchanged_shape`.
+`test_convert_equations_align_no_labels_unchanged_shape`,
+`test_convert_equations_align_2plus_per_row_labels_splits_to_avoid_collision`,
+`test_convert_equations_align_2plus_tags_splits_to_avoid_multiple_tag_error`,
+`test_convert_equations_align_leading_plus_2plus_per_row_splits`.
 
 ## How to detect
 
