@@ -106,6 +106,21 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Added — config-driven features
 
+- **Package-imported text macros detected by `_warn_dropped_text_macros`**
+  ([#50], extends [#22]): the dropped-text-macro warner now flags
+  ``\ding{N}`` (from ``pifont``), ``\faIcon{X}`` (from ``fontawesome``),
+  ``\checkmark`` (from ``amssymb``) and similar package-imported text
+  macros pandoc silently drops along with their argument. Detection is
+  by-name against a curated registry; for ``\ding`` known glyph numbers
+  (51, 52, 55, 56, 108, 109) come with suggested unicode replacements
+  (``✓``, ``✔``, ``✗``, ``✘``, …) so the warning's paste-ready
+  ``preprocess.rewrites`` block needs no editing. Unknown ``\ding``
+  numbers or ``\faIcon`` icons are listed for manual fill-in. Same UX
+  contract as #22 — one warning per book run, opt-in by design. New
+  entries can be added to ``_PACKAGE_DROP_REGISTRY`` as books surface
+  them. Surfaced converting book-dp2's ``ch_adps.tex`` where 10×
+  ``\ding{51}`` in a captioned 4-column convergence table were silently
+  emptied by pandoc.
 - **`regen: false`** ([#63]) on `chapters[]` / `extra_files[]` entries.
   Opts a stem out of the regen flow entirely — `convert.sh` skips
   pre-process + pandoc + postprocess and leaves any curated copy in
@@ -871,6 +886,7 @@ haven't validated. Everything below is on `main` and available now.
 [#47]: https://github.com/QuantEcon/claude-latex-to-myst/issues/47
 [#48]: https://github.com/QuantEcon/claude-latex-to-myst/issues/48
 [#49]: https://github.com/QuantEcon/claude-latex-to-myst/issues/49
+[#50]: https://github.com/QuantEcon/claude-latex-to-myst/issues/50
 [#51]: https://github.com/QuantEcon/claude-latex-to-myst/issues/51
 [#55]: https://github.com/QuantEcon/claude-latex-to-myst/issues/55
 [#58]: https://github.com/QuantEcon/claude-latex-to-myst/pull/58
