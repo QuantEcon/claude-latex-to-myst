@@ -5,7 +5,7 @@ category: myst
 tags: [myst, commonmark, fenced-blocks, directives, code-block, backticks, colon-fence, nesting]
 source_project: book-dp-deep-learning (#69 / #78 follow-on)
 status: codified
-codified_in: scripts/transforms/envs.py::_outer_fence (resolve_exercise_markers); generalisation tracked in #79
+codified_in: scripts/transforms/_helpers.py::outer_fence (used by resolve_exercise_markers, convert_environment_divs, resolve_algorithms; #69 + #79)
 severity: medium
 date: 2026-05-28
 ---
@@ -39,29 +39,36 @@ only tilde/colon fences, does not.
 ## Fix
 
 Compute the directive fence from its content rather than hardcoding three
-backticks. `scripts/transforms/envs.py::_outer_fence` scans the body for
-the longest backtick run at a line start and returns one tick longer
+backticks. `scripts/transforms/_helpers.py::outer_fence` scans the body
+for the longest backtick run at a line start and returns one tick longer
 (min three):
 
 ```python
 _FENCE_LINE_RE = re.compile(r'[ \t]*(`{3,})')
 
-def _outer_fence(content: str) -> str:
+def outer_fence(content: str) -> str:
     inner = max((len(m.group(1)) for line in content.splitlines()
                  if (m := _FENCE_LINE_RE.match(line))), default=0)
     return '`' * max(3, inner + 1)
 ```
 
 It composes bottom-up — `code(3) ⊂ note(4) ⊂ exercise(5)` — provided the
-body's fence counts are final before the outer emitter runs (true for
-`resolve_exercise_markers`, whose body is already-final pandoc markdown).
+body's fence counts are final before the outer emitter runs.
 Tildes are deliberately *not* scanned: they can't close a backtick fence.
 
-Currently wired into `resolve_exercise_markers` only (PR #78). Every
-other backtick-directive emitter (`convert_environment_divs` for
-`\begin{Exercise}`/`{solution}`/`{prf:*}`, `{prf:algorithm}`, `{figure}`,
-`{list-table}`) still hardcodes three ticks — generalising `_outer_fence`
-to all of them is tracked in **#79**.
+Wired into `resolve_exercise_markers` (#69), `convert_environment_divs`
+(`\begin{Exercise}`/`{solution}`/`{prf:*}`), and `{prf:algorithm}` (#79).
+
+**Residual limitation (the ordering caveat).** `outer_fence` only counts
+fences *present in the body when the directive is emitted*. Code blocks
+(`convert_pandoc_attr_code_blocks`) run before the container emitters, so
+a ```` ```python ```` inside an exercise is caught. But a `{figure}`,
+minted `{code-block}`, or `{prf:algorithm}` that a *later* pipeline stage
+injects into an already-emitted container body is **not** counted — that
+container keeps its narrower fence and can still be closed early. Fixing
+this fully requires emitting container bodies with width sentinels and
+stamping the fence in a final pass (intent can't be recovered once the
+fences are flat in the text). Tracked as future work in **#80**.
 
 ## Why not colon-fence the prose directives instead
 

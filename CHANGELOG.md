@@ -17,6 +17,18 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Added — pipeline transforms
 
+- **Directive fences widen to outrank nested code blocks** ([#79]):
+  a shared `transforms/_helpers.outer_fence` helper sizes a directive's
+  backtick fence to one tick longer than the deepest code fence in its
+  body (min three), so a ```` ```python ```` block inside an exercise,
+  solution, proof, or algorithm no longer closes the directive early
+  (the CommonMark same-character nesting rule, lesson 040). Applied to
+  `convert_environment_divs` (`{exercise}`/`{solution}`/`{prf:*}`) and
+  `{prf:algorithm}`, alongside the `resolve_exercise_markers` use shipped
+  with [#69]. Pragmatic scope: only fences already present when the
+  directive is emitted are counted; a figure/listing/algorithm injected
+  into a directive body by a *later* pipeline stage is not yet handled
+  (tracked as future work).
 - **`\item\label{ex:...}` enumerate → `{exercise}` directive marker
   pipeline** ([#69]): exercise labels written as
   ``\begin{enumerate}\item\label{ex:chN:M} ...\end{enumerate}`` (the
@@ -1023,6 +1035,7 @@ haven't validated. Everything below is on `main` and available now.
 [#69]: https://github.com/QuantEcon/claude-latex-to-myst/issues/69
 [#70]: https://github.com/QuantEcon/claude-latex-to-myst/issues/70
 [#71]: https://github.com/QuantEcon/claude-latex-to-myst/issues/71
+[#79]: https://github.com/QuantEcon/claude-latex-to-myst/issues/79
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md
