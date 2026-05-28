@@ -367,6 +367,20 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **`fix_spacing_superscript` missed math inside `{table}` cells (and
+  other base64-encoded marker bodies)** ([#85], follow-on to [#45]):
+  the original transform ran early in the pipeline, before
+  `resolve_table_markers` / `resolve_algorithms` / etc. decode the
+  HTML-comment markers their preprocessors emit. The cell math was
+  base64-hidden at that point, so the rewrite never reached it — 2 of
+  the 8 originally-affected sites in book-dp-deep-learning's
+  ch11_climate (inside a `{table}`) remained broken. Resolution: move
+  `fix_spacing_superscript` to run **after** every marker decoder
+  (right after `resolve_algorithmics`), and add a `(?!\{)` lookahead to
+  the fenced-code stash so MyST directive fences (`​```{table}`, etc.)
+  aren't treated as code blocks at the new late position. End-to-end
+  verified against myst 1.9.1: the issue's reproducer goes from 3
+  KaTeX "unknown type" errors to 0. Lesson [042] updated.
 - **`\,^X` breaks KaTeX with "unknown type: 'internal'"** ([#45]): an
   inline superscript directly after a thin space — most commonly
   `3\,^\circ\mathrm{C}` (degrees Celsius), but the break is general
@@ -1074,6 +1088,7 @@ haven't validated. Everything below is on `main` and available now.
 [#71]: https://github.com/QuantEcon/claude-latex-to-myst/issues/71
 [#74]: https://github.com/QuantEcon/claude-latex-to-myst/issues/74
 [#79]: https://github.com/QuantEcon/claude-latex-to-myst/issues/79
+[#85]: https://github.com/QuantEcon/claude-latex-to-myst/issues/85
 [020]: lessons/020-natbib-bracket-markers-precede-cross-refs.md
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md

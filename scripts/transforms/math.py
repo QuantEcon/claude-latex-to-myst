@@ -74,15 +74,20 @@ def fix_text_dollar(text: str) -> str:
     return ''.join(output)
 
 
+# Stash *code* fences only — the negative lookahead ``(?!\{)`` skips MyST
+# directive fences like ``\`\`\`{table}`` / ``\`\`\`{exercise}`` whose
+# bodies contain math the rewrite must reach (issue #85). Pandoc-attr
+# code blocks (``\`\`\`{.python}``) start with ``{.`` — also excluded;
+# in practice those are rare at this pipeline position.
 _FENCED_CODE_RE = re.compile(
-    r'(?ms)^(`{3,})[^\n]*\n.*?\n\1[ \t]*$'
+    r'(?ms)^(`{3,})(?!\{)[^\n]*\n.*?\n\1[ \t]*$'
 )
 _INLINE_CODE_RE = re.compile(r'`[^`\n]+`')
 
 
 def fix_spacing_superscript(text: str) -> str:
     r"""Give a superscript that directly follows a thin space an explicit
-    empty base, for KaTeX compatibility (closes #45).
+    empty base, for KaTeX compatibility (closes #45, #85).
 
     ``\,^\circ`` — e.g. ``3\,^\circ\mathrm{C}`` for degrees Celsius — is
     valid LaTeX: the superscript attaches to an implicit empty base. But
@@ -99,13 +104,20 @@ def fix_spacing_superscript(text: str) -> str:
     was verified still-erroring against KaTeX (myst 1.9.1). Only the
     empty-base group fixes it.
 
-    Fenced code blocks and inline code spans are stashed and restored
+    Runs **late** in ``process_text``, after every marker decoder
+    (``resolve_table_markers``, ``resolve_exercise_markers``,
+    ``resolve_listings``, ``resolve_algorithms``,
+    ``resolve_algorithmics``). Those preprocessors base64-encode their
+    body content into HTML-comment markers pre-pandoc, so the math
+    inside is invisible to any text-level regex until the decoder runs.
+    An earlier-position call would miss table cells (#85), algorithm
+    bodies, etc.
+
+    Fenced *code* blocks and inline code spans are stashed and restored
     around the rewrite, so a tutorial passage displaying the literal
-    ``\,^`` as an example (e.g. a chapter explaining this very KaTeX
-    gotcha) is not silently mangled. At this pipeline position — after
-    ``fix_text_dollar``, before any directive-emitting transform — every
-    backtick fence in the text is a code block, so the stash is
-    unambiguous.
+    ``\,^`` as an example isn't silently mangled. Directive fences
+    (``\`\`\`{table}`` etc.) are NOT stashed — they're the very bodies
+    we need to fix.
     """
     stash: list[str] = []
 

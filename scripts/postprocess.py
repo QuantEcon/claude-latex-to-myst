@@ -567,7 +567,6 @@ def process_text(text: str, stem: str, title: str | None = None,
 
     text = strip_pandoc_html_separators(text)
     text = fix_text_dollar(text)
-    text = fix_spacing_superscript(text)           # \,^ → \,{}^ for KaTeX (closes #45)
     text = convert_epigraphs(text)
     # convert_simple_tables MUST run before convert_environment_divs (GH #27):
     # tabulars wrapped in \begin{center}…\end{center} are rendered by pandoc
@@ -607,6 +606,7 @@ def process_text(text: str, stem: str, title: str | None = None,
     text = resolve_listings(text)                  # decode minted markers
     text = resolve_algorithms(text)                # decode algorithm2e markers
     text = resolve_algorithmics(text)              # decode standalone algorithmicx markers (lesson 023)
+    text = fix_spacing_superscript(text)           # \,^ → \,{}^ for KaTeX — runs AFTER decoders so table-cell math is visible (closes #45, #85)
     text = join_split_inline_math(text)
     text = ensure_blank_after_display_math(text)   # adds blank lines
     text = cleanup_typography(text)                # caps blank-line runs; strips \qedhere

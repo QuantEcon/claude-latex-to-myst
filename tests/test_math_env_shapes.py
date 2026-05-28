@@ -366,3 +366,46 @@ def test_fix_spacing_superscript_handles_4_backtick_fences():
     out = postprocess.fix_spacing_superscript(src)
     assert '$x\\,{}^*$' in out                       # outside: rewritten
     assert 'Example: $\\,^\\circ$ shows the issue.' in out   # inside: preserved
+
+
+def test_fix_spacing_superscript_reaches_into_table_directive_cells():
+    """Issue #85: a ``{table}`` directive's body (pipe-table cells) is
+    NOT a code block — its math must be rewritten. The fenced-code stash
+    skips ``\\`\\`\\`{name}`` directive fences (only plain ``\\`\\`\\``
+    fences are stashed)."""
+    src = (
+        '````{table}\n'
+        ':name: tab-foo\n'
+        '\n'
+        '| Param | Value |\n'
+        '|---|---|\n'
+        '| ECS | $\\approx 3.25\\,^\\circ$C |\n'
+        '| $T_0$ | $(1.10, 0.27)\\,^\\circ$C |\n'
+        '````\n'
+    )
+    out = postprocess.fix_spacing_superscript(src)
+    # Cell math is rewritten — the directive body is reached, not stashed.
+    assert '$\\approx 3.25\\,{}^\\circ$C' in out
+    assert '$(1.10, 0.27)\\,{}^\\circ$C' in out
+    # The directive fence itself is preserved verbatim.
+    assert '````{table}' in out
+    assert ':name: tab-foo' in out
+    # No \,^ left anywhere (idempotent + complete).
+    assert '\\,^' not in out
+
+
+def test_fix_spacing_superscript_reaches_other_directive_bodies():
+    """The same fix applies to math inside other directive bodies that
+    were base64-encoded pre-pandoc (exercises, algorithms, etc.). The
+    stash exclusion is on ``\\`\\`\\`{name}`` in general, not specific
+    to ``{table}``."""
+    src = (
+        '```{exercise}\n'
+        ':label: ex-temp\n'
+        '\n'
+        'Show that $T\\,^\\circ\\mathrm{C}$ is monotone.\n'
+        '```\n'
+    )
+    out = postprocess.fix_spacing_superscript(src)
+    assert '$T\\,{}^\\circ\\mathrm{C}$' in out
+    assert '```{exercise}' in out
