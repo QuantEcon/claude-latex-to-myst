@@ -46,6 +46,7 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 037 | [`\label{}` extraction not applied to `multline` / `gather` (incompleteness from #30)](lessons/037-multline-gather-label-extraction-incomplete.md) | post-processing | 🟢 | codified |
 | 038 | [Late-import of `postprocess` from transform modules loads a second copy when run as `__main__`](lessons/038-postprocess-main-module-double-load.md) | tooling | 🔴 | codified |
 | 039 | [Enumerate-exercise preprocessor: flat \\item scan AND non-greedy block regex both break on nested lists inside an exercise](lessons/039-enumerate-exercise-markers-nested-list-depth-and-block-pairing.md) | preprocess | 🔴 | codified |
+| 040 | [Nested fences resolve by same-character count (k+1) — directive emitters must outrank any code fence in their body](lessons/040-myst-nested-fence-count-rule.md) | myst | 🟡 | codified |
 
 ## By category
 
@@ -54,7 +55,7 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 - **pandoc:** 027
 - **preprocess:** 028, 029, 030, 039
 - **katex:** 003, 006
-- **myst:** 013
+- **myst:** 013, 040
 - **tooling:** 009, 010, 038
 
 ## Open (gaps to close on the next book)
