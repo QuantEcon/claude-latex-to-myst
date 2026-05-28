@@ -16,6 +16,7 @@ import _apply_algorithm_markers as alg
 import _apply_algorithmic_markers as algic
 import _apply_chapter_splits as split
 import _apply_description_markers as desc
+import _apply_enumerate_markers as enum_m
 import _apply_listing_markers as lst
 import _apply_rewrites as rew
 import _warn_dropped_text_macros as wdtm
@@ -860,3 +861,203 @@ def _files_with_content(tmp_path, text: str):
     ch = tmp_path / "ch.tex"
     ch.write_text(text, encoding="utf-8")
     return [ch]
+
+
+# ── Enumerate exercise markers (issue #69) ───────────────────────────────────
+
+
+def test_enum_marker_rewrites_fully_labelled_exercise_list():
+    """GH #69 — an ``enumerate`` whose every ``\\item`` has an
+    ``\\label{ex:...}`` becomes a sequence of EXERCISE marker pairs.
+    The enumerate wrapper is dissolved; the resolver later decodes
+    each pair into a ``{exercise}`` directive."""
+    tex = (
+        "Before the exercises.\n"
+        "\\begin{enumerate}[itemsep=4pt]\n"
+        "\\item\\label{ex:ch1:1} \\textbf{[Core] Backprop.} body 1\n"
+        "\\item\\label{ex:ch1:2} \\textbf{[Core] MSE.} body 2\n"
+        "\\end{enumerate}\n"
+        "After.\n"
+    )
+    out = enum_m.process_text(tex)
+    # The enumerate wrapper is gone.
+    assert "\\begin{enumerate}" not in out
+    assert "\\end{enumerate}" not in out
+    # No surviving \item / \label{ex:...} — both consumed into markers.
+    assert "\\item" not in out
+    assert "\\label{ex:" not in out
+    # Each labelled item carries its own marker pair with the
+    # colon-converted label.
+    assert "<!--EXERCISE-START label=ex-ch1-1-->" in out
+    assert "<!--EXERCISE-START label=ex-ch1-2-->" in out
+    assert out.count("<!--EXERCISE-END-->") == 2
+    # Item bodies survive verbatim (raw LaTeX — pandoc converts later).
+    assert "\\textbf{[Core] Backprop.} body 1" in out
+    assert "\\textbf{[Core] MSE.} body 2" in out
+
+
+def test_enum_marker_skips_mixed_list_some_unlabelled():
+    """Conservative trigger: if ANY ``\\item`` in the enumerate lacks
+    an ``ex:`` label, the whole block is left for pandoc to render
+    as a normal bullet list. Mixing exercise directives with bullet
+    items in one rendered block would be incoherent."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "\\item\\label{ex:ch1:1} labelled item\n"
+        "\\item bare bullet, no label\n"
+        "\\end{enumerate}\n"
+    )
+    out = enum_m.process_text(tex)
+    assert out == tex
+
+
+def test_enum_marker_skips_non_ex_label_prefix():
+    """Conservative trigger: a ``\\label{step:1}`` etc. is not an
+    exercise label and should not be promoted to an ``{exercise}``
+    directive. Only ``ex:``-prefixed labels qualify."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "\\item\\label{step:1} first step\n"
+        "\\item\\label{step:2} second step\n"
+        "\\end{enumerate}\n"
+    )
+    out = enum_m.process_text(tex)
+    assert out == tex
+
+
+def test_enum_marker_idempotent_noop_on_no_enumerate():
+    """No ``\\begin{enumerate}`` in source → no-op."""
+    tex = "Plain prose with no list.\n"
+    assert enum_m.process_text(tex) == tex
+
+
+def test_enum_marker_skips_commented_block():
+    """A whole-line-commented enumerate must not be rewritten — the
+    START marker would survive on a comment line but the END marker
+    would land on a fresh uncommented line and leak the literal
+    ``<!--EXERCISE-END-->`` into the output (same defensive shape as
+    the listing-marker comment guard, lesson 014 Gap A)."""
+    tex = (
+        "% \\begin{enumerate}\n"
+        "% \\item\\label{ex:x} commented\n"
+        "% \\end{enumerate}\n"
+    )
+    assert enum_m.process_text(tex) == tex
+
+
+def test_enum_parse_returns_label_content_pairs():
+    """Direct unit test for the parse helper: a fully-labelled body
+    yields per-item ``(label, content)`` tuples; the original LaTeX
+    ``\\label{...}`` is stripped from each content (it was captured
+    by the label slot)."""
+    body = (
+        "\n"
+        "\\item\\label{ex:a} foo body\n"
+        "\\item\\label{ex:b} bar body\n"
+    )
+    items = enum_m.parse_enum_items(body)
+    assert items == [("ex:a", "foo body"), ("ex:b", "bar body")]
+
+
+def test_enum_marker_handles_multiline_item_body():
+    """Item bodies can span multiple physical lines (long exercises
+    routinely do). The marker payload must preserve the newlines so
+    pandoc later sees the correct paragraph structure inside the
+    item."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "\\item\\label{ex:multi} First paragraph of the item.\n"
+        "\n"
+        "Second paragraph still inside the same item.\n"
+        "\\item\\label{ex:next} A simpler item.\n"
+        "\\end{enumerate}\n"
+    )
+    out = enum_m.process_text(tex)
+    # The multi-line item body sits between its own marker pair.
+    assert (
+        "<!--EXERCISE-START label=ex-multi-->\n"
+        "First paragraph of the item.\n"
+        "\n"
+        "Second paragraph still inside the same item.\n"
+        "<!--EXERCISE-END-->"
+    ) in out
+
+
+def test_enum_marker_preserves_nested_itemize_in_exercise():
+    """GH #69 regression — an exercise statement that contains a nested
+    ``itemize`` must still be rewritten. The nested ``\\item`` tokens are
+    unlabelled, but they're depth-1: they belong to the inner list and
+    ride along inside their parent exercise's body, so they must NOT
+    disqualify the block. (A flat ``\\item`` scan counted them and left
+    the whole block to pandoc, dropping the ``ex:`` labels — the very bug
+    #69 set out to fix.)"""
+    tex = (
+        "\\begin{enumerate}\n"
+        "\\item\\label{ex:ch1:1} Consider the following cases:\n"
+        "  \\begin{itemize}\n"
+        "  \\item first sub-point\n"
+        "  \\item second sub-point\n"
+        "  \\end{itemize}\n"
+        "\\item\\label{ex:ch1:2} A simpler exercise.\n"
+        "\\end{enumerate}\n"
+    )
+    out = enum_m.process_text(tex)
+    # Two top-level exercises → two marker pairs.
+    assert out.count("<!--EXERCISE-START label=ex-ch1-1-->") == 1
+    assert out.count("<!--EXERCISE-START label=ex-ch1-2-->") == 1
+    assert out.count("<!--EXERCISE-END-->") == 2
+    # The nested itemize travels intact inside the first exercise body.
+    assert "\\begin{itemize}" in out
+    assert "\\item first sub-point" in out
+    assert "\\item second sub-point" in out
+    # The outer enumerate wrapper is gone.
+    assert "\\begin{enumerate}" not in out
+
+
+def test_enum_marker_preserves_nested_enumerate_subparts():
+    """GH #69 regression — a multi-part exercise whose sub-parts are a
+    nested ``enumerate`` (``(a)/(b)``). Two hazards at once: a flat scan
+    counts the nested ``\\item`` (depth must gate them out), and a
+    non-greedy ``\\begin..\\end`` regex stops at the inner
+    ``\\end{enumerate}`` (block pairing must balance by depth)."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "\\item\\label{ex:ch2:1} Prove each of the following:\n"
+        "  \\begin{enumerate}\n"
+        "  \\item part a\n"
+        "  \\item part b\n"
+        "  \\end{enumerate}\n"
+        "\\item\\label{ex:ch2:2} Second exercise.\n"
+        "\\end{enumerate}\n"
+    )
+    out = enum_m.process_text(tex)
+    assert out.count("<!--EXERCISE-START label=ex-ch2-1-->") == 1
+    assert out.count("<!--EXERCISE-START label=ex-ch2-2-->") == 1
+    assert out.count("<!--EXERCISE-END-->") == 2
+    # The inner enumerate (with its own unlabelled items) survives inside
+    # the first exercise's body, not lifted to a top-level exercise.
+    assert "\\begin{enumerate}" in out
+    assert "\\end{enumerate}" in out
+    assert "\\item part a" in out
+    assert "\\item part b" in out
+
+
+def test_enum_parse_ignores_nested_item_boundaries():
+    """Direct unit test for the depth-aware parse: only the two
+    depth-0 ``\\item`` tokens are exercise boundaries; the nested
+    ``itemize`` items stay inside the first exercise's content."""
+    body = (
+        "\n"
+        "\\item\\label{ex:a} stem a\n"
+        "\\begin{itemize}\n"
+        "\\item nested 1\n"
+        "\\item nested 2\n"
+        "\\end{itemize}\n"
+        "\\item\\label{ex:b} stem b\n"
+    )
+    items = enum_m.parse_enum_items(body)
+    assert items is not None
+    assert len(items) == 2
+    assert items[0][0] == "ex:a" and items[1][0] == "ex:b"
+    assert items[0][1].count("\\item nested") == 2
+    assert "\\begin{itemize}" in items[0][1]
