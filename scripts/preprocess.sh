@@ -181,6 +181,20 @@ for ch in "${CHAPTER_STEMS[@]}"; do
   # (#51, Path C from PR #41 R3).
   python3 "$SCRIPT_DIR/_apply_table_markers.py" "$dst"
 
+  # Replace \begin{figure}...\end{figure} (LaTeX float) with FIGURE marker
+  # comments — Phase 1 of the figure-handling architecture (closes
+  # #89/#90/#92/#93). Pandoc's HTML emission for figures loses content:
+  # empty <span class="citation"> spans drop cite keys, [[CITEP:X]] markers
+  # leak unescaped inside <figcaption>, minipage / bare-{\footnotesize}
+  # sub-captions get dropped. This pre-pandoc extraction batch-converts
+  # the caption + sub-captions through pandoc (escaping brackets so
+  # decode_natbib_markers can find them) and stores the structure in the
+  # marker. The postprocess step (resolve_figure_markers) emits MyST
+  # {figure} directives. Phase 1 bails on blocks containing
+  # \begin{subfigure}; convert_html_figures handles those as before
+  # (Phase 2 — issue #94).
+  python3 "$SCRIPT_DIR/_apply_figure_markers.py" "$dst"
+
   echo "  Preprocessed: ${ch}.tex"
 done
 

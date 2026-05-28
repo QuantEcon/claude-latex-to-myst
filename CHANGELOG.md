@@ -367,6 +367,34 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **Figure-marker preprocessor (Phase 1) closes the pandoc-figure-HTML
+  emission bug class** ([#89], [#90], [#92], [#93]): four figure-
+  caption / sub-caption content-loss bugs surfaced in DL R12–R13 — the
+  empty `<span class="citation">` from `\citet` (#89), `<div
+  class="minipage">` from sub-captions (#90), unescaped `[[CITEP:X]]`
+  inside `<figcaption>` (#92), and bare `{\footnotesize ...}` between
+  `\end{tikzpicture}` and `\caption{}` (#93). Three of those landed
+  as targeted patches in `convert_html_figures` ([#91]) but the
+  trajectory matched `fix_spacing_superscript` exactly: more bugs in
+  the same code path within a single sprint, each a different pandoc-
+  HTML-emission quirk. Resolution: mirror the table-marker pattern
+  ([#51] / [#55]). `_apply_figure_markers.py` extracts `\begin{figure}`
+  floats pre-pandoc into `<!--FIGURE payload=BASE64-->` HTML-comment
+  markers, batch-converts the caption + sub-captions through pandoc
+  once (escaping brackets so `decode_natbib_markers` finds the natbib
+  markers — the key #92 fix), and stores the spec.
+  `resolve_figure_markers` decodes post-pandoc into `{figure}`
+  directives. Pandoc never sees the figure body, so its HTML emission
+  quirks can't drop or mangle anything — the whole bug class is closed
+  structurally. Phase 1 scope: single-figure shapes (one
+  `\includegraphics` or `\input{tikz/...}`, no `\begin{subfigure}`);
+  subfigure handling stays on `convert_html_figures` as fallback,
+  tracked for Phase 2 in #94. The pre-pandoc batch defensively prefixes
+  each cell with `~` (LaTeX nbsp) so pandoc doesn't mis-interpret a
+  leading `(a)` as inline math `\(a\)` — a known pandoc quirk that
+  bites sub-captions like `(a) the unit ball`. 21 new tests + all 570
+  existing tests pass. Lesson [043] updated with the architectural
+  postscript.
 - **Figure captions lost `\citet` / `\citep` cites and `\begin{minipage}`
   sub-captions** ([#89], [#90]): two distinct content-loss bugs on the
   same code path in `convert_html_figures`. (1) Pandoc emits a cite
@@ -1138,6 +1166,9 @@ haven't validated. Everything below is on `main` and available now.
 [#87]: https://github.com/QuantEcon/claude-latex-to-myst/issues/87
 [#89]: https://github.com/QuantEcon/claude-latex-to-myst/issues/89
 [#90]: https://github.com/QuantEcon/claude-latex-to-myst/issues/90
+[#91]: https://github.com/QuantEcon/claude-latex-to-myst/pull/91
+[#92]: https://github.com/QuantEcon/claude-latex-to-myst/issues/92
+[#93]: https://github.com/QuantEcon/claude-latex-to-myst/issues/93
 [020]: lessons/020-natbib-bracket-markers-precede-cross-refs.md
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md

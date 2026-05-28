@@ -5,7 +5,7 @@ category: post-processing
 tags: [pandoc, figures, captions, citations, minipage, html-extraction]
 source_project: book-dp-deep-learning (R12 fidelity walkthrough)
 status: codified
-codified_in: scripts/transforms/figures.py::convert_html_figures._html_caption_to_myst, scripts/transforms/figures.py::convert_html_figures.extract_minipage_subcaptions
+codified_in: scripts/_apply_figure_markers.py + scripts/transforms/figures_from_latex.py (figure-marker preprocessor, replaces the patches in scripts/transforms/figures.py::convert_html_figures); scripts/transforms/figures.py::convert_html_figures retained as fallback for subfigure shapes (Phase 2, issue #94)
 severity: medium
 date: 2026-05-28
 ---
@@ -145,3 +145,29 @@ preserve other text-bearing wrappers) inside the figure block. An
 extraction that only reads `<figcaption>` loses arbitrary author
 content. When in doubt, walk the figure block and gather every
 text-bearing sibling, not just the caption tag.
+
+## Postscript: superseded by the figure-marker preprocessor (#92/#93)
+
+The patches above (citation-span recovery + minipage-div folding in
+`convert_html_figures`) only partially closed the class. Within a
+single DL-book sprint, two more leaks surfaced: `[[CITEP:X]]` natbib
+markers leaked unescaped inside `<figcaption>` (#92, because pandoc
+doesn't escape brackets in HTML context), and bare `{\footnotesize ...}`
+between `\end{tikzpicture}` and `\caption{}` was still dropped (#93,
+not in a minipage). That's 4 bugs in 1 sprint — the same trajectory
+signal that justified the `fix_spacing_superscript` rebuild.
+
+The long-term solution mirrors the table-marker preprocessor (#51/#55):
+`_apply_figure_markers.py` extracts `\begin{figure}` floats pre-pandoc
+into HTML-comment markers with the structure base64-encoded inside.
+Captions and sub-captions are batch-converted through pandoc once,
+escaping brackets so `decode_natbib_markers` finds them. Pandoc never
+sees the figure body, so its HTML emission quirks can't drop or
+mangle anything. `convert_html_figures` is retained as fallback for
+the shapes Phase 1 doesn't yet cover (subfigure — Phase 2, issue #94).
+
+**Generalizable rule (updated):** when a post-pandoc HTML-extraction
+path accumulates more than two specific-quirk patches, prefer the
+marker-preprocessor rebuild over a fifth patch. Pandoc's HTML
+emission is fundamentally lossy/quirky; the marker pattern moves the
+truth back to the LaTeX source where it can't be lost.
