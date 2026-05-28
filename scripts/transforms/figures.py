@@ -188,8 +188,16 @@ def convert_html_figures(text: str) -> str:
         return cap
 
     def extract_caption(block):
+        # NB: the regex deliberately does NOT skip leading inner tags
+        # (the old form had a ``(?:<[^>]*>)*`` eater here). That eater
+        # discards any attribute-bearing tag at the start of the
+        # caption — e.g. a leading ``<span class="citation" ...>`` from
+        # a caption that opens with ``\citet{X}`` — before
+        # ``_html_caption_to_myst`` can recover the key. Capture the
+        # full inner and let the helper handle all tag stripping /
+        # attribute recovery.
         cap_match = re.search(
-            r'<figcaption>(?:<[^>]*>)*\s*(.*?)\s*</figcaption>',
+            r'<figcaption>\s*(.*?)\s*</figcaption>',
             block,
             re.DOTALL,
         )

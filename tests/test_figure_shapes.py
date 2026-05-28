@@ -219,6 +219,36 @@ def test_caption_citation_span_multi_key_recovered_as_bracketed_markers():
     assert '[@Smith2020; @Jones2019]' in out
 
 
+def test_caption_citation_span_at_start_of_caption_is_recovered():
+    """The previous ``extract_caption`` regex had a leading-tag eater
+    (``(?:<[^>]*>)*``) that would discard a citation span before the
+    recovery logic could see it — so a caption *starting* with
+    ``\\citet{X}`` (an extremely common academic phrasing —
+    ``\\caption{\\citet{Smith2020} introduces ...}``) still lost the
+    key. Caught by Copilot review on PR #91; the eater is now removed
+    so leading attribute-bearing tags reach the helper."""
+    src = HTML_BASE.replace(
+        '{caption}',
+        '<span class="citation" data-cites="Smith2020"></span> introduces the method.'
+    )
+    out = postprocess.convert_html_figures(src)
+    assert '@Smith2020 introduces the method.' in out
+
+
+def test_caption_ref_anchor_at_start_of_caption_is_recovered():
+    """Sibling guard for the leading-tag fix: a caption that begins
+    with a ``\\ref{}`` (rendered by pandoc as ``<a data-reference=...>``)
+    must also reach the typed-dispatch logic, not be eaten by a
+    leading-tag skip."""
+    src = HTML_BASE.replace(
+        '{caption}',
+        '<a href="#eq:foo" data-reference-type="eqref" data-reference="eq:foo">3</a> '
+        'introduces the equation.'
+    )
+    out = postprocess.convert_html_figures(src)
+    assert '{eq}`eq-foo` introduces the equation.' in out
+
+
 def test_caption_citation_recovery_does_not_break_caption_ref_dispatch():
     """A caption with both a ``\\ref{}`` (already handled, #38) AND a
     ``\\citet{}`` (#89) must produce both directives correctly — the

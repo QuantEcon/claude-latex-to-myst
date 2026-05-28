@@ -5,7 +5,7 @@ category: post-processing
 tags: [pandoc, figures, captions, citations, minipage, html-extraction]
 source_project: book-dp-deep-learning (R12 fidelity walkthrough)
 status: codified
-codified_in: scripts/transforms/figures.py::_html_caption_to_myst, extract_minipage_subcaptions
+codified_in: scripts/transforms/figures.py::convert_html_figures._html_caption_to_myst, scripts/transforms/figures.py::convert_html_figures.extract_minipage_subcaptions
 severity: medium
 date: 2026-05-28
 ---
