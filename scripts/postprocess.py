@@ -121,6 +121,7 @@ from transforms.refs import (  # noqa: E402  (re-exports for P3a)
 )
 from transforms.tables import convert_simple_tables  # noqa: E402  (P3a)
 from transforms.tables_from_latex import resolve_table_markers  # noqa: E402  (#51)
+from transforms.figures_from_latex import resolve_figure_markers  # noqa: E402  (#89/#90/#92/#93)
 from transforms.code import (  # noqa: E402  (re-exports for P3a)
     convert_pandoc_attr_code_blocks,
     resolve_listings,
@@ -585,6 +586,14 @@ def process_text(text: str, stem: str, title: str | None = None,
     # directly, no ``\begin{table}`` wrapper) where pandoc preserves
     # enough structure for the existing path to work.
     text = resolve_table_markers(text)
+    # resolve_figure_markers handles ``\begin{figure}`` floats that the
+    # ``_apply_figure_markers.py`` preprocessor extracted before pandoc
+    # ran. MUST run before ``decode_natbib_markers`` (line below) so the
+    # markdown-escaped ``\[\[CITEP:X\]\]`` in figure captions emerges
+    # into the post-resolve text where the decoder regex can match it
+    # (closes #92). Phase 1 — subfigure shapes still fall through to
+    # ``convert_html_figures`` (Phase 2 — issue #94).
+    text = resolve_figure_markers(text)
     text = convert_simple_tables(text)
     text = convert_environment_divs(text)
     text = convert_description_lists(text)         # decode DESCITEM markers (lesson 022)

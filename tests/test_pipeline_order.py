@@ -34,6 +34,7 @@ EXPECTED_PIPELINE_ORDER: list[str] = [
     'convert_epigraphs',
     'convert_pandoc_attr_code_blocks',
     'resolve_table_markers',
+    'resolve_figure_markers',
     'convert_simple_tables',
     'convert_environment_divs',
     'convert_description_lists',
