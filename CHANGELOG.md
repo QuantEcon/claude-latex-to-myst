@@ -367,6 +367,18 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **Plain `\cite[loc]{key}` dropped the key** ([#74], sister of [#13]):
+  the locator-aware natbib rewrite covered `\citep`/`\citealp`/etc. but
+  not plain `\cite`, which was deliberately left for pandoc's native
+  path. That path is correct for `\cite{key}` but not
+  `\cite[p.~351]{key}` — pandoc emits `[@key, p.~351]` and the
+  downstream regex loses the key, rendering an empty `` {cite}`` `` role
+  (silent: the validator's count tolerance hid it; only the rendered
+  HTML showed the gap). Added a `\cite` rewrite **gated on the presence
+  of a locator** (`_NATBIB_OPT_REQUIRED`), decoding `[[CITE:key]]` →
+  `{cite}` like the no-locator path; `\cite\b` leaves
+  `\citep`/`\citet` untouched and `CITE` is decoded last to avoid its
+  prefix colliding with `CITEP`. One site in book-dp2. Lesson [020].
 - **Per-row labels and `\tag*{}` collide in multi-row align** ([#70],
   also resolves [#46]): a ``\begin{align}`` body with 2+ per-row
   ``\label{}`` calls was previously emitted as one ``$$ \begin{aligned}
@@ -1035,7 +1047,9 @@ haven't validated. Everything below is on `main` and available now.
 [#69]: https://github.com/QuantEcon/claude-latex-to-myst/issues/69
 [#70]: https://github.com/QuantEcon/claude-latex-to-myst/issues/70
 [#71]: https://github.com/QuantEcon/claude-latex-to-myst/issues/71
+[#74]: https://github.com/QuantEcon/claude-latex-to-myst/issues/74
 [#79]: https://github.com/QuantEcon/claude-latex-to-myst/issues/79
+[020]: lessons/020-natbib-bracket-markers-precede-cross-refs.md
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
 [015]: lessons/015-minted-listings-resolution.md

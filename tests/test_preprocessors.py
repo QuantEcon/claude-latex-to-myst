@@ -309,11 +309,35 @@ def test_natbib_rewrite_citeyearpar_wins_over_citeyear():
     (r"\citeauthor[p.~1]{k}", "[[CITEAUTHOR:k]]"),
     (r"\citeyear[p.~1]{k}",   "[[CITEYEAR:k]]"),
     (r"\citeyearpar[p.~1]{k}", "[[CITEYEARPAR:k]]"),
+    # GH #74: plain \cite gets intercepted ONLY when a locator is present.
+    (r"\cite[p.~351]{loewenstein1971negative}",
+     "[[CITE:loewenstein1971negative]]"),
+    (r"\cite[see][p.~12]{key}", "[[CITE:key]]"),
+    (r"\cite [p.~7]{key}",      "[[CITE:key]]"),
 ])
 def test_natbib_rewrite_drops_locator_arg(src, want):
     """Locator args (``[p.~351]``) must not block the rewrite, and must
-    be discarded (MyST has no locator-suffix syntax). GH #13."""
+    be discarded (MyST has no locator-suffix syntax). GH #13 / #74."""
     assert _apply_natbib(src) == want
+
+
+@pytest.mark.parametrize("src", [
+    r"\cite{smith2020}",          # the common, no-locator form
+    r"\cite {smith2020}",         # whitespace before the key brace
+])
+def test_natbib_rewrite_leaves_plain_cite_without_locator(src):
+    """GH #74: plain ``\\cite{key}`` (no ``[loc]``) round-trips correctly
+    through pandoc's native path → ``{cite}``, so the preprocess rewrite
+    must leave it untouched. Only the locator form is intercepted."""
+    assert _apply_natbib(src) == src
+
+
+def test_natbib_rewrite_cite_locator_does_not_hijack_citep():
+    """Regression guard: the new ``\\cite[loc]`` rule must not steal a
+    ``\\citep[loc]`` — ``\\cite\\b`` has no word boundary before the
+    ``p``, so ``\\citep`` still decodes to CITEP, not CITE (GH #74)."""
+    assert _apply_natbib(r"\citep[p.~1]{key}") == "[[CITEP:key]]"
+    assert _apply_natbib(r"\citet[p.~1]{key}") == r"\citet[p.~1]{key}"
 
 
 # ── Inline \itemsep<dim> strip (issue #28) ───────────────────────────────────

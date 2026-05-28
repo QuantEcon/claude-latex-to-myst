@@ -108,14 +108,25 @@ def test_textual_cite_does_not_match_email():
     ('CITEALT',     'cite:t'),
     ('CITEAUTHOR',  'cite:author'),
     ('CITEYEAR',    'cite:year'),
+    ('CITE',        'cite'),       # \cite[loc]{key} (GH #74)
 ])
 def test_natbib_marker_decoded_to_role(marker_role: str, decoded_role: str):
     """The natbib bracket markers (emitted by preprocess for natbib
     variants pandoc collapses ambiguously) decode to the right
-    ``{cite:*}`` role. Lesson 020."""
+    ``{cite:*}`` role. Lesson 020 / GH #74."""
     src = f'Per \\[\\[{marker_role}:smith2020\\]\\] we have.'
     out = postprocess.decode_natbib_markers(src)
     assert '{' + decoded_role + '}`smith2020`' in out
+
+
+def test_cite_marker_does_not_collide_with_citep_prefix():
+    """``CITE`` is a prefix of ``CITEP``: the decode alternation must
+    still resolve ``CITEP:`` to ``{cite:p}`` (not ``{cite}`` + leftover
+    ``p``). Regression guard for the prefix ordering (GH #74)."""
+    src = r'\[\[CITEP:smith2020\]\] and \[\[CITE:jones2019\]\].'
+    out = postprocess.decode_natbib_markers(src)
+    assert '{cite:p}`smith2020`' in out
+    assert '{cite}`jones2019`' in out
 
 
 @pytest.mark.parametrize("marker_role,decoded_role", [

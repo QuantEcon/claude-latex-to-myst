@@ -173,6 +173,28 @@ The detection grep at "How to detect" above won't surface this — the
 output looks superficially valid (`` {cite}`` ``), just empty. The
 better signal is a `grep -rE "\{cite[^}]*\}\`\`"` for empty-key roles.
 
+### Follow-on: plain `\cite[loc]{key}` (GH #74)
+
+The #13 fix was applied to the six rewritten variants but **not** to
+plain `\cite` — deliberately, because `\cite{key}` (no locator) round-
+trips correctly through pandoc's native path (`[@key]` → `{cite}`). But
+`\cite[p.~351]{key}` hits the identical failure: pandoc emits
+`[@key, p.~351]`, the key is lost, and an empty `` {cite}`` `` is
+rendered. Found in book-dp2 (one site), silent past the validator.
+
+Fix: add a `\cite` rule **gated on the presence of a locator**, so the
+no-locator form stays on pandoc's path::
+
+    _NATBIB_OPT_REQUIRED = r'\s*\[[^\]]*\](?:\s*\[[^\]]*\])?'  # ≥1 bracket
+    (rf'\\cite\b{_NATBIB_OPT_REQUIRED}\s*\{{([^}}]+)\}}', r'[[CITE:\1]]'),
+
+Two subtleties: (1) `\cite\b` will *not* match `\citep`/`\citet`/etc. —
+there is no word boundary between `e` and the following letter — so the
+existing variants are untouched. (2) In the decode alternation, `CITE`
+is a prefix of `CITEP`/`CITEALP`/…, so it must be listed **last**
+(`…|CITEYEARPAR|CITE`) and only `CITE:` (with the colon) reaches it.
+`[[CITE:key]]` decodes to `{cite}` (no suffix), matching the plain path.
+
 ## Generalizable rule
 
 When introducing a new sentinel that uses syntax similar to an existing
