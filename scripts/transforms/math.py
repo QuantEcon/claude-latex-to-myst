@@ -74,15 +74,32 @@ def fix_text_dollar(text: str) -> str:
     return ''.join(output)
 
 
-_FENCED_CODE_RE = re.compile(
-    r'(?ms)^(`{3,})[^\n]*\n.*?\n\1[ \t]*$'
+# Two regexes that together cover everything ``fix_spacing_superscript``
+# treats as "code" to stash:
+#
+# - Plain backtick fences (``\`\`\`python``, bare ``\`\`\``) — the
+#   ``(?!\{)`` lookahead skips ANY directive-style opener so it doesn't
+#   double-stash content directives (issue #85).
+# - Known code-bearing MyST directives (``\`\`\`{code-block} python``,
+#   ``{code-cell}``, ``{code}``, ``{eval-rst}``) — these ARE code blocks
+#   semantically; their bodies are literal source that must be preserved
+#   verbatim (Copilot review on PR #86). Listed longest-first so the
+#   alternation doesn't greedy-match ``{code`` of ``{code-block}``.
+# Content directives (``{table}``, ``{exercise}``, ``{prf:*}``,
+# ``{figure}``, ``{math}``, ``{div}`` …) match neither — their bodies
+# are markdown / math the rewrite must reach.
+_PLAIN_FENCED_CODE_RE = re.compile(
+    r'(?ms)^(`{3,})(?!\{)[^\n]*\n.*?\n\1[ \t]*$'
+)
+_CODE_DIRECTIVE_FENCE_RE = re.compile(
+    r'(?ms)^(`{3,})\{(?:code-block|code-cell|eval-rst|code)\b[^\n]*\n.*?\n\1[ \t]*$'
 )
 _INLINE_CODE_RE = re.compile(r'`[^`\n]+`')
 
 
 def fix_spacing_superscript(text: str) -> str:
     r"""Give a superscript that directly follows a thin space an explicit
-    empty base, for KaTeX compatibility (closes #45).
+    empty base, for KaTeX compatibility (closes #45, #85).
 
     ``\,^\circ`` — e.g. ``3\,^\circ\mathrm{C}`` for degrees Celsius — is
     valid LaTeX: the superscript attaches to an implicit empty base. But
@@ -99,13 +116,25 @@ def fix_spacing_superscript(text: str) -> str:
     was verified still-erroring against KaTeX (myst 1.9.1). Only the
     empty-base group fixes it.
 
-    Fenced code blocks and inline code spans are stashed and restored
-    around the rewrite, so a tutorial passage displaying the literal
-    ``\,^`` as an example (e.g. a chapter explaining this very KaTeX
-    gotcha) is not silently mangled. At this pipeline position — after
-    ``fix_text_dollar``, before any directive-emitting transform — every
-    backtick fence in the text is a code block, so the stash is
-    unambiguous.
+    Runs **late** in ``process_text``, after every marker decoder
+    (``resolve_table_markers``, ``resolve_exercise_markers``,
+    ``resolve_listings``, ``resolve_algorithms``,
+    ``resolve_algorithmics``). Those preprocessors base64-encode their
+    body content into HTML-comment markers pre-pandoc, so the math
+    inside is invisible to any text-level regex until the decoder runs.
+    An earlier-position call would miss table cells (#85), algorithm
+    bodies, etc.
+
+    Stashed (body left verbatim): plain ``\`\`\`…\`\`\`` code fences,
+    inline ``\`…\``` code spans, and the known code-bearing directives
+    ``{code-block}`` / ``{code-cell}`` / ``{code}`` / ``{eval-rst}`` —
+    their bodies are literal source that a tutorial chapter might
+    legitimately use to display the broken form.
+
+    NOT stashed (rewrite reaches inside): every *content* directive —
+    ``{table}``, ``{exercise}``, ``{solution}``, ``{prf:*}``,
+    ``{figure}``, ``{math}``, ``{div}``, etc. Their bodies are markdown /
+    math that ``\,^`` must be fixed inside.
     """
     stash: list[str] = []
 
@@ -113,7 +142,13 @@ def fix_spacing_superscript(text: str) -> str:
         stash.append(m.group(0))
         return f'\x00FSS{len(stash) - 1}\x00'
 
-    text = _FENCED_CODE_RE.sub(_save, text)
+    # Order matters: stash code-directive fences (``\`\`\`{code-block}``
+    # …) BEFORE plain code fences. Otherwise the plain regex sees the
+    # closing ``\`\`\`` of a code-directive as an opener of its own and
+    # pairs it with the next bare ``\`\`\``, swallowing whatever's
+    # between.
+    text = _CODE_DIRECTIVE_FENCE_RE.sub(_save, text)
+    text = _PLAIN_FENCED_CODE_RE.sub(_save, text)
     text = _INLINE_CODE_RE.sub(_save, text)
     text = re.sub(r'\\,\^', r'\\,{}^', text)
     for i, val in enumerate(stash):

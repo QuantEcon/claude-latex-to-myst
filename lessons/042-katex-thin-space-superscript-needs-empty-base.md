@@ -52,15 +52,30 @@ def fix_spacing_superscript(text: str) -> str:
     return re.sub(r'\\,\^', r'\\,{}^', text)
 ```
 
-Wired in ``process_text`` right after ``fix_text_dollar`` (both are
-KaTeX-compatibility fixes; both run before ``convert_equations``).
+Wired in ``process_text`` **after all marker decoders**
+(``resolve_table_markers``, ``resolve_exercise_markers``,
+``resolve_listings``, ``resolve_algorithms``, ``resolve_algorithmics``).
+Several preprocessors — most notably ``_apply_table_markers.py`` and the
+algorithm/description ones — base64-encode their body content into
+HTML-comment markers pre-pandoc, so any math inside is invisible to a
+text-level regex until the matching decoder runs. An earlier-position
+call would miss table cells (#85), algorithm bodies, etc. — the original
+PR #84 made exactly that mistake.
 
-Fenced code blocks and inline code spans are stashed/restored around the
-rewrite (Copilot review, PR #84) so a tutorial passage displaying the
-literal ``\,^`` as an example — e.g. a chapter explaining this gotcha —
-isn't silently mangled into ``\,{}^``. At this pipeline position no MyST
-directives have been emitted yet, so every backtick fence is
-unambiguously a code block.
+Stashed (body left verbatim): plain ``\`\`\`…\`\`\`` code fences,
+inline ``\`…\``` code spans, and the **code-bearing** MyST directives —
+``{code-block}``, ``{code-cell}``, ``{code}``, ``{eval-rst}`` — whose
+bodies are literal source. A tutorial chapter showing ``\,^`` as
+example code stays intact.
+
+NOT stashed (rewrite reaches the body): every **content** directive —
+``{table}``, ``{exercise}``, ``{solution}``, ``{prf:*}``, ``{figure}``,
+``{math}``, ``{div}`` — whose body is markdown / math the rewrite must
+fix. The two distinct cases are handled by two regexes, and the
+**code-directive stash must run BEFORE the plain-fence stash**:
+otherwise the closing ``\`\`\`` of a ``{code-block}`` looks like the
+opener of a new plain fence and swallows the next block (caught in
+PR #86 review).
 
 ### What does NOT work
 
