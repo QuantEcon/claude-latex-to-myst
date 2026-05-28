@@ -62,20 +62,32 @@ text-level regex until the matching decoder runs. An earlier-position
 call would miss table cells (#85), algorithm bodies, etc. — the original
 PR #84 made exactly that mistake.
 
-Stashed (body left verbatim): plain ``\`\`\`…\`\`\`` code fences,
-inline ``\`…\``` code spans, and the **code-bearing** MyST directives —
-``{code-block}``, ``{code-cell}``, ``{code}``, ``{eval-rst}`` — whose
-bodies are literal source. A tutorial chapter showing ``\,^`` as
-example code stays intact.
+Region classification is by a **line-based state machine** with a
+fence stack (rebuilt for #87 — the earlier regex-pairing + stash/
+restore architecture had a recurring bug class: ANY bare ``\`\`\``
+line that's actually the *closer* of one directive can be paired by a
+regex with the *closer* of the next directive, swallowing whatever's
+between, and forward-order restore of nested stashes can leak literal
+``\x00FSS{n}\x00`` markers into the rendered output as content-loss).
 
-NOT stashed (rewrite reaches the body): every **content** directive —
-``{table}``, ``{exercise}``, ``{solution}``, ``{prf:*}``, ``{figure}``,
-``{math}``, ``{div}`` — whose body is markdown / math the rewrite must
-fix. The two distinct cases are handled by two regexes, and the
-**code-directive stash must run BEFORE the plain-fence stash**:
-otherwise the closing ``\`\`\`` of a ``{code-block}`` looks like the
-opener of a new plain fence and swallows the next block (caught in
-PR #86 review).
+Each fence opener pushes ``(tick_count, kind)`` onto a stack:
+
+- **code-bearing** — bare ``\`\`\``, ``\`\`\`lang`` (no directive
+  name), or a directive in ``_CODE_DIRECTIVE_NAMES``
+  (``{code-block}``, ``{code-cell}``, ``{code}``, ``{eval-rst}``).
+  Body emitted verbatim.
+- **content** — any other ``\`\`\`{name}`` directive (``{table}``,
+  ``{figure}``, ``{exercise}``, ``{solution}``, ``{prf:*}``,
+  ``{math}``, ``{div}``, …). Body lines are passed through
+  ``_rewrite_outside_inline_code``, which applies the rewrite while
+  protecting inline ``\`…\``` example spans within a line.
+
+Closers are recognised by the stack — a bare ``\`\`\`…`` of ≥ the
+top's tick count pops — never by a separate regex match. So a content
+directive's closer cannot be mis-paired with a later bare fence, and
+nesting (e.g. a ``{code-block}`` inside an ``{exercise}``) works by
+construction. There is no stash/restore step; the content-loss class
+(#87 bug 2) is structurally impossible.
 
 ### What does NOT work
 

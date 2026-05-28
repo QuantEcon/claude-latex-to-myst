@@ -470,3 +470,100 @@ def test_fix_spacing_superscript_handles_back_to_back_code_directive_then_plain_
     b = out.split('```{code-cell}')[1].split('```')[0]
     assert '\\,^\\circ' in a and '\\,{}^' not in a
     assert '\\,^*' in b and '\\,{}^' not in b
+
+
+def test_fix_spacing_superscript_rewrites_prose_between_content_directives():
+    """Issue #87 bug 1: in the prior regex-based architecture, the
+    closing ``\\`\\`\\`` of one ``{figure}`` directive was matched as a
+    plain-fence opener and paired with the closing ``\\`\\`\\`` of the
+    next ``{figure}``, stashing everything between (including prose math)
+    so the rewrite never reached it. The state-machine scan identifies
+    closers from the fence stack, not by another regex match — so a
+    content-directive closer can't be mis-paired."""
+    src = (
+        '```{figure} a.svg\n'
+        ':name: fig-a\n'
+        '\n'
+        'Caption A.\n'
+        '```\n'
+        '\n'
+        'Prose: $T = 3\\,^\\circ\\mathrm{C}$ — must be rewritten.\n'
+        '\n'
+        '```{figure} b.svg\n'
+        ':name: fig-b\n'
+        '\n'
+        'Caption B.\n'
+        '```\n'
+    )
+    out = postprocess.fix_spacing_superscript(src)
+    assert '$T = 3\\,{}^\\circ\\mathrm{C}$' in out
+    # And both {figure} fences survive intact.
+    assert '```{figure} a.svg' in out
+    assert '```{figure} b.svg' in out
+
+
+def test_fix_spacing_superscript_never_leaks_stash_marker_into_output():
+    """Issue #87 bug 2 (content-loss): in the prior architecture, a
+    ``{code-block}`` directive between two content directives was
+    stashed as ``\\x00FSS0\\x00``; then a subsequent plain-fence stash
+    captured a region containing that marker; forward-order restore
+    then left the ``FSS0`` literal in the output and the code-block
+    body lost. The state machine has no stash/restore at all — the
+    code-block body is emitted in place verbatim — so this bug class
+    is structurally impossible."""
+    src = (
+        '```{figure} a.svg\n'
+        ':name: fig-a\n'
+        '```\n'
+        '\n'
+        '```{code-block} python\n'
+        ':name: lst-fb\n'
+        'def fb(mu, I, eps=1e-4):\n'
+        '    return mu + I - (mu**2 + I**2 + eps**2)**0.5\n'
+        '```\n'
+        '\n'
+        '```{figure} b.svg\n'
+        ':name: fig-b\n'
+        '```\n'
+    )
+    out = postprocess.fix_spacing_superscript(src)
+    # No stash marker text anywhere in the output.
+    assert '\x00FSS' not in out
+    assert 'FSS0' not in out and 'FSS1' not in out
+    # Code-block body is intact.
+    assert 'def fb(mu, I, eps=1e-4):' in out
+    assert 'return mu + I - (mu**2 + I**2 + eps**2)**0.5' in out
+    # Both figures intact.
+    assert '```{figure} a.svg' in out
+    assert '```{figure} b.svg' in out
+
+
+def test_fix_spacing_superscript_content_directive_wrapping_code_directive():
+    """Nesting case (lesson 040 widening): a ``{exercise}`` content
+    directive (4-tick fence) wrapping a ``{code-block}`` (3-tick).
+    The fence stack handles this naturally — the outer's body is
+    'content' (rewriteable) but when the inner code-bearing opener
+    pushes onto the stack, lines inside it become 'code' (verbatim).
+    The prior regex stash approach handled this only awkwardly via
+    nested stash markers."""
+    src = (
+        '`````{exercise}\n'
+        ':label: ex-foo\n'
+        '\n'
+        'Show that $T\\,^\\circ\\mathrm{C}$ is monotone.\n'
+        '\n'
+        '```{code-block} python\n'
+        '# literal example: $\\,^\\circ$\n'
+        '```\n'
+        '\n'
+        'Then confirm $\\,^*$ behaviour.\n'
+        '`````\n'
+    )
+    out = postprocess.fix_spacing_superscript(src)
+    # Math in the exercise body is rewritten…
+    assert '$T\\,{}^\\circ\\mathrm{C}$' in out
+    assert '$\\,{}^*$' in out
+    # …but the nested code-block body is verbatim.
+    cb = out.split('```{code-block}')[1].split('```')[0]
+    assert '# literal example: $\\,^\\circ$' in cb
+    assert '\\,{}^' not in cb
