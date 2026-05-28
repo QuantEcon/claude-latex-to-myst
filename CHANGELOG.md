@@ -367,6 +367,26 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **Figure-marker preprocessor restores `TIKZ_FIGURE_MAP` integration**
+  ([#96], regression from [#95]): the Phase 1 marker preprocessor
+  closed the four caption-content-loss bugs ([#89], [#90], [#92], [#93])
+  but its `resolve_figure_markers` did NOT consult per-project
+  `TIKZ_FIGURE_MAP` — so the 78 figures in book-dp-deep-learning that
+  use inline `\begin{tikzpicture}` bodies + `tikz_overrides.py` lost
+  their image source and emitted as text-only `{admonition} Figure`.
+  Built JSON image-node count crashed from 88 → 10 in R14 fast-forward,
+  forcing a revert to the prior pin. Resolution: `_emit_figure` now
+  late-imports `postprocess.TIKZ_FIGURE_MAP` and looks up `spec.name`
+  before falling back to admonition. When a mapping exists, emit
+  `{figure} <mapped_path>` directly (with the map's `caption_override`
+  if set) — preserving the legacy `convert_html_figures` →
+  `resolve_tikz_figures` semantics in the new path. End-to-end
+  validated against book-dp-deep-learning: image-node count back to
+  88/88, all four #95-fixed issues still closed, 0 KaTeX/cite/xref
+  errors. 5 new unit tests for the integration. Lesson [043] updated.
+  Generalisable rule the failure exposed: when a rebuild replaces a
+  transform chain, **every integration** the old chain consumed must
+  be preserved, not just the bug shapes being closed.
 - **Figure-marker preprocessor (Phase 1) closes the pandoc-figure-HTML
   emission bug class** ([#89], [#90], [#92], [#93]): four figure-
   caption / sub-caption content-loss bugs surfaced in DL R12–R13 — the
@@ -1169,6 +1189,8 @@ haven't validated. Everything below is on `main` and available now.
 [#91]: https://github.com/QuantEcon/claude-latex-to-myst/pull/91
 [#92]: https://github.com/QuantEcon/claude-latex-to-myst/issues/92
 [#93]: https://github.com/QuantEcon/claude-latex-to-myst/issues/93
+[#95]: https://github.com/QuantEcon/claude-latex-to-myst/pull/95
+[#96]: https://github.com/QuantEcon/claude-latex-to-myst/issues/96
 [020]: lessons/020-natbib-bracket-markers-precede-cross-refs.md
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
