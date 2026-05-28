@@ -249,11 +249,53 @@ def decode_marker(payload_b64: str) -> FigureSpec:
 # ── post-pandoc resolver ────────────────────────────────────────────────────
 
 
+def _lookup_tikz_map(name: str | None) -> tuple[str, str | None] | None:
+    """Look up ``name`` in the per-project ``TIKZ_FIGURE_MAP`` (populated
+    from the consumer book's ``tikz_overrides.py``). Returns
+    ``(path, caption_override)`` or None.
+
+    Late-imported from ``postprocess`` to avoid the load-time circular
+    per the state-coupling pattern used in ``figures.py``. The map is a
+    runtime concern: consumer books call ``apply_config`` which
+    populates ``postprocess.TIKZ_FIGURE_MAP``; the parsers / emitters
+    here read it at call time.
+    """
+    if not name:
+        return None
+    try:
+        import postprocess as pp
+    except Exception:
+        return None
+    entry = pp.TIKZ_FIGURE_MAP.get(name)
+    return entry
+
+
 def _emit_figure(spec: FigureSpec) -> str:
-    """Emit a MyST ``{figure}`` directive from a FigureSpec (Phase 1)."""
-    # Sub-captions come first, in source order, then main caption — same
-    # convention as #91's convert_html_figures fix so the visible output
-    # doesn't shift for the cases already covered by the HTML path.
+    """Emit a MyST ``{figure}`` directive from a FigureSpec (Phase 1).
+
+    Image-source resolution priority:
+
+    1. ``spec.image_src`` (an ``\\includegraphics{path}`` literal) →
+       emit ``{figure} path`` directly. The simple, common case.
+    2. ``TIKZ_FIGURE_MAP[spec.name]`` → emit ``{figure} <mapped_path>``.
+       Covers two distinct shapes that share the same lookup mechanism:
+       * inline ``\\begin{tikzpicture}…\\end{tikzpicture}`` bodies that
+         the consumer book pre-renders as SVG and maps via label
+         (the dominant DL-book case — 78 figures);
+       * ``\\input{tikz/stem}`` references where the consumer book
+         supplies the rendered output (the old TIKZ admonition →
+         ``resolve_tikz_figures`` flow).
+    3. Otherwise — no image source and no map entry → emit a labelled
+       admonition so the caption / sub-captions survive.
+
+    The map's ``caption_override`` (when set) replaces the extracted
+    caption body. This mirrors ``resolve_tikz_figures``: a consumer
+    that wants a different caption than what's in the source uses the
+    map's second tuple slot.
+
+    Closes #96: prior version emitted a generic admonition for
+    cases 2 and 3 (no map lookup), losing 78 figure images in DL R14.
+    """
     body_parts: list[str] = []
     for sub in spec.sub_captions:
         if sub.strip():
@@ -262,42 +304,60 @@ def _emit_figure(spec: FigureSpec) -> str:
         body_parts.append(spec.caption.strip())
     body = '\n\n'.join(body_parts)
 
-    # Image source: a real raster/vector → ``{figure} path``. A TikZ
-    # ``\input{tikz/stem}`` becomes the same admonition placeholder
-    # shape ``convert_html_figures`` uses, so ``resolve_tikz_figures``
-    # still resolves it via ``TIKZ_FIGURE_MAP``. No behavior change for
-    # TIKZ users.
+    def _emit_figure_directive(path: str, name: str | None,
+                               cap_body: str) -> str:
+        lines = [f'```{{figure}} {path}']
+        if name:
+            lines.append(f':name: {name}')
+        lines.append('')
+        if cap_body:
+            lines.append(cap_body)
+        lines.append('```')
+        return '\n'.join(lines)
+
+    # Priority 1: ``\includegraphics`` literal path from source. Mirror
+    # ``figures.make_figure`` — when the source path has no directory
+    # component, prepend ``figures/`` (the canonical asset folder).
+    # This is source-side path completion; only applies to author-
+    # written paths, NOT to map entries.
     if spec.image_src:
         path = spec.image_src
         if '/' not in path:
             path = 'figures/' + path
-        lines = [f'```{{figure}} {path}']
-        if spec.name:
-            lines.append(f':name: {spec.name}')
-        lines.append('')
-        if body:
-            lines.append(body)
-        lines.append('```')
-        return '\n'.join(lines)
+        return _emit_figure_directive(path, spec.name, body)
 
-    if spec.tikz_input:
-        # Admonition placeholder — resolve_tikz_figures will substitute
-        # the real figure from TIKZ_FIGURE_MAP keyed by spec.name.
+    # Priority 2: TIKZ_FIGURE_MAP lookup by label. Covers both inline
+    # ``\begin{tikzpicture}`` bodies and ``\input{tikz/stem}`` references
+    # — the consumer book's tikz_overrides.py decides the mapping. Emit
+    # the mapped path **verbatim**: it's a consumer-controlled override
+    # and the legacy ``resolve_tikz_figures`` emits it verbatim (no
+    # ``figures/`` prefix). Adding a prefix would silently misroute any
+    # entry that uses a bare filename or a non-``figures/`` root
+    # (caught by Copilot review on PR #97).
+    mapped = _lookup_tikz_map(spec.name)
+    if mapped is not None:
+        mapped_path, caption_override = mapped
+        final_body = caption_override if caption_override else body
+        return _emit_figure_directive(mapped_path, spec.name, final_body)
+
+    # Fallback: no image source, no map entry. Emit a labelled
+    # admonition so at least the caption / sub-caption content survives.
+    # Two flavours:
+    #   - ``\input{tikz/...}`` body but no map entry → "TikZ — needs
+    #     manual conversion" wording (matches the legacy shape that
+    #     ``resolve_tikz_figures`` recognises, so a downstream consumer
+    #     that later adds a map entry can still pick this up).
+    #   - no image / tikz at all → generic "Figure" admonition.
+    if spec.tikz_input is not None:
         lines = ['```{admonition} Figure (TikZ — needs manual conversion)']
-        if spec.name:
-            lines.append(f':name: {spec.name}')
-        lines.append('')
-        lines.append(body or '*(TikZ diagram — needs manual conversion)*')
-        lines.append('```')
-        return '\n'.join(lines)
-
-    # Caption / sub-captions only, no image — emit a labelled admonition
-    # so the content survives.
-    lines = ['```{admonition} Figure']
+        placeholder = '*(TikZ diagram — needs manual conversion)*'
+    else:
+        lines = ['```{admonition} Figure']
+        placeholder = '*(figure body)*'
     if spec.name:
         lines.append(f':name: {spec.name}')
     lines.append('')
-    lines.append(body or '*(figure body)*')
+    lines.append(body or placeholder)
     lines.append('```')
     return '\n'.join(lines)
 

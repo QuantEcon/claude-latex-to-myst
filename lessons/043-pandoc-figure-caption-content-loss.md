@@ -146,6 +146,34 @@ extraction that only reads `<figcaption>` loses arbitrary author
 content. When in doubt, walk the figure block and gather every
 text-bearing sibling, not just the caption tag.
 
+## Post-postscript: #95 closed the bug class but broke an adjacent integration (#96)
+
+Phase 1 of the marker preprocessor (PR #95) correctly extracted figures
+into markers and resolved them post-pandoc. But it **did not consult
+the per-project `TIKZ_FIGURE_MAP`** populated by consumer books'
+`tikz_overrides.py`. 78 of 88 figures in `book-dp-deep-learning` use
+inline `\begin{tikzpicture}` bodies (no `\includegraphics`, no
+`\input{tikz/...}`) and rely on `TIKZ_FIGURE_MAP[label]` to provide
+the pre-rendered SVG path. The original architecture handled this via
+`convert_html_figures` → admonition placeholder → `resolve_tikz_figures`
+→ map lookup. Phase 1's `resolve_figure_markers` short-circuited that
+chain — emitted a generic `{admonition} Figure` with no image source.
+
+**Resolution (#96):** `_emit_figure` now consults `TIKZ_FIGURE_MAP` by
+late-importing `postprocess.TIKZ_FIGURE_MAP` and looking up
+`spec.name`. When a mapping exists, it emits `{figure} <mapped_path>`
+directly (with the map's `caption_override` if set). Verified
+end-to-end against `book-dp-deep-learning`: image-node count restored
+to 88/88, all four original issue fixes (#89/#90/#92/#93) still hold,
+build has 0 KaTeX / cite / xref errors.
+
+**Generalisable rule (updated again):** when a transform rebuild
+replaces a chain (here `convert_html_figures` →
+`resolve_tikz_figures`), the new path must preserve **every
+integration** the chain consumed — not just the bug shapes being
+closed. Synthetic e2e tests aren't enough; validate against the
+consumer book before merging.
+
 ## Postscript: superseded by the figure-marker preprocessor (#92/#93)
 
 The patches above (citation-span recovery + minipage-div folding in

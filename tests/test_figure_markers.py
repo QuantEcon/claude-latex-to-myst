@@ -348,6 +348,169 @@ def test_parse_single_includegraphics_still_handled():
     assert spec.image_src == 'single.pdf'
 
 
+# ── 6. TIKZ_FIGURE_MAP integration (issue #96) ──────────────────────────────
+
+
+def test_emit_consults_tikz_figure_map_for_inline_tikzpicture():
+    """Closes #96: a ``\\begin{figure}\\begin{tikzpicture}…\\caption\\label``
+    block has no ``\\includegraphics`` and no ``\\input{tikz/...}`` — but
+    if its label has a ``TIKZ_FIGURE_MAP`` entry (populated from the
+    consumer book's ``tikz_overrides.py``), the resolver must emit a
+    ``{figure}`` directive with the mapped path. The previous Phase 1
+    emitted a generic admonition and dropped 78/88 figures in DL R14."""
+    import postprocess
+    saved = dict(postprocess.TIKZ_FIGURE_MAP)
+    try:
+        postprocess.TIKZ_FIGURE_MAP['fig-foo'] = (
+            'figures/fig-foo.svg', None,
+        )
+        spec = FigureSpec(
+            name='fig-foo',
+            caption='Body caption.',
+            image_src=None,        # no \includegraphics — inline tikz
+            tikz_input=None,        # no \input{tikz/...} either
+        )
+        out = resolve_figure_markers(_wrap(encode_marker(spec)))
+        assert '```{figure} figures/fig-foo.svg' in out
+        assert ':name: fig-foo' in out
+        assert 'Body caption.' in out
+        # NOT an admonition — the regression that #96 reported.
+        assert '{admonition}' not in out
+    finally:
+        postprocess.TIKZ_FIGURE_MAP.clear()
+        postprocess.TIKZ_FIGURE_MAP.update(saved)
+
+
+def test_emit_tikz_map_caption_override_replaces_source_caption():
+    """When ``TIKZ_FIGURE_MAP[label] == (path, caption_override)`` and
+    ``caption_override`` is non-None, it replaces the extracted caption
+    body. Matches the legacy ``resolve_tikz_figures`` semantics —
+    consumer books override captions for figures whose source caption
+    is wrong / outdated relative to the pre-rendered SVG."""
+    import postprocess
+    saved = dict(postprocess.TIKZ_FIGURE_MAP)
+    try:
+        postprocess.TIKZ_FIGURE_MAP['fig-x'] = (
+            'figures/fig-x.svg', 'Authoritative caption from map.',
+        )
+        spec = FigureSpec(
+            name='fig-x',
+            caption='Original source caption (should be replaced).',
+        )
+        out = resolve_figure_markers(_wrap(encode_marker(spec)))
+        assert 'Authoritative caption from map.' in out
+        assert 'Original source caption' not in out
+    finally:
+        postprocess.TIKZ_FIGURE_MAP.clear()
+        postprocess.TIKZ_FIGURE_MAP.update(saved)
+
+
+def test_emit_tikz_map_lookup_for_input_tikz_form():
+    """``\\input{tikz/stem}`` form: ``spec.tikz_input`` is set AND the
+    label has a map entry — emit ``{figure}`` with the mapped path
+    (not the admonition placeholder)."""
+    import postprocess
+    saved = dict(postprocess.TIKZ_FIGURE_MAP)
+    try:
+        postprocess.TIKZ_FIGURE_MAP['fig-tikz'] = (
+            'figures/fig-tikz.svg', None,
+        )
+        spec = FigureSpec(
+            name='fig-tikz',
+            caption='Caption.',
+            tikz_input='tikz-source-stem',
+        )
+        out = resolve_figure_markers(_wrap(encode_marker(spec)))
+        assert '```{figure} figures/fig-tikz.svg' in out
+        assert '{admonition}' not in out
+    finally:
+        postprocess.TIKZ_FIGURE_MAP.clear()
+        postprocess.TIKZ_FIGURE_MAP.update(saved)
+
+
+def test_emit_falls_back_to_admonition_when_no_map_entry():
+    """A figure with no image source and a label NOT in the map should
+    still emit a labelled admonition so the caption survives. Mirrors
+    the pre-#96 fallback so consumers without a tikz_overrides.py keep
+    getting captions even when figures aren't pre-rendered."""
+    import postprocess
+    saved = dict(postprocess.TIKZ_FIGURE_MAP)
+    try:
+        postprocess.TIKZ_FIGURE_MAP.clear()
+        spec = FigureSpec(name='fig-unmapped', caption='No image, just text.')
+        out = resolve_figure_markers(_wrap(encode_marker(spec)))
+        assert '```{admonition} Figure' in out
+        assert ':name: fig-unmapped' in out
+        assert 'No image, just text.' in out
+    finally:
+        postprocess.TIKZ_FIGURE_MAP.clear()
+        postprocess.TIKZ_FIGURE_MAP.update(saved)
+
+
+def test_emit_includegraphics_path_wins_over_tikz_map():
+    """Priority: an explicit ``\\includegraphics{path}`` in source takes
+    precedence over a ``TIKZ_FIGURE_MAP`` entry under the same label.
+    Defensive ordering — the source path is the author's literal
+    intent; map entries are project-level overrides for figures
+    that *don't* have a source path."""
+    import postprocess
+    saved = dict(postprocess.TIKZ_FIGURE_MAP)
+    try:
+        postprocess.TIKZ_FIGURE_MAP['fig-collide'] = (
+            'figures/from-map.svg', None,
+        )
+        spec = FigureSpec(
+            name='fig-collide',
+            caption='C.',
+            image_src='from-source.pdf',
+        )
+        out = resolve_figure_markers(_wrap(encode_marker(spec)))
+        assert 'from-source.pdf' in out
+        assert 'from-map.svg' not in out
+    finally:
+        postprocess.TIKZ_FIGURE_MAP.clear()
+        postprocess.TIKZ_FIGURE_MAP.update(saved)
+
+
+def test_emit_tikz_map_path_emitted_verbatim_no_figures_prefix():
+    """Caught by Copilot review on PR #97: legacy ``resolve_tikz_figures``
+    emits the ``TIKZ_FIGURE_MAP`` value verbatim (no ``figures/`` prefix
+    added). My first pass collapsed this through the same path-
+    completion helper as ``\\includegraphics``, so a map entry like
+    ``'fig-x': ('plain.svg', None)`` would have been silently rerouted
+    to ``figures/plain.svg`` — wrong for any consumer book using bare
+    filenames or non-``figures/`` roots. The mapped path must round-
+    trip exactly as configured."""
+    import postprocess
+    saved = dict(postprocess.TIKZ_FIGURE_MAP)
+    try:
+        # Three shapes that would each be mangled by ``figures/``-
+        # prefixing: bare filename, root-relative non-figures path, and
+        # absolute path.
+        for path in ['plain.svg', 'assets/foo.svg', '/abs/path.svg']:
+            postprocess.TIKZ_FIGURE_MAP.clear()
+            postprocess.TIKZ_FIGURE_MAP['fig-x'] = (path, None)
+            spec = FigureSpec(name='fig-x', caption='C.')
+            out = resolve_figure_markers(_wrap(encode_marker(spec)))
+            assert f'```{{figure}} {path}' in out, (
+                f'path {path!r} got rewritten in output:\n{out}'
+            )
+            assert 'figures/' + path not in out
+    finally:
+        postprocess.TIKZ_FIGURE_MAP.clear()
+        postprocess.TIKZ_FIGURE_MAP.update(saved)
+
+
+def test_emit_includegraphics_bare_filename_still_gets_figures_prefix():
+    """Regression guard for the asymmetry: bare ``\\includegraphics{x.pdf}``
+    (no slash in path) still gets the ``figures/`` prefix, mirroring
+    ``figures.make_figure``. Only map entries are emitted verbatim;
+    source-side paths still get path-completion."""
+    spec = FigureSpec(name='fig-bare', image_src='plot.pdf', caption='X.')
+    out = resolve_figure_markers(_wrap(encode_marker(spec)))
+    assert '```{figure} figures/plot.pdf' in out
+
+
 # ── 4. End-to-end (preprocessor → pandoc → resolver → natbib decode) ────────
 
 
