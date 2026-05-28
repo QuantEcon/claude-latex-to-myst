@@ -367,6 +367,17 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **`\,^X` breaks KaTeX with "unknown type: 'internal'"** ([#45]): an
+  inline superscript directly after a thin space — most commonly
+  `3\,^\circ\mathrm{C}` (degrees Celsius), but the break is general
+  (`\,^*`, `\,^\dagger`, `\,^\top`, …) — errors in KaTeX because it
+  tries to superscript the `\,` spacing node itself. New
+  `fix_spacing_superscript` (math.py, wired after `fix_text_dollar`)
+  inserts an explicit empty base, `\,^X` → `\,{}^X`, so the superscript
+  attaches to an empty group; visually identical, idempotent. The
+  workaround the issue suggested (`\,\!^`) was verified to **still
+  error** against myst 1.9.1 — only the empty-base group works. 8 sites
+  in book-dp-deep-learning's ch11_climate. Lesson [042].
 - **Captioned 0/2+-header tables drifted later `{numref}`s** ([#52]):
   a captioned table with 0 or 2+ header rows is emitted as a `{table}`
   wrapping a `{list-table}` (the caption stays a role-safe body
@@ -1041,6 +1052,7 @@ haven't validated. Everything below is on `main` and available now.
 [#40]: https://github.com/QuantEcon/claude-latex-to-myst/issues/40
 [#42]: https://github.com/QuantEcon/claude-latex-to-myst/issues/42
 [#43]: https://github.com/QuantEcon/claude-latex-to-myst/issues/43
+[#45]: https://github.com/QuantEcon/claude-latex-to-myst/issues/45
 [#47]: https://github.com/QuantEcon/claude-latex-to-myst/issues/47
 [#48]: https://github.com/QuantEcon/claude-latex-to-myst/issues/48
 [#46]: https://github.com/QuantEcon/claude-latex-to-myst/issues/46
@@ -1084,6 +1096,7 @@ haven't validated. Everything below is on `main` and available now.
 [037]: lessons/037-multline-gather-label-extraction-incomplete.md
 [038]: lessons/038-postprocess-main-module-double-load.md
 [041]: lessons/041-nested-table-directive-double-enumerates.md
+[042]: lessons/042-katex-thin-space-superscript-needs-empty-base.md
 
 ### Settled architectural decisions
 

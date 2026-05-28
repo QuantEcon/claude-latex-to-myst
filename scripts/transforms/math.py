@@ -74,6 +74,53 @@ def fix_text_dollar(text: str) -> str:
     return ''.join(output)
 
 
+_FENCED_CODE_RE = re.compile(
+    r'(?ms)^(`{3,})[^\n]*\n.*?\n\1[ \t]*$'
+)
+_INLINE_CODE_RE = re.compile(r'`[^`\n]+`')
+
+
+def fix_spacing_superscript(text: str) -> str:
+    r"""Give a superscript that directly follows a thin space an explicit
+    empty base, for KaTeX compatibility (closes #45).
+
+    ``\,^\circ`` — e.g. ``3\,^\circ\mathrm{C}`` for degrees Celsius — is
+    valid LaTeX: the superscript attaches to an implicit empty base. But
+    KaTeX errors with ``Got group of unknown type: 'internal'`` because
+    it tries to superscript the ``\,`` spacing node itself. The break
+    affects ANY superscript right after ``\,`` (``\,^*``, ``\,^\dagger``,
+    ``\,^\top`` …), not just ``^\circ`` — so the rewrite is generic.
+
+    Inserting an explicit empty group — ``\,{}^`` — gives the superscript
+    a real (empty) base; KaTeX renders it and the output is visually
+    identical. Idempotent: ``\,{}^`` no longer contains ``\,^``.
+
+    NB: the workaround suggested in #45, ``\,\!^``, does NOT work — it
+    was verified still-erroring against KaTeX (myst 1.9.1). Only the
+    empty-base group fixes it.
+
+    Fenced code blocks and inline code spans are stashed and restored
+    around the rewrite, so a tutorial passage displaying the literal
+    ``\,^`` as an example (e.g. a chapter explaining this very KaTeX
+    gotcha) is not silently mangled. At this pipeline position — after
+    ``fix_text_dollar``, before any directive-emitting transform — every
+    backtick fence in the text is a code block, so the stash is
+    unambiguous.
+    """
+    stash: list[str] = []
+
+    def _save(m: re.Match) -> str:
+        stash.append(m.group(0))
+        return f'\x00FSS{len(stash) - 1}\x00'
+
+    text = _FENCED_CODE_RE.sub(_save, text)
+    text = _INLINE_CODE_RE.sub(_save, text)
+    text = re.sub(r'\\,\^', r'\\,{}^', text)
+    for i, val in enumerate(stash):
+        text = text.replace(f'\x00FSS{i}\x00', val)
+    return text
+
+
 def convert_equations(text: str) -> str:
     """Convert pandoc equation blocks to MyST format.
 

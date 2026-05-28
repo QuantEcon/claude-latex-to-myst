@@ -48,6 +48,7 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 039 | [Enumerate-exercise preprocessor: flat \\item scan AND non-greedy block regex both break on nested lists inside an exercise](lessons/039-enumerate-exercise-markers-nested-list-depth-and-block-pairing.md) | preprocess | 🔴 | codified |
 | 040 | [Nested fences resolve by same-character count (k+1) — directive emitters must outrank any code fence in their body](lessons/040-myst-nested-fence-count-rule.md) | myst | 🟡 | codified |
 | 041 | [A {list-table} nested in a {table} double-enumerates — suppress the inner with :enumerated: false](lessons/041-nested-table-directive-double-enumerates.md) | myst | 🟡 | codified |
+| 042 | [KaTeX errors on `\\,^X` (superscript right after thin space) — insert an empty base `\\,{}^X`](lessons/042-katex-thin-space-superscript-needs-empty-base.md) | katex | 🟡 | codified |
 
 ## By category
 
@@ -55,7 +56,7 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 - **regex-safety:** 002, 017, 024, 031, 035, 036
 - **pandoc:** 027
 - **preprocess:** 028, 029, 030, 039
-- **katex:** 003, 006
+- **katex:** 003, 006, 042
 - **myst:** 013, 040, 041
 - **tooling:** 009, 010, 038
 
