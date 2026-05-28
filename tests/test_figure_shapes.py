@@ -183,6 +183,125 @@ def test_caption_unescape_is_idempotent_on_plain_text():
     assert 'Plain caption with $x > 0$ already literal.' in out
 
 
+# ── Figure caption \citet / \citep recovery (issue #89) ─────────────────────
+
+
+def test_caption_citation_span_single_key_recovered_as_pandoc_marker():
+    """Issue #89: pandoc emits ``\\citet{X}`` / ``\\citep{X}`` inside a
+    figure caption as an EMPTY ``<span class="citation" data-cites="X">
+    </span>`` — the key lives in the attribute. The previous code
+    stripped the empty span (and the key) along with all other HTML
+    tags. The fix converts the span to ``@X`` markdown before the
+    strip; ``convert_citations`` later resolves it to ``{cite:t}`X```."""
+    src = HTML_BASE.replace(
+        '{caption}',
+        'The DGM architecture of '
+        '<span class="citation" data-cites="sirignano2018dgm"></span>'
+        '. Continues here.'
+    )
+    out = postprocess.convert_html_figures(src)
+    # After convert_html_figures, the cite is in pandoc ``@key`` form
+    # so the downstream ``convert_citations`` can resolve it.
+    assert '@sirignano2018dgm' in out
+    # The surrounding prose survives.
+    assert 'The DGM architecture of @sirignano2018dgm. Continues here.' in out
+
+
+def test_caption_citation_span_multi_key_recovered_as_bracketed_markers():
+    """Multi-cite ``\\citet{a, b}`` arrives as ``data-cites="a b"``
+    (space-separated). Recovery emits ``[@a; @b]``, which
+    ``convert_citations`` resolves to ``{cite}`a,b```."""
+    src = HTML_BASE.replace(
+        '{caption}',
+        'See <span class="citation" data-cites="Smith2020 Jones2019"></span>.'
+    )
+    out = postprocess.convert_html_figures(src)
+    assert '[@Smith2020; @Jones2019]' in out
+
+
+def test_caption_citation_recovery_does_not_break_caption_ref_dispatch():
+    """A caption with both a ``\\ref{}`` (already handled, #38) AND a
+    ``\\citet{}`` (#89) must produce both directives correctly — the
+    cite-recovery substitution must not collide with the ref regex."""
+    src = HTML_BASE.replace(
+        '{caption}',
+        'See <a href="#eq:foo" data-reference-type="eqref" data-reference="eq:foo">3</a> '
+        'and <span class="citation" data-cites="Smith2020"></span>.'
+    )
+    out = postprocess.convert_html_figures(src)
+    # ref typed-dispatch still works.
+    assert '{eq}`eq-foo`' in out
+    # cite recovered.
+    assert '@Smith2020' in out
+
+
+# ── Minipage sub-caption recovery (issue #90) ───────────────────────────────
+
+
+def test_minipage_subcaptions_folded_into_caption_in_source_order():
+    """Issue #90: pandoc preserves per-panel ``\\begin{minipage}``
+    sub-captions as ``<div class="minipage"><p>…</p></div>`` inside
+    ``<figure>``. The previous emit ignored everything but
+    ``<figcaption>`` — the sub-captions were lost. They now fold into
+    the figure body in source order, ahead of the main caption."""
+    src = (
+        '<figure id="fig:volume_paradox">\n'
+        '<div class="minipage">\n'
+        '<p><br />\n'
+        '<span>(a) the unit ball inscribed in cube</span></p>\n'
+        '</div>\n'
+        '<div class="minipage">\n'
+        '<p><br />\n'
+        '<span>(b) ratio versus d (log scale)</span></p>\n'
+        '</div>\n'
+        '<embed src="vol.pdf" />\n'
+        '<figcaption>The volume paradox.</figcaption>\n'
+        '</figure>\n'
+    )
+    out = postprocess.convert_html_figures(src)
+    # Both sub-captions present.
+    assert '(a) the unit ball inscribed in cube' in out
+    assert '(b) ratio versus d (log scale)' in out
+    # Main caption still present.
+    assert 'The volume paradox.' in out
+    # Source order: sub-cap (a) before sub-cap (b) before main caption.
+    pa = out.index('(a) the unit ball')
+    pb = out.index('(b) ratio versus')
+    pm = out.index('The volume paradox.')
+    assert pa < pb < pm
+
+
+def test_minipage_subcaption_with_citation_inside_recovers_both():
+    """Cross-bug guard: a sub-caption that itself contains a
+    ``\\citet{}`` (an inline cite inside a panel-label) must have
+    both the sub-caption text AND the cite recovered (#89 + #90)."""
+    src = (
+        '<figure id="fig:foo">\n'
+        '<div class="minipage">\n'
+        '<p><span>(a) ball from '
+        '<span class="citation" data-cites="Smith2020"></span></span></p>\n'
+        '</div>\n'
+        '<embed src="x.pdf" />\n'
+        '<figcaption>Main with '
+        '<span class="citation" data-cites="Jones2019"></span>.</figcaption>\n'
+        '</figure>\n'
+    )
+    out = postprocess.convert_html_figures(src)
+    assert '(a) ball from @Smith2020' in out
+    assert 'Main with @Jones2019.' in out
+
+
+def test_minipage_extraction_skips_figures_with_no_minipage():
+    """The minipage scan must be a no-op on figures that don't have
+    any — the previous behaviour for plain-caption figures stays
+    exact, no extra blank lines or formatting drift."""
+    src = HTML_BASE.replace('{caption}', 'Just a caption.')
+    out = postprocess.convert_html_figures(src)
+    assert 'Just a caption.' in out
+    # No extra blank lines from the minipage-extraction path.
+    assert '\n\n\n' not in out
+
+
 # ── HTML nested subfigure shape ─────────────────────────────────────────────
 
 

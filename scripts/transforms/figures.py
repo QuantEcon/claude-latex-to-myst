@@ -123,15 +123,12 @@ def convert_html_figures(text: str) -> str:
         lines.append('```')
         return '\n'.join(lines)
 
-    def extract_caption(block):
-        cap_match = re.search(
-            r'<figcaption>(?:<[^>]*>)*\s*(.*?)\s*</figcaption>',
-            block,
-            re.DOTALL,
-        )
-        if not cap_match:
-            return ''
-        cap = cap_match.group(1)
+    def _html_caption_to_myst(inner):
+        """Process inner HTML caption-like content (from a
+        ``<figcaption>`` body, or from a ``<div class="minipage">``
+        sub-caption) into MyST-ready text. Pure on its input; reused for
+        both extract paths."""
+        cap = inner
         # Convert pandoc-resolved HTML ref anchors into MyST directives
         # BEFORE stripping HTML. The pre-resolved number in the ``<a>``
         # body is chapter-unaware (pandoc only sees the split-per-
@@ -144,17 +141,32 @@ def convert_html_figures(text: str) -> str:
         # theorem-family refs become ``{prf:ref}`` — generic ``{ref}``
         # can't resolve to those anchor types in MyST (closes #38).
         def _replace_ref(m):
-            # ``data-reference="X"`` carries the raw (colon-form) label
-            # pandoc preserved from the source ``\ref{X}``. Route on
-            # that — the default table is keyed on colon-form for the
-            # theorem family — and emit the converted (hyphen-form)
-            # inside the directive.
             raw = m.group(1)
             label = convert_label_colons(raw)
             return '{' + routing_role(raw) + '}`' + label + '`'
         cap = re.sub(
             r'<a[^>]*data-reference="([^"]+)"[^>]*>[^<]*</a>',
             _replace_ref,
+            cap,
+        )
+        # Convert citation spans BEFORE stripping HTML (closes #89).
+        # Pandoc emits ``\citet{X}`` / ``\citep{X}`` inside a caption as
+        # an EMPTY ``<span class="citation" data-cites="X"></span>`` —
+        # key in the attribute, no text content — so the generic tag-
+        # strip below would drop both the span and the key. Rewrite to
+        # pandoc native markdown (``@X`` or ``[@a; @b]``) here, and
+        # ``convert_citations`` (later in ``process_text``) resolves to
+        # ``{cite:t}`X```. NB: pandoc collapses ``\citet`` / ``\citep``
+        # / ``\citep[loc]`` to the same empty-span form so all variants
+        # land as textual — a small fidelity loss vs losing the key.
+        def _replace_cite(m):
+            keys = m.group(1).split()
+            if len(keys) == 1:
+                return '@' + keys[0]
+            return '[' + '; '.join('@' + k for k in keys) + ']'
+        cap = re.sub(
+            r'<span\b[^>]*\bdata-cites="([^"]+)"[^>]*>[^<]*</span>',
+            _replace_cite,
             cap,
         )
         cap = re.sub(r'<[^>]+>', '', cap).strip()
@@ -174,6 +186,40 @@ def convert_html_figures(text: str) -> str:
         cap = strip_doubled_noun_refs(cap)
         cap = strip_doubled_section_symbol(cap)
         return cap
+
+    def extract_caption(block):
+        cap_match = re.search(
+            r'<figcaption>(?:<[^>]*>)*\s*(.*?)\s*</figcaption>',
+            block,
+            re.DOTALL,
+        )
+        if not cap_match:
+            return ''
+        return _html_caption_to_myst(cap_match.group(1))
+
+    def extract_minipage_subcaptions(block):
+        """Gather ``<div class="minipage">…</div>`` content inside a
+        figure as a list of sub-caption strings, in source order. Pandoc
+        emits per-panel ``\\begin{minipage}`` text (sub-captions like
+        ``{\\footnotesize (a) …}``) as these divs inside ``<figure>``;
+        the figure-emit otherwise drops everything but ``<figcaption>``
+        (closes #90)."""
+        out = []
+        for mp in re.finditer(
+            r'<div class="minipage">(.*?)</div>', block, re.DOTALL
+        ):
+            text = _html_caption_to_myst(mp.group(1))
+            if text:
+                out.append(text)
+        return out
+
+    def _combine_caption(block, main_caption):
+        """Fold any minipage sub-captions inside ``block`` in front of
+        ``main_caption``, separated by blank lines. Source-order is the
+        natural reading order (sub-cap (a), sub-cap (b), main caption).
+        """
+        subs = extract_minipage_subcaptions(block)
+        return '\n\n'.join(t for t in (*subs, main_caption) if t)
 
     # Determine which labels are actually referenced by {numref} elsewhere in
     # the chapter so that nested-subfigure handling can choose the right
@@ -294,7 +340,9 @@ def convert_html_figures(text: str) -> str:
         block = m.group(0)
         id_match = re.search(r'<figure[^>]*id="([^"]+)"', block)
         label = convert_label_colons(id_match.group(1)) if id_match else None
-        caption = extract_caption(block)
+        # ``_combine_caption`` folds any ``<div class="minipage">`` sub-
+        # captions in source order ahead of the main figcaption (#90).
+        caption = _combine_caption(block, extract_caption(block))
         embed_match = _figure_src_re.search(block)
         if embed_match:
             return make_figure(label, embed_match.group(1), caption)

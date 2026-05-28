@@ -367,6 +367,26 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **Figure captions lost `\citet` / `\citep` cites and `\begin{minipage}`
+  sub-captions** ([#89], [#90]): two distinct content-loss bugs on the
+  same code path in `convert_html_figures`. (1) Pandoc emits a cite
+  inside a figure caption as an empty `<span class="citation"
+  data-cites="X"></span>` — the key lives in the attribute, the span
+  has no text content, so the generic HTML-tag strip dropped both
+  span and key. Fix: convert the citation span to pandoc `@X` markdown
+  *before* the tag strip; `convert_citations` later resolves to
+  `{cite:t}\`X\``. Multi-cite (`data-cites="a b"`) → `[@a; @b]`. NB:
+  pandoc collapses `\citet`/`\citep`/`\citep[loc]` to the same
+  empty-span form so variant info is lost — only the key is
+  recoverable. 8 instances in book-dp-deep-learning R12. (2) Pandoc
+  preserves `\begin{minipage}` content as `<div class="minipage">`
+  siblings of `<figcaption>` inside `<figure>`; the previous emit
+  only extracted `<figcaption>` and discarded the rest, losing per-
+  panel `(a)/(b)` labels and verification-arithmetic blocks. Fix:
+  `extract_minipage_subcaptions` gathers all such divs and folds
+  their text into the caption in source order ahead of the main
+  figcaption. 5 instances in the same book (4 ch02 + 1 ch06). Both
+  fixes share a new `_html_caption_to_myst` helper. Lesson [043].
 - **`fix_spacing_superscript` rebuilt as a line-based state machine —
   closes a recurring bug class** ([#87], follow-on to [#85] / [#86]):
   the prior regex-based stash/restore architecture had been patched
@@ -1116,6 +1136,8 @@ haven't validated. Everything below is on `main` and available now.
 [#79]: https://github.com/QuantEcon/claude-latex-to-myst/issues/79
 [#85]: https://github.com/QuantEcon/claude-latex-to-myst/issues/85
 [#87]: https://github.com/QuantEcon/claude-latex-to-myst/issues/87
+[#89]: https://github.com/QuantEcon/claude-latex-to-myst/issues/89
+[#90]: https://github.com/QuantEcon/claude-latex-to-myst/issues/90
 [020]: lessons/020-natbib-bracket-markers-precede-cross-refs.md
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md
@@ -1139,6 +1161,7 @@ haven't validated. Everything below is on `main` and available now.
 [038]: lessons/038-postprocess-main-module-double-load.md
 [041]: lessons/041-nested-table-directive-double-enumerates.md
 [042]: lessons/042-katex-thin-space-superscript-needs-empty-base.md
+[043]: lessons/043-pandoc-figure-caption-content-loss.md
 
 ### Settled architectural decisions
 
