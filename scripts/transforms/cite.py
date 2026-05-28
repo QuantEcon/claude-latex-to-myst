@@ -2,8 +2,9 @@
 
 Decodes the bracket-marker sentinels emitted by the preprocess natbib
 rewrite (``\\citep``, ``\\citealp``, ``\\citeauthor``, ``\\citeyear``,
-``\\citeyearpar`` — pandoc collapses them ambiguously), then handles
-pandoc's native citation syntax (``[@key]``, ``@key``,
+``\\citeyearpar`` — pandoc collapses them ambiguously; plus
+``\\cite[loc]{key}``, whose locator makes pandoc drop the key, GH #74),
+then handles pandoc's native citation syntax (``[@key]``, ``@key``,
 ``[-@key]``).
 
 Order constraint: ``decode_natbib_markers`` MUST run before
@@ -23,6 +24,7 @@ _NATBIB_MARKER_ROLE = {
     'CITEAUTHOR':   ('cite:author', False),
     'CITEYEAR':     ('cite:year',   False),
     'CITEYEARPAR':  ('cite:year',   True),   # year-with-parens
+    'CITE':         ('cite',        False),  # \cite[loc]{key} (GH #74)
 }
 
 
@@ -43,8 +45,11 @@ def decode_natbib_markers(text: str) -> str:
         rendered = '{' + role + '}`' + keys + '`'
         return '(' + rendered + ')' if parenthesize else rendered
 
+    # ``CITE`` is listed last: it is a prefix of the others, so the
+    # longer, more-specific alternatives must be tried first (only
+    # ``CITE:`` — with the colon — reaches the final branch).
     return re.sub(
-        r'\\\[\\\[(CITEP|CITEALP|CITEALT|CITEAUTHOR|CITEYEAR|CITEYEARPAR):([^\\]+?)\\\]\\\]',
+        r'\\\[\\\[(CITEP|CITEALP|CITEALT|CITEAUTHOR|CITEYEAR|CITEYEARPAR|CITE):([^\\]+?)\\\]\\\]',
         replace_marker,
         text,
     )

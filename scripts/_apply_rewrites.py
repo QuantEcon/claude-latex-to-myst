@@ -45,6 +45,10 @@ _ITEMSEP_STRIP = re.compile(
 )
 
 _NATBIB_OPT = r'(?:\s*\[[^\]]*\]){0,2}'
+# Same optional-locator shape as ``_NATBIB_OPT`` but with at least one
+# ``[...]`` required (one or two) — used to gate the plain-``\cite``
+# rewrite on the presence of a locator.
+_NATBIB_OPT_REQUIRED = r'\s*\[[^\]]*\](?:\s*\[[^\]]*\])?'
 _NATBIB_REWRITES = [
     (rf'\\citep\b{_NATBIB_OPT}\s*\{{([^}}]+)\}}',       r'[[CITEP:\1]]'),
     (rf'\\citealp\b{_NATBIB_OPT}\s*\{{([^}}]+)\}}',     r'[[CITEALP:\1]]'),
@@ -54,6 +58,14 @@ _NATBIB_REWRITES = [
     # shorter pattern would otherwise win.
     (rf'\\citeyearpar\b{_NATBIB_OPT}\s*\{{([^}}]+)\}}', r'[[CITEYEARPAR:\1]]'),
     (rf'\\citeyear\b{_NATBIB_OPT}\s*\{{([^}}]+)\}}',    r'[[CITEYEAR:\1]]'),
+    # Plain \cite{key} (no locator) round-trips correctly through pandoc
+    # → {cite}, so it is left alone. Only the locator form
+    # \cite[p.~351]{key} needs intercepting — pandoc emits [@key, p.~351]
+    # and the downstream regex loses the key, leaving an empty {cite} role
+    # (GH #74, sister of #13). ``\cite\b`` excludes \citep/\citet/etc.
+    # (no word boundary before their trailing letter), and requiring a
+    # leading ``[`` keeps plain \cite{key} on pandoc's native path.
+    (rf'\\cite\b{_NATBIB_OPT_REQUIRED}\s*\{{([^}}]+)\}}', r'[[CITE:\1]]'),
 ]
 
 
