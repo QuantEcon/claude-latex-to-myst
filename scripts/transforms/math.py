@@ -74,6 +74,28 @@ def fix_text_dollar(text: str) -> str:
     return ''.join(output)
 
 
+def fix_spacing_superscript(text: str) -> str:
+    r"""Give a superscript that directly follows a thin space an explicit
+    empty base, for KaTeX compatibility (closes #45).
+
+    ``\,^\circ`` — e.g. ``3\,^\circ\mathrm{C}`` for degrees Celsius — is
+    valid LaTeX: the superscript attaches to an implicit empty base. But
+    KaTeX errors with ``Got group of unknown type: 'internal'`` because
+    it tries to superscript the ``\,`` spacing node itself. The break
+    affects ANY superscript right after ``\,`` (``\,^*``, ``\,^\dagger``,
+    ``\,^\top`` …), not just ``^\circ`` — so the rewrite is generic.
+
+    Inserting an explicit empty group — ``\,{}^`` — gives the superscript
+    a real (empty) base; KaTeX renders it and the output is visually
+    identical. Idempotent: ``\,{}^`` no longer contains ``\,^``.
+
+    NB: the workaround suggested in #45, ``\,\!^``, does NOT work — it
+    was verified still-erroring against KaTeX (myst 1.9.1). Only the
+    empty-base group fixes it.
+    """
+    return re.sub(r'\\,\^', r'\\,{}^', text)
+
+
 def convert_equations(text: str) -> str:
     """Convert pandoc equation blocks to MyST format.
 

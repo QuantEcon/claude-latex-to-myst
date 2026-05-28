@@ -31,6 +31,7 @@ import postprocess
 EXPECTED_PIPELINE_ORDER: list[str] = [
     'strip_pandoc_html_separators',
     'fix_text_dollar',
+    'fix_spacing_superscript',
     'convert_epigraphs',
     'convert_pandoc_attr_code_blocks',
     'resolve_table_markers',

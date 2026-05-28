@@ -277,3 +277,38 @@ def test_math_env_no_label_does_not_emit_spurious_anchors():
         # No standalone-anchor lines anywhere.
         assert not re.search(r'^\(eq-\)=\s*$', out, re.MULTILINE)
         assert not re.search(r'^\$\$\s+\(\)\s*$', out, re.MULTILINE)
+
+
+# ── \,^ → \,{}^ KaTeX spacing-superscript fix (issue #45) ────────────────────
+
+
+@pytest.mark.parametrize("src,want", [
+    # The canonical degrees-Celsius case (8 sites in the DL climate ch).
+    (r'$T = 3\,^\circ\mathrm{C}$', r'$T = 3\,{}^\circ\mathrm{C}$'),
+    (r'$2.5\,^\circ\mathrm{C}$',   r'$2.5\,{}^\circ\mathrm{C}$'),
+    # The break is general to any superscript after \, — not just ^\circ.
+    (r'$x\,^*$',                   r'$x\,{}^*$'),
+    (r'$A\,^\dagger$',             r'$A\,{}^\dagger$'),
+    (r'$M\,^\top$',                r'$M\,{}^\top$'),
+    (r'$y\,^{2}$',                 r'$y\,{}^{2}$'),
+])
+def test_fix_spacing_superscript_inserts_empty_base(src, want):
+    """``\\,^X`` → ``\\,{}^X`` gives the superscript an explicit empty
+    base so KaTeX stops erroring with 'unknown type: internal' (#45)."""
+    assert postprocess.fix_spacing_superscript(src) == want
+
+
+def test_fix_spacing_superscript_is_idempotent():
+    """``\\,{}^`` no longer contains ``\\,^`` — re-running is a no-op
+    (the pipeline must stay re-runnable)."""
+    once = postprocess.fix_spacing_superscript(r'$3\,^\circ\mathrm{C}$')
+    assert postprocess.fix_spacing_superscript(once) == once
+
+
+def test_fix_spacing_superscript_leaves_plain_constructs_untouched():
+    """No ``\\,^`` sequence → unchanged. A thin space not followed by a
+    superscript, and a superscript not preceded by a thin space, are
+    both fine in KaTeX and must be left alone."""
+    for src in (r'$a\,b$', r'$x^2$', r'$x^\circ$', r'$3\,\mathrm{C}$',
+                'plain prose, no math'):
+        assert postprocess.fix_spacing_superscript(src) == src

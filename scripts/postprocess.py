@@ -102,6 +102,7 @@ from transforms.typography import (  # noqa: E402  (re-exports for P3a)
 )
 from transforms.math import (  # noqa: E402  (re-exports for P3a)
     fix_text_dollar,
+    fix_spacing_superscript,
     convert_equations,
     join_split_inline_math,
     strip_blank_lines_in_math,
@@ -566,6 +567,7 @@ def process_text(text: str, stem: str, title: str | None = None,
 
     text = strip_pandoc_html_separators(text)
     text = fix_text_dollar(text)
+    text = fix_spacing_superscript(text)           # \,^ → \,{}^ for KaTeX (closes #45)
     text = convert_epigraphs(text)
     # convert_simple_tables MUST run before convert_environment_divs (GH #27):
     # tabulars wrapped in \begin{center}…\end{center} are rendered by pandoc
