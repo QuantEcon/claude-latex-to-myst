@@ -1018,12 +1018,13 @@ def emit_myst(spec: TableSpec) -> str:
 
     Output shape:
 
-    - With caption: ``{table}`` directive wrapping the body.
-      Pipe-table body when exactly 1 header row (the common case);
-      ``{list-table}`` fallback for 0 or 2+ header rows.
-    - Without caption: bare pipe-table (mystmd renders it as a
-      non-enumerable table — the caller decides whether to add a
-      label via the surrounding context).
+    - With a caption or label: a ``{table}`` directive (the enumerable
+      container) carrying ``:name:`` and the caption-as-first-paragraph.
+      Body is a pipe-table for the 1-header common case; a
+      ``{list-table}`` with ``:enumerated: false`` for 0 / 2+ header rows
+      (so the nested table doesn't claim its own enumerator — issue #52).
+    - Without caption/label: a bare pipe-table (1 header) or a bare,
+      normally-enumerated ``{list-table}`` (0 / 2+ headers).
 
     Cells are emitted verbatim (already markdown at this point);
     only ``|`` characters are escaped for pipe-table compatibility.
@@ -1059,37 +1060,46 @@ def emit_myst(spec: TableSpec) -> str:
 
     # A ``{table}`` wrapper is needed whenever the table carries a
     # caption OR a name (label) — both attach to the enumerable
-    # container, not to the pipe-table body. Tables with neither are
-    # rare in ``\begin{table}`` floats (an author who wraps in
-    # ``\begin{table}`` almost always also adds ``\caption`` or
-    # ``\label``) but the path is supported for completeness.
+    # container, not to the inner body.
     needs_wrapper = spec.caption is not None or spec.name is not None
 
-    def emit_body() -> list[str]:
-        """Inner body — pipe-table for the 1-header common case,
-        ``{list-table}`` fallback for 0 / 2+ header rows."""
-        body: list[str] = []
-        if has_header:
-            body.append(fmt_row(spec.header_rows[0]))
-            body.append(fmt_align())
-            for row in spec.body_rows:
-                body.append(fmt_row(row))
-        else:
-            # Pipe-tables only support a single header row; mystmd
-            # renders 0-header pipe-tables with a visible synthetic
-            # empty row, so the {list-table} fallback is cleaner.
-            body.append('```{list-table}')
-            body.append(f':header-rows: {len(spec.header_rows)}')
-            body.append('')
-            for row in all_rows:
-                body.append(f'* - {row[0] if row else ""}')
-                for cell in row[1:]:
-                    body.append(f'  - {cell}')
-            body.append('```')
+    def pipe_rows() -> list[str]:
+        rows = [fmt_row(spec.header_rows[0]), fmt_align()]
+        rows.extend(fmt_row(r) for r in spec.body_rows)
+        return rows
+
+    def list_table(suppress_enum: bool) -> list[str]:
+        """``{list-table}`` fallback for 0 / 2+ header rows (pipe-tables
+        only support a single header row, and a 0-header pipe-table
+        renders a visible synthetic empty row in mystmd).
+
+        When nested inside a ``{table}`` wrapper, ``:enumerated: false``
+        is set: the OUTER ``{table}`` is the enumerable container, so
+        without this the inner list-table claims a phantom ``tab-N.M``
+        slot of its own and every later table's ``{numref}`` drifts by
+        one (issue #52). Verified against mystmd 1.9.1 — the option is
+        honoured (inner container reports ``enumerator=None``) and is not
+        flagged as unexpected.
+        """
+        body = ['```{list-table}', f':header-rows: {len(spec.header_rows)}']
+        if suppress_enum:
+            body.append(':enumerated: false')
+        body.append('')
+        for row in all_rows:
+            body.append(f'* - {row[0] if row else ""}')
+            for cell in row[1:]:
+                body.append(f'  - {cell}')
+        body.append('```')
         return body
 
     out: list[str] = []
     if needs_wrapper:
+        # The caption is emitted as the first body PARAGRAPH (not the
+        # directive argument): a caption containing inline-role backticks
+        # — {cite}`k`, {ref}`x` — breaks mystmd's directive-argument
+        # parser and silently collapses the table. The {table} body is
+        # ordinary markdown, so roles parse normally. The 4-backtick
+        # fence outranks the inner 3-backtick {list-table}.
         out.append('````{table}')
         if spec.name:
             out.append(f':name: {spec.name}')
@@ -1097,10 +1107,12 @@ def emit_myst(spec: TableSpec) -> str:
         if spec.caption:
             out.append(spec.caption)
             out.append('')
-        out.extend(emit_body())
+        out.extend(pipe_rows() if has_header else list_table(suppress_enum=True))
         out.append('````')
     else:
-        out.extend(emit_body())
+        # No caption/label — a bare body. A standalone {list-table} is
+        # itself the enumerable container, so it keeps its own number.
+        out.extend(pipe_rows() if has_header else list_table(suppress_enum=False))
 
     return '\n'.join(out)
 
