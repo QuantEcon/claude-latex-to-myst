@@ -367,6 +367,29 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **`fix_spacing_superscript` rebuilt as a line-based state machine —
+  closes a recurring bug class** ([#87], follow-on to [#85] / [#86]):
+  the prior regex-based stash/restore architecture had been patched
+  three times ([#84] / [#85] / [#86]) and still had two latent bugs.
+  (1) **Phantom-fence pairing**: a content directive's closing
+  `` ``` `` was matched by the plain-fence regex as a new opener and
+  paired with the next bare `` ``` ``, swallowing the prose between
+  two `{figure}` blocks (KaTeX errors return for that prose). (2)
+  **Content-loss**: a `{code-block}` between two content directives
+  was stashed first as `\x00FSS0\x00`; a subsequent phantom-fence
+  region included that marker; forward-order restore exposed `FSS0`
+  as literal text in the rendered output — the code listing was
+  silently dropped (found in book-dp-deep-learning ch03_irbc R10, the
+  Fischer–Burmeister listing). Resolution: replace the multi-pass
+  regex stash with a single line-based scan that maintains a fence
+  stack `[(tick_count, kind), …]`. Closers are identified by *state*
+  (a bare `` ``` `` of ≥ the top's tick count pops), not by another
+  regex match — so phantom pairing is structurally impossible. There
+  is no stash/restore step at all, so the marker-leak content-loss
+  class is also structurally impossible. Existing 559 tests pass
+  unmodified; 3 new regression tests for both #87 bugs and the
+  content-directive-wrapping-code case. End-to-end myst build of the
+  reproducer: 0 KaTeX errors, code-block intact, no marker leak.
 - **`fix_spacing_superscript` missed math inside `{table}` cells (and
   other base64-encoded marker bodies)** ([#85], follow-on to [#45]):
   the original transform ran early in the pipeline, before
@@ -1089,6 +1112,7 @@ haven't validated. Everything below is on `main` and available now.
 [#74]: https://github.com/QuantEcon/claude-latex-to-myst/issues/74
 [#79]: https://github.com/QuantEcon/claude-latex-to-myst/issues/79
 [#85]: https://github.com/QuantEcon/claude-latex-to-myst/issues/85
+[#87]: https://github.com/QuantEcon/claude-latex-to-myst/issues/87
 [020]: lessons/020-natbib-bracket-markers-precede-cross-refs.md
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md

@@ -74,32 +74,36 @@ def fix_text_dollar(text: str) -> str:
     return ''.join(output)
 
 
-# Two regexes that together cover everything ``fix_spacing_superscript``
-# treats as "code" to stash:
-#
-# - Plain backtick fences (``\`\`\`python``, bare ``\`\`\``) — the
-#   ``(?!\{)`` lookahead skips ANY directive-style opener so it doesn't
-#   double-stash content directives (issue #85).
-# - Known code-bearing MyST directives (``\`\`\`{code-block} python``,
-#   ``{code-cell}``, ``{code}``, ``{eval-rst}``) — these ARE code blocks
-#   semantically; their bodies are literal source that must be preserved
-#   verbatim (Copilot review on PR #86). Listed longest-first so the
-#   alternation doesn't greedy-match ``{code`` of ``{code-block}``.
-# Content directives (``{table}``, ``{exercise}``, ``{prf:*}``,
-# ``{figure}``, ``{math}``, ``{div}`` …) match neither — their bodies
-# are markdown / math the rewrite must reach.
-_PLAIN_FENCED_CODE_RE = re.compile(
-    r'(?ms)^(`{3,})(?!\{)[^\n]*\n.*?\n\1[ \t]*$'
-)
-_CODE_DIRECTIVE_FENCE_RE = re.compile(
-    r'(?ms)^(`{3,})\{(?:code-block|code-cell|eval-rst|code)\b[^\n]*\n.*?\n\1[ \t]*$'
-)
-_INLINE_CODE_RE = re.compile(r'`[^`\n]+`')
+# Directives whose body is literal source code (must be preserved
+# verbatim across the rewrite). Everything else with a ``\`\`\`{name}``
+# opener is treated as a *content* directive — its body is markdown /
+# math the rewrite must reach.
+_CODE_DIRECTIVE_NAMES = frozenset({
+    'code-block', 'code-cell', 'code', 'eval-rst',
+})
+
+_FENCE_LINE_RE = re.compile(r'^(`{3,})(.*)$')
+_INLINE_CODE_RE = re.compile(r'(`[^`\n]+`)')
+_REWRITE_PAT = re.compile(r'\\,\^')
+_REWRITE_REPL = r'\\,{}^'
+
+
+def _rewrite_outside_inline_code(line: str) -> str:
+    """Apply ``\\,^`` → ``\\,{}^`` to ``line``, preserving any inline
+    code spans (``\\`…\\```) inside it so a literal example in prose
+    isn't mangled."""
+    parts = _INLINE_CODE_RE.split(line)
+    # _INLINE_CODE_RE has one capture group → split returns alternating
+    # non-match / match segments. Match segments (odd indices) are
+    # inline-code spans and stay verbatim.
+    for i in range(0, len(parts), 2):
+        parts[i] = _REWRITE_PAT.sub(_REWRITE_REPL, parts[i])
+    return ''.join(parts)
 
 
 def fix_spacing_superscript(text: str) -> str:
     r"""Give a superscript that directly follows a thin space an explicit
-    empty base, for KaTeX compatibility (closes #45, #85).
+    empty base, for KaTeX compatibility (closes #45, #85, #87).
 
     ``\,^\circ`` — e.g. ``3\,^\circ\mathrm{C}`` for degrees Celsius — is
     valid LaTeX: the superscript attaches to an implicit empty base. But
@@ -121,39 +125,74 @@ def fix_spacing_superscript(text: str) -> str:
     ``resolve_listings``, ``resolve_algorithms``,
     ``resolve_algorithmics``). Those preprocessors base64-encode their
     body content into HTML-comment markers pre-pandoc, so the math
-    inside is invisible to any text-level regex until the decoder runs.
-    An earlier-position call would miss table cells (#85), algorithm
+    inside is invisible to any text-level regex until the decoder runs
+    — an earlier-position call would miss table cells, algorithm
     bodies, etc.
 
-    Stashed (body left verbatim): plain ``\`\`\`…\`\`\`` code fences,
-    inline ``\`…\``` code spans, and the known code-bearing directives
-    ``{code-block}`` / ``{code-cell}`` / ``{code}`` / ``{eval-rst}`` —
-    their bodies are literal source that a tutorial chapter might
-    legitimately use to display the broken form.
+    Implementation: a line-based scan with a fence stack. Each fenced
+    block is classified by its opener:
 
-    NOT stashed (rewrite reaches inside): every *content* directive —
-    ``{table}``, ``{exercise}``, ``{solution}``, ``{prf:*}``,
-    ``{figure}``, ``{math}``, ``{div}``, etc. Their bodies are markdown /
-    math that ``\,^`` must be fixed inside.
+    - **code-bearing** — bare ``\`\`\`…``, ``\`\`\`python``, or a
+      directive in ``_CODE_DIRECTIVE_NAMES`` (``{code-block}``,
+      ``{code-cell}``, ``{code}``, ``{eval-rst}``). Body is emitted
+      verbatim.
+    - **content** — any other ``\`\`\`{name}`` directive
+      (``{table}``, ``{figure}``, ``{exercise}``, ``{prf:*}``, …).
+      Body lines are passed through ``_rewrite_outside_inline_code``,
+      so math inside is fixed but inline ``\``` example spans survive.
+
+    Closers are identified by the stack (a bare ``\`\`\`…`` of ≥ the
+    top's tick count), not by another regex match — so a content
+    directive's closing ``\`\`\`` cannot be mis-paired with a later
+    bare fence (issue #87). Inline-code spans within a line are
+    protected per-line; there is no stash/restore step at all, which
+    eliminates the marker-leak content-loss class entirely (also #87).
     """
-    stash: list[str] = []
+    out: list[str] = []
+    # Stack of (tick_count, kind) where kind ∈ {'code', 'content'}.
+    stack: list[tuple[int, str]] = []
 
-    def _save(m: re.Match) -> str:
-        stash.append(m.group(0))
-        return f'\x00FSS{len(stash) - 1}\x00'
+    for line in text.split('\n'):
+        m = _FENCE_LINE_RE.match(line)
+        if m is not None:
+            ticks = len(m.group(1))
+            rest = m.group(2)
 
-    # Order matters: stash code-directive fences (``\`\`\`{code-block}``
-    # …) BEFORE plain code fences. Otherwise the plain regex sees the
-    # closing ``\`\`\`` of a code-directive as an opener of its own and
-    # pairs it with the next bare ``\`\`\``, swallowing whatever's
-    # between.
-    text = _CODE_DIRECTIVE_FENCE_RE.sub(_save, text)
-    text = _PLAIN_FENCED_CODE_RE.sub(_save, text)
-    text = _INLINE_CODE_RE.sub(_save, text)
-    text = re.sub(r'\\,\^', r'\\,{}^', text)
-    for i, val in enumerate(stash):
-        text = text.replace(f'\x00FSS{i}\x00', val)
-    return text
+            # Closer for the top of stack? A bare ``\`\`\`…`` (optionally
+            # trailing whitespace, no info string) of ≥ the opener's tick
+            # count closes the fence.
+            if stack and rest.strip() == '' and ticks >= stack[-1][0]:
+                stack.pop()
+                out.append(line)
+                continue
+
+            # Otherwise this is a new opener (possibly nested).
+            rest_stripped = rest.lstrip()
+            if rest_stripped.startswith('{'):
+                close = rest_stripped.find('}')
+                name = rest_stripped[1:close].strip() if close > 0 else ''
+                first_word = name.split()[0] if name else ''
+                kind = 'code' if first_word in _CODE_DIRECTIVE_NAMES else 'content'
+            else:
+                # No ``{name}`` after the backticks → plain code fence.
+                kind = 'code'
+            stack.append((ticks, kind))
+            # Opener line itself: content openers may carry a caption arg
+            # / option-line math, so rewrite. Code openers stay verbatim
+            # (preserves the language tag and any ``:name:`` etc.).
+            if kind == 'content':
+                out.append(_rewrite_outside_inline_code(line))
+            else:
+                out.append(line)
+            continue
+
+        # Non-fence line.
+        if not stack or stack[-1][1] == 'content':
+            out.append(_rewrite_outside_inline_code(line))
+        else:
+            out.append(line)
+
+    return '\n'.join(out)
 
 
 def convert_equations(text: str) -> str:
