@@ -20,7 +20,7 @@ from __future__ import annotations
 import base64
 import re
 
-from ._helpers import convert_label_colons
+from ._helpers import convert_label_colons, outer_fence
 
 
 def convert_environment_divs(text: str) -> str:
@@ -150,8 +150,14 @@ def convert_environment_divs(text: str) -> str:
             while clean_body and clean_body[-1].strip() == '':
                 clean_body.pop()
 
-            # Build the MyST directive
-            header = f'```{{{myst_env}}}'
+            # Build the MyST directive. Size the fence to outrank any
+            # code fence already in the body (issue #79 / lesson 040): a
+            # ```python block inside an exercise/solution/proof would
+            # otherwise close the directive early. Code blocks are emitted
+            # by convert_pandoc_attr_code_blocks, which runs before this
+            # pass, so they are present in clean_body here.
+            fence = outer_fence('\n'.join(clean_body))
+            header = f'{fence}{{{myst_env}}}'
 
             if myst_env == 'exercise':
                 # Track exercise label for pairing with solution
@@ -163,7 +169,7 @@ def convert_environment_divs(text: str) -> str:
             elif myst_env == 'solution':
                 # Solution needs the exercise label as argument
                 if pp._last_exercise_label:
-                    header = f'```{{solution}} {pp._last_exercise_label}'
+                    header = f'{fence}{{solution}} {pp._last_exercise_label}'
                 pp._last_exercise_label = None
 
             # Emit any extra labels as sibling ``{div}`` anchor blocks
@@ -184,7 +190,7 @@ def convert_environment_divs(text: str) -> str:
             if clean_body:
                 result.append('')
                 result.extend(clean_body)
-            result.append('```')
+            result.append(fence)
             result.append('')
             continue
 
@@ -288,24 +294,6 @@ _EXERCISE_MARKER_RE = re.compile(
 )
 
 
-_FENCE_LINE_RE = re.compile(r'[ \t]*(`{3,})')
-
-
-def _outer_fence(content: str) -> str:
-    """Pick a backtick fence at least one tick longer than the longest
-    code fence inside ``content`` — CommonMark/MyST require the
-    enclosing directive's fence to outrank any nested fence, else the
-    inner ``` closes the directive early. Minimum three backticks;
-    a body with a nested ```` ```python ```` block yields four
-    (the lecture-source convention)."""
-    inner = 0
-    for line in content.splitlines():
-        m = _FENCE_LINE_RE.match(line)
-        if m:
-            inner = max(inner, len(m.group(1)))
-    return '`' * max(3, inner + 1)
-
-
 def resolve_exercise_markers(text: str) -> str:
     """Decode EXERCISE marker pairs into ``{exercise}`` directives.
 
@@ -324,7 +312,7 @@ def resolve_exercise_markers(text: str) -> str:
         ```
 
     When the body itself contains a fenced code block the directive
-    fence widens to outrank it (``_outer_fence``), so a nested
+    fence widens to outrank it (``outer_fence``), so a nested
     ```` ```python ```` block doesn't terminate the exercise early.
 
     Pandoc may escape ``<`` to ``\\<`` and ``>`` to ``\\>``; the regex
@@ -333,7 +321,7 @@ def resolve_exercise_markers(text: str) -> str:
     def repl(m: re.Match) -> str:
         label = m.group('label')
         content = (m.group('content') or '').strip()
-        fence = _outer_fence(content)
+        fence = outer_fence(content)
         return (
             f'{fence}{{exercise}}\n'
             f':label: {label}\n'

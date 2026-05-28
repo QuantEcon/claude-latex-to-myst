@@ -15,7 +15,7 @@ from __future__ import annotations
 import base64
 import re
 
-from ._helpers import convert_label_colons
+from ._helpers import convert_label_colons, outer_fence
 
 
 def _algo_find_balanced(s: str, start: int) -> int:
@@ -560,15 +560,19 @@ def resolve_algorithms(text: str) -> str:
         except Exception:
             body = ''
         converted = _algo_convert_body(body)
+        # Size the fence to outrank any code fence in the body (issue #79
+        # / lesson 040); normally a no-op for pseudocode, but defensive
+        # against an algorithm body that embeds a fenced block.
+        fence = outer_fence(converted)
         out = []
         if title:
-            out.append(f'```{{prf:algorithm}} {title}')
+            out.append(f'{fence}{{prf:algorithm}} {title}')
         else:
-            out.append('```{prf:algorithm}')
+            out.append(f'{fence}{{prf:algorithm}}')
         out.append(f':label: {name}')
         out.append('')
         out.append(converted)
-        out.append('```')
+        out.append(fence)
         return '\n'.join(out)
 
     return pattern.sub(repl, text)

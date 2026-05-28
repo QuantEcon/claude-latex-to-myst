@@ -220,6 +220,20 @@ def test_resolve_exercise_markers_idempotent_no_markers():
     assert postprocess.resolve_exercise_markers(src) == src
 
 
+def test_outer_fence_helper_sizes_to_deepest_inner_fence():
+    """Shared helper (issue #79): pick a fence one tick longer than the
+    deepest backtick fence in the content, minimum three. Tildes and
+    inline single backticks don't count — they can't close a backtick
+    fence (lesson 040)."""
+    from transforms._helpers import outer_fence
+    assert outer_fence("plain prose, no fence") == "```"
+    assert outer_fence("use `inline` code") == "```"
+    assert outer_fence("a\n```python\nx\n```\nb") == "````"
+    assert outer_fence("a\n````\n```py\nx\n```\n````") == "`````"
+    # A tilde fence inside is irrelevant to a backtick wrapper.
+    assert outer_fence("a\n~~~\nx\n~~~\nb") == "```"
+
+
 # ── Minted listings (gap #015) ───────────────────────────────────────────────
 
 
@@ -2636,6 +2650,32 @@ def test_single_label_still_works_after_refactor():
     assert ':label: t-foo' in out
     assert 'The theorem statement.' in out
     assert '```{div}' not in out
+
+
+def test_environment_div_widens_fence_around_nested_code_block():
+    """Issue #79 — a prose directive (here an Exercise) whose body
+    contains a ```` ```python ```` block must open/close with a *four*-
+    backtick fence, else the inner block's bare closing ``` terminates
+    the directive early (lesson 040). Code blocks are emitted by
+    ``convert_pandoc_attr_code_blocks`` before this pass, so they are
+    present in the body when the fence width is chosen."""
+    body = (
+        '::: Exercise\n'
+        '[]{#ex:code label="ex:code"} Implement the loss:\n'
+        '\n'
+        '```python\n'
+        'def loss(y, yhat):\n'
+        '    return ((y - yhat) ** 2).mean()\n'
+        '```\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert '````{exercise}' in out          # four-backtick opener
+    assert '`````{exercise}' not in out      # not over-widened
+    assert ':label: ex-code' in out
+    assert '```python' in out                # inner block intact
+    # Exactly one bare four-backtick line — the directive's own closer.
+    assert out.splitlines().count('````') == 1
 
 
 def test_proof_midline_hypertarget_works_with_real_dp1_shape():
