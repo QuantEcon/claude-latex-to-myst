@@ -74,13 +74,25 @@ def fix_text_dollar(text: str) -> str:
     return ''.join(output)
 
 
-# Stash *code* fences only — the negative lookahead ``(?!\{)`` skips MyST
-# directive fences like ``\`\`\`{table}`` / ``\`\`\`{exercise}`` whose
-# bodies contain math the rewrite must reach (issue #85). Pandoc-attr
-# code blocks (``\`\`\`{.python}``) start with ``{.`` — also excluded;
-# in practice those are rare at this pipeline position.
-_FENCED_CODE_RE = re.compile(
+# Two regexes that together cover everything ``fix_spacing_superscript``
+# treats as "code" to stash:
+#
+# - Plain backtick fences (``\`\`\`python``, bare ``\`\`\``) — the
+#   ``(?!\{)`` lookahead skips ANY directive-style opener so it doesn't
+#   double-stash content directives (issue #85).
+# - Known code-bearing MyST directives (``\`\`\`{code-block} python``,
+#   ``{code-cell}``, ``{code}``, ``{eval-rst}``) — these ARE code blocks
+#   semantically; their bodies are literal source that must be preserved
+#   verbatim (Copilot review on PR #86). Listed longest-first so the
+#   alternation doesn't greedy-match ``{code`` of ``{code-block}``.
+# Content directives (``{table}``, ``{exercise}``, ``{prf:*}``,
+# ``{figure}``, ``{math}``, ``{div}`` …) match neither — their bodies
+# are markdown / math the rewrite must reach.
+_PLAIN_FENCED_CODE_RE = re.compile(
     r'(?ms)^(`{3,})(?!\{)[^\n]*\n.*?\n\1[ \t]*$'
+)
+_CODE_DIRECTIVE_FENCE_RE = re.compile(
+    r'(?ms)^(`{3,})\{(?:code-block|code-cell|eval-rst|code)\b[^\n]*\n.*?\n\1[ \t]*$'
 )
 _INLINE_CODE_RE = re.compile(r'`[^`\n]+`')
 
@@ -113,11 +125,16 @@ def fix_spacing_superscript(text: str) -> str:
     An earlier-position call would miss table cells (#85), algorithm
     bodies, etc.
 
-    Fenced *code* blocks and inline code spans are stashed and restored
-    around the rewrite, so a tutorial passage displaying the literal
-    ``\,^`` as an example isn't silently mangled. Directive fences
-    (``\`\`\`{table}`` etc.) are NOT stashed — they're the very bodies
-    we need to fix.
+    Stashed (body left verbatim): plain ``\`\`\`…\`\`\`` code fences,
+    inline ``\`…\``` code spans, and the known code-bearing directives
+    ``{code-block}`` / ``{code-cell}`` / ``{code}`` / ``{eval-rst}`` —
+    their bodies are literal source that a tutorial chapter might
+    legitimately use to display the broken form.
+
+    NOT stashed (rewrite reaches inside): every *content* directive —
+    ``{table}``, ``{exercise}``, ``{solution}``, ``{prf:*}``,
+    ``{figure}``, ``{math}``, ``{div}``, etc. Their bodies are markdown /
+    math that ``\,^`` must be fixed inside.
     """
     stash: list[str] = []
 
@@ -125,7 +142,13 @@ def fix_spacing_superscript(text: str) -> str:
         stash.append(m.group(0))
         return f'\x00FSS{len(stash) - 1}\x00'
 
-    text = _FENCED_CODE_RE.sub(_save, text)
+    # Order matters: stash code-directive fences (``\`\`\`{code-block}``
+    # …) BEFORE plain code fences. Otherwise the plain regex sees the
+    # closing ``\`\`\`` of a code-directive as an opener of its own and
+    # pairs it with the next bare ``\`\`\``, swallowing whatever's
+    # between.
+    text = _CODE_DIRECTIVE_FENCE_RE.sub(_save, text)
+    text = _PLAIN_FENCED_CODE_RE.sub(_save, text)
     text = _INLINE_CODE_RE.sub(_save, text)
     text = re.sub(r'\\,\^', r'\\,{}^', text)
     for i, val in enumerate(stash):

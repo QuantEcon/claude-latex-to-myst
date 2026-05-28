@@ -395,10 +395,8 @@ def test_fix_spacing_superscript_reaches_into_table_directive_cells():
 
 
 def test_fix_spacing_superscript_reaches_other_directive_bodies():
-    """The same fix applies to math inside other directive bodies that
-    were base64-encoded pre-pandoc (exercises, algorithms, etc.). The
-    stash exclusion is on ``\\`\\`\\`{name}`` in general, not specific
-    to ``{table}``."""
+    """The same fix applies to math inside content directive bodies that
+    were base64-encoded pre-pandoc (exercises, algorithms, etc.)."""
     src = (
         '```{exercise}\n'
         ':label: ex-temp\n'
@@ -409,3 +407,66 @@ def test_fix_spacing_superscript_reaches_other_directive_bodies():
     out = postprocess.fix_spacing_superscript(src)
     assert '$T\\,{}^\\circ\\mathrm{C}$' in out
     assert '```{exercise}' in out
+
+
+def test_fix_spacing_superscript_preserves_code_block_directive_bodies():
+    """A ``{code-block}`` directive's body is literal source code — it
+    must NOT be rewritten, even though it's syntactically a directive
+    fence. Same for ``{code-cell}`` / ``{code}`` / ``{eval-rst}``.
+    Copilot review on PR #86 — the late pipeline position puts
+    ``resolve_listings`` / ``convert_pandoc_attr_code_blocks`` output
+    in the rewrite's input, so this distinction now matters."""
+    src = (
+        '$T = 3\\,^\\circ\\mathrm{C}$ in prose.\n'
+        '\n'
+        '```{code-block} python\n'
+        '# A LaTeX example: $3\\,^\\circ\\mathrm{C}$ is the broken form.\n'
+        'x = "3\\,^\\circ"\n'
+        '```\n'
+    )
+    out = postprocess.fix_spacing_superscript(src)
+    # Prose math outside the directive: rewritten.
+    assert '$T = 3\\,{}^\\circ\\mathrm{C}$' in out
+    # The {code-block} body stays verbatim.
+    body = out.split('```{code-block}')[1].split('```')[0]
+    assert '\\,^\\circ' in body
+    assert '\\,{}^' not in body
+
+
+def test_fix_spacing_superscript_preserves_code_cell_and_eval_rst_directives():
+    """Sibling guard for ``{code-cell}`` (MyST executable) and
+    ``{eval-rst}`` — same code-bearing class as ``{code-block}``."""
+    for directive in ('code-cell', 'eval-rst', 'code'):
+        src = (
+            f'```{{{directive}}}\n'
+            'literal: \\,^*\n'
+            '```\n'
+        )
+        out = postprocess.fix_spacing_superscript(src)
+        # Body preserved.
+        body = out.split(f'```{{{directive}}}')[1].split('```')[0]
+        assert '\\,^' in body, f'{directive}: lost \\,^'
+        assert '\\,{}^' not in body, f'{directive}: wrongly rewrote'
+
+
+def test_fix_spacing_superscript_handles_back_to_back_code_directive_then_plain_fence():
+    """Regression for an ordering bug found during PR #86 review:
+    running the plain-fence stash before the code-directive stash made
+    the closing ``\\`\\`\\`` of a ``{code-block}`` look like the opener
+    of a new plain fence, swallowing the next ``{code-cell}`` block."""
+    src = (
+        '```{code-block} python\n'
+        '# A: \\,^\\circ\n'
+        '```\n'
+        '\n'
+        '```{code-cell} ipython3\n'
+        '# B: \\,^*\n'
+        '```\n'
+    )
+    out = postprocess.fix_spacing_superscript(src)
+    # Both directive bodies preserved (no rewrite leaked through the
+    # closing fence of the first directive).
+    a = out.split('```{code-block}')[1].split('```')[0]
+    b = out.split('```{code-cell}')[1].split('```')[0]
+    assert '\\,^\\circ' in a and '\\,{}^' not in a
+    assert '\\,^*' in b and '\\,{}^' not in b

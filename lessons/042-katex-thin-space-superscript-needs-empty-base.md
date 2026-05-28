@@ -62,11 +62,20 @@ text-level regex until the matching decoder runs. An earlier-position
 call would miss table cells (#85), algorithm bodies, etc. — the original
 PR #84 made exactly that mistake.
 
-Fenced *code* blocks and inline code spans are stashed/restored around
-the rewrite so a tutorial passage displaying the literal ``\,^`` as an
-example isn't silently mangled. The fenced-code regex skips MyST
-**directive** fences (``\`\`\`{table}``, ``\`\`\`{exercise}``, …) via a
-``(?!\{)`` lookahead — those are the very bodies we need to reach.
+Stashed (body left verbatim): plain ``\`\`\`…\`\`\`` code fences,
+inline ``\`…\``` code spans, and the **code-bearing** MyST directives —
+``{code-block}``, ``{code-cell}``, ``{code}``, ``{eval-rst}`` — whose
+bodies are literal source. A tutorial chapter showing ``\,^`` as
+example code stays intact.
+
+NOT stashed (rewrite reaches the body): every **content** directive —
+``{table}``, ``{exercise}``, ``{solution}``, ``{prf:*}``, ``{figure}``,
+``{math}``, ``{div}`` — whose body is markdown / math the rewrite must
+fix. The two distinct cases are handled by two regexes, and the
+**code-directive stash must run BEFORE the plain-fence stash**:
+otherwise the closing ``\`\`\`` of a ``{code-block}`` looks like the
+opener of a new plain fence and swallows the next block (caught in
+PR #86 review).
 
 ### What does NOT work
 
