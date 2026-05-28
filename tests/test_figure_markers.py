@@ -266,6 +266,88 @@ def test_resolve_leaves_malformed_marker_in_place():
     assert resolve_figure_markers(bad) == bad
 
 
+@pytest.mark.parametrize('payload', [
+    'not_valid_base64!',                     # binascii.Error path
+    'aGVsbG8=',                              # valid base64, NOT valid JSON
+    base_payload := 'AAAA',                  # 3 NUL bytes, not utf-8 → JSON
+])
+def test_resolve_marker_corrupt_payload_does_not_crash(payload):
+    """Copilot review on PR #95: ``base64.b64decode`` raises
+    ``binascii.Error`` and ``.decode('utf-8')`` raises
+    ``UnicodeDecodeError``. Both must be caught so a corrupt marker
+    doesn't crash the whole postprocess pipeline (mirrors
+    ``resolve_table_markers``'s broad ``except Exception``)."""
+    bad = f'<!--FIGURE payload={payload}-->'
+    # Must not raise — output keeps the marker in place verbatim.
+    out = resolve_figure_markers(bad)
+    assert out == bad
+
+
+# ── 5. Defensive: comment skip + multi-image bail (Copilot #95) ─────────────
+
+
+def test_preprocessor_skips_commented_figure_block():
+    """Issue caught by Copilot review on PR #95: a ``\\begin{figure}``
+    on a line disabled with ``%`` must NOT be marker-ized — otherwise
+    the marker un-comments the figure and silently changes document
+    semantics. Mirrors the ``_starts_in_comment`` guard in
+    ``_apply_table_markers``."""
+    src = (
+        'Real text.\n\n'
+        '% \\begin{figure}\n'
+        '% \\includegraphics{x.pdf}\n'
+        '% \\caption{Commented out, must stay so.}\n'
+        '% \\label{fig:commented}\n'
+        '% \\end{figure}\n\n'
+        'More text.\n'
+    )
+    out = pre.process_text(src)
+    # No marker emitted — block left exactly as it was.
+    assert '<!--FIGURE' not in out
+    assert '% \\begin{figure}' in out
+
+
+def test_parse_bails_on_multi_image_figure():
+    """Issue caught by Copilot review on PR #95: a figure containing
+    multiple ``\\includegraphics`` (side-by-side panels without
+    ``\\begin{subfigure}``) would silently drop all but the first
+    image if we proceeded. Bail and fall through to the HTML path
+    instead — Phase 1 is single-figure scope only."""
+    body = (
+        '\\includegraphics{a.pdf}\\hfill\n'
+        '\\includegraphics{b.pdf}\n'
+        '\\caption{Side-by-side panels.}\n'
+        '\\label{fig:sidebyside}\n'
+    )
+    assert parse_figure_block(body, placement=None) is None
+
+
+def test_parse_bails_on_mixed_includegraphics_and_tikz():
+    """Same bail for one ``\\includegraphics`` + one ``\\input{tikz/...}``
+    in the same figure — also multi-image, same Phase 1 scope rule."""
+    body = (
+        '\\includegraphics{a.pdf}\n'
+        '\\input{tikz/b.tex}\n'
+        '\\caption{Mixed sources.}\n'
+        '\\label{fig:mixed}\n'
+    )
+    assert parse_figure_block(body, placement=None) is None
+
+
+def test_parse_single_includegraphics_still_handled():
+    """Regression guard for the bail above: a SINGLE
+    ``\\includegraphics`` still produces a spec — the bail is only on
+    multi-image."""
+    body = (
+        '\\includegraphics{single.pdf}\n'
+        '\\caption{One image.}\n'
+        '\\label{fig:one}\n'
+    )
+    spec = parse_figure_block(body, placement=None)
+    assert spec is not None
+    assert spec.image_src == 'single.pdf'
+
+
 # ── 4. End-to-end (preprocessor → pandoc → resolver → natbib decode) ────────
 
 

@@ -123,10 +123,20 @@ def _extract_footnotesize_subcaptions(body: str) -> list[str]:
 def parse_figure_block(body: str, placement: str | None) -> FigureSpec | None:
     """Parse a ``\\begin{figure}[opt]?...\\end{figure}`` body into a
     FigureSpec. Returns ``None`` to signal "leave this block alone"
-    (Phase 1 bails on subfigure blocks; ``convert_html_figures`` handles
-    those via the existing HTML path)."""
+    (Phase 1 bails on subfigure blocks and multi-image blocks;
+    ``convert_html_figures`` handles those via the existing HTML path)."""
     if _SUBFIGURE_RE.search(body):
         return None  # Phase 2 — issue #94
+
+    # Phase 1 is single-figure scope. Multi-image / multi-tikz layouts
+    # (side-by-side panels without ``\begin{subfigure}``) would silently
+    # drop all but the first image if we proceeded — so bail and let
+    # the existing HTML path handle them (caught by Copilot review on
+    # PR #95).
+    n_images = len(_INCLUDEGRAPHICS_RE.findall(body))
+    n_tikz = len(_TIKZ_INPUT_RE.findall(body))
+    if n_images + n_tikz > 1:
+        return None
 
     spec = FigureSpec(placement=placement)
 
@@ -144,7 +154,8 @@ def parse_figure_block(body: str, placement: str | None) -> FigureSpec | None:
     if caption_text is not None:
         spec.caption = caption_text
 
-    # \includegraphics{path} or \input{tikz/stem} — at most one in scope.
+    # \includegraphics{path} or \input{tikz/stem} — bail above
+    # guarantees at most one of either.
     img_m = _INCLUDEGRAPHICS_RE.search(body)
     if img_m:
         spec.image_src = img_m.group(1)
@@ -166,12 +177,36 @@ def parse_figure_block(body: str, placement: str | None) -> FigureSpec | None:
     return spec
 
 
+def _starts_in_comment(text: str, pos: int) -> bool:
+    """Return True if ``text[pos]`` sits in a LaTeX line-comment — the
+    same physical line has an unescaped ``%`` before ``pos``. Same
+    logic as ``tables_from_latex._starts_in_comment`` /
+    ``_apply_listing_markers._starts_in_comment``."""
+    line_start = text.rfind('\n', 0, pos) + 1
+    i = line_start
+    while i < pos:
+        if text[i] == '\\':
+            i += 2
+            continue
+        if text[i] == '%':
+            return True
+        i += 1
+    return False
+
+
 def find_figure_blocks(text: str) -> list[tuple[int, int, str, str | None]]:
     """Return ``[(start, end, body, placement), ...]`` for every
     ``\\begin{figure}[opt]?...\\end{figure}`` block in source order.
-    Mirrors ``find_table_blocks``."""
+    Mirrors ``find_table_blocks``.
+
+    Skips commented-out blocks: a ``\\begin{figure}`` on a line that's
+    been disabled with ``%`` must not be marker-ized — otherwise the
+    marker would un-comment the figure and silently change semantics
+    (caught by Copilot review on PR #95)."""
     blocks: list[tuple[int, int, str, str | None]] = []
     for m in _FIGURE_BLOCK_RE.finditer(text):
+        if _starts_in_comment(text, m.start()):
+            continue
         placement = m.group('opt')
         if placement is not None:
             placement = placement[1:-1]  # strip outer []
@@ -279,13 +314,20 @@ def resolve_figure_markers(text: str) -> str:
     """Decode every ``<!--FIGURE payload=...-->`` marker in ``text`` into
     a ``{figure}`` directive."""
     def repl(m: re.Match) -> str:
+        # Defensive: a corrupted payload (manual edit of the intermediate
+        # file, partial copy-paste, future pandoc version that mangles the
+        # marker) shouldn't crash the whole postprocess pipeline. Leave
+        # the original marker in place on failure — the visible artefact
+        # tells the author something went wrong without taking down the
+        # build. Mirrors ``resolve_table_markers``'s broad-Exception
+        # pattern (Copilot review on PR #95). ``base64.binascii.Error``
+        # and ``UnicodeDecodeError`` are technically ValueError subclasses
+        # but matching the table-marker shape future-proofs against
+        # unanticipated failure modes.
         try:
             spec = decode_marker(m.group(1))
-        except (ValueError, json.JSONDecodeError):
-            # Defensive: leave the marker in place so a human can see
-            # something went wrong, rather than silently dropping the
-            # figure.
+            return _emit_figure(spec)
+        except Exception:
             return m.group(0)
-        return _emit_figure(spec)
 
     return _MARKER_RE.sub(repl, text)
