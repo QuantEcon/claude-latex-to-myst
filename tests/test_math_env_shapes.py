@@ -312,3 +312,57 @@ def test_fix_spacing_superscript_leaves_plain_constructs_untouched():
     for src in (r'$a\,b$', r'$x^2$', r'$x^\circ$', r'$3\,\mathrm{C}$',
                 'plain prose, no math'):
         assert postprocess.fix_spacing_superscript(src) == src
+
+
+def test_fix_spacing_superscript_does_not_touch_fenced_code_blocks():
+    """A tutorial passage showing the literal ``\\,^`` as example text
+    inside a fenced code block must NOT be rewritten — otherwise the
+    chapter explaining the gotcha silently displays the wrong form
+    (Copilot review on PR #84). Math outside the fence is still fixed."""
+    src = (
+        'Outside the fence: $3\\,^\\circ\\mathrm{C}$.\n'
+        '\n'
+        '```latex\n'
+        'Inside the fence: $3\\,^\\circ\\mathrm{C}$ is the broken form.\n'
+        '```\n'
+        '\n'
+        'After: $2.5\\,^\\circ\\mathrm{C}$.\n'
+    )
+    out = postprocess.fix_spacing_superscript(src)
+    # The two math expressions OUTSIDE the fence are rewritten.
+    assert '$3\\,{}^\\circ\\mathrm{C}$' in out
+    assert '$2.5\\,{}^\\circ\\mathrm{C}$' in out
+    # The example INSIDE the fence is preserved verbatim.
+    assert 'Inside the fence: $3\\,^\\circ\\mathrm{C}$ is the broken form.' in out
+    assert '$3\\,{}^\\circ' not in out.split('```latex')[1].split('```')[0]
+
+
+def test_fix_spacing_superscript_does_not_touch_inline_code_spans():
+    """An inline code span showing the literal sequence (``use `\\,^X`
+    carefully``) must also stay intact — same reasoning as fenced
+    blocks."""
+    src = (
+        'Prose math: $3\\,^\\circ\\mathrm{C}$. '
+        'Avoid `\\,^\\circ` in source; write `\\,{}^\\circ` instead.'
+    )
+    out = postprocess.fix_spacing_superscript(src)
+    # Math outside backticks: rewritten.
+    assert '$3\\,{}^\\circ\\mathrm{C}$' in out
+    # The two inline code spans pass through verbatim.
+    assert '`\\,^\\circ`' in out
+    assert '`\\,{}^\\circ`' in out
+
+
+def test_fix_spacing_superscript_handles_4_backtick_fences():
+    """4-backtick fenced blocks (the lesson-040 widened form) must also
+    be stashed, not just 3-backtick ones."""
+    src = (
+        '$x\\,^*$\n'
+        '\n'
+        '````\n'
+        'Example: $\\,^\\circ$ shows the issue.\n'
+        '````\n'
+    )
+    out = postprocess.fix_spacing_superscript(src)
+    assert '$x\\,{}^*$' in out                       # outside: rewritten
+    assert 'Example: $\\,^\\circ$ shows the issue.' in out   # inside: preserved

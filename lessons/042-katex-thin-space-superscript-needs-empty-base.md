@@ -55,6 +55,13 @@ def fix_spacing_superscript(text: str) -> str:
 Wired in ``process_text`` right after ``fix_text_dollar`` (both are
 KaTeX-compatibility fixes; both run before ``convert_equations``).
 
+Fenced code blocks and inline code spans are stashed/restored around the
+rewrite (Copilot review, PR #84) so a tutorial passage displaying the
+literal ``\,^`` as an example — e.g. a chapter explaining this gotcha —
+isn't silently mangled into ``\,{}^``. At this pipeline position no MyST
+directives have been emitted yet, so every backtick fence is
+unambiguously a code block.
+
 ### What does NOT work
 
 The original #45 wrote: "``\,\!^\circ`` (``\!`` adds a negative thin
