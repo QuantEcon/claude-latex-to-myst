@@ -1377,6 +1377,27 @@ def test_simple_table_no_caption_emits_bare_list_table():
     assert "````" not in out
 
 
+def test_simple_table_captioned_zero_header_suppresses_inner_enumeration():
+    """Issue #52: a captioned 0-header simple table keeps the ``{table}``
+    wrapper (role-safe caption-as-paragraph) but the nested
+    ``{list-table}`` carries ``:enumerated: false`` so it doesn't claim a
+    phantom table number that drifts every later ``{numref}``."""
+    body = (
+        "::: {#tab:zero}\n"
+        + _table(r"$\alpha$ | the first letter",
+                 r"$\beta$  | the second letter")
+        + "\n  : Greek letters.\n"
+        ":::\n"
+    )
+    out = postprocess.convert_simple_tables(body)
+    assert "````{table}" in out
+    assert ":name: tab-zero" in out
+    assert "Greek letters." in out               # caption-as-paragraph
+    assert "```{list-table}" in out
+    assert ":header-rows: 0" in out
+    assert ":enumerated: false" in out
+
+
 def test_simple_table_caption_with_inline_role_backticks():
     """Regression for PR #41 v6: captions containing inline-role
     backticks (``{ref}`foo``, ``{cite:t}`bar``) silently broke when

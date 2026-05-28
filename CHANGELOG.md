@@ -367,6 +367,18 @@ haven't validated. Everything below is on `main` and available now.
 
 ### Fixed
 
+- **Captioned 0/2+-header tables drifted later `{numref}`s** ([#52]):
+  a captioned table with 0 or 2+ header rows is emitted as a `{table}`
+  wrapping a `{list-table}` (the caption stays a role-safe body
+  paragraph). mystmd counted *both* directives as enumerable `table`
+  containers, so the inner one claimed a phantom `tab-N.M` slot and
+  every later table's number drifted by one (visible "Table 6.7, 6.9,
+  no 6.8"). The nested `{list-table}` now carries `:enumerated: false`
+  so only the outer `{table}` is numbered; a standalone (unwrapped)
+  list-table still keeps its own number. Applied in both `emit_myst`
+  (marker path) and `convert_simple_tables` (pandoc-output path).
+  Verified against mystmd 1.9.1 by building the AST and counting
+  containers. Lesson [041].
 - **Plain `\cite[loc]{key}` dropped the key** ([#74], sister of [#13]):
   the locator-aware natbib rewrite covered `\citep`/`\citealp`/etc. but
   not plain `\cite`, which was deliberately left for pandoc's native
@@ -1035,6 +1047,7 @@ haven't validated. Everything below is on `main` and available now.
 [#49]: https://github.com/QuantEcon/claude-latex-to-myst/issues/49
 [#50]: https://github.com/QuantEcon/claude-latex-to-myst/issues/50
 [#51]: https://github.com/QuantEcon/claude-latex-to-myst/issues/51
+[#52]: https://github.com/QuantEcon/claude-latex-to-myst/issues/52
 [#54]: https://github.com/QuantEcon/claude-latex-to-myst/issues/54
 [#55]: https://github.com/QuantEcon/claude-latex-to-myst/issues/55
 [#58]: https://github.com/QuantEcon/claude-latex-to-myst/pull/58
@@ -1070,6 +1083,7 @@ haven't validated. Everything below is on `main` and available now.
 [036]: lessons/036-attr-fence-regex-chokes-on-braces-in-caption-values.md
 [037]: lessons/037-multline-gather-label-extraction-incomplete.md
 [038]: lessons/038-postprocess-main-module-double-load.md
+[041]: lessons/041-nested-table-directive-double-enumerates.md
 
 ### Settled architectural decisions
 

@@ -229,10 +229,11 @@ def test_emit_myst_captioned_one_header_row_emits_pipe_table():
 
 
 def test_emit_myst_captioned_two_header_rows_falls_back_to_list_table():
-    """Pipe-tables only support 1 header row; >=2 falls back to
-    {list-table} fallback inside the {table} wrapper (which
-    re-introduces the phantom-enumerator behaviour but only for the
-    edge case)."""
+    """Pipe-tables only support 1 header row; >=2 falls back to a
+    ``{list-table}`` nested in the ``{table}`` wrapper. The inner
+    directive carries ``:enumerated: false`` so it doesn't claim its own
+    table number (issue #52). The caption stays a body paragraph (so
+    inline roles in captions remain safe)."""
     spec = TableSpec(
         name='tab-foo',
         caption='Cap.',
@@ -243,8 +244,10 @@ def test_emit_myst_captioned_two_header_rows_falls_back_to_list_table():
     out = emit_myst(spec)
     assert '````{table}' in out
     assert ':name: tab-foo' in out
+    assert 'Cap.' in out                       # caption-as-paragraph
     assert '```{list-table}' in out
     assert ':header-rows: 2' in out
+    assert ':enumerated: false' in out          # no phantom enumerator
     assert '* - H1a' in out
     assert '  - H2a' in out
     assert '* - H1b' in out
@@ -252,6 +255,10 @@ def test_emit_myst_captioned_two_header_rows_falls_back_to_list_table():
 
 
 def test_emit_myst_captioned_zero_header_rows_falls_back_to_list_table():
+    """Issue #52: a captioned 0-header table keeps the ``{table}`` wrapper
+    (role-safe caption-as-paragraph) but the inner ``{list-table}`` gets
+    ``:enumerated: false`` so only the outer container is numbered — no
+    phantom ``tab-N.M`` slot, no ``{numref}`` drift."""
     spec = TableSpec(
         name='tab-foo',
         caption='Cap.',
@@ -261,11 +268,30 @@ def test_emit_myst_captioned_zero_header_rows_falls_back_to_list_table():
     )
     out = emit_myst(spec)
     assert '````{table}' in out
-    # Falls back to {list-table} with :header-rows: 0.
+    assert ':name: tab-foo' in out
     assert '```{list-table}' in out
     assert ':header-rows: 0' in out
+    assert ':enumerated: false' in out
     # No synthetic blank pipe-table header row.
     assert '|  |  |' not in out
+
+
+def test_emit_myst_uncaptioned_zero_header_list_table_stays_enumerated():
+    """A bare 0-header table (no caption, no label) is itself the
+    enumerable container, so it must NOT carry ``:enumerated: false`` —
+    only the *nested* fallback is suppressed (issue #52)."""
+    spec = TableSpec(
+        name=None,
+        caption=None,
+        colspec=['l', 'l'],
+        header_rows=[],
+        body_rows=[['a', 'b']],
+    )
+    out = emit_myst(spec)
+    assert '{table}' not in out                 # no wrapper
+    assert out.startswith('```{list-table}')
+    assert ':header-rows: 0' in out
+    assert ':enumerated: false' not in out       # standalone → keeps its number
 
 
 def test_emit_myst_uncaptioned_with_header_emits_bare_pipe_table():
@@ -831,14 +857,15 @@ def test_process_text_round_trip_through_marker_to_myst():
     assert len(spec.header_rows) == 2
     assert len(spec.body_rows) == 1
 
-    # Full resolver round-trip.
+    # Full resolver round-trip. Header_rows == 2 → {table} wrapper with a
+    # nested {list-table} that carries :enumerated: false (issue #52).
     resolved = resolve_table_markers(out)
     assert '````{table}' in resolved
     assert ':name: tab-conv' in resolved
     assert 'Cap' in resolved
-    # Header_rows == 2 → falls back to {list-table} with :header-rows: 2.
     assert '```{list-table}' in resolved
     assert ':header-rows: 2' in resolved
+    assert ':enumerated: false' in resolved
 
 
 @pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')

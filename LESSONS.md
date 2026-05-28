@@ -47,6 +47,7 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 038 | [Late-import of `postprocess` from transform modules loads a second copy when run as `__main__`](lessons/038-postprocess-main-module-double-load.md) | tooling | 🔴 | codified |
 | 039 | [Enumerate-exercise preprocessor: flat \\item scan AND non-greedy block regex both break on nested lists inside an exercise](lessons/039-enumerate-exercise-markers-nested-list-depth-and-block-pairing.md) | preprocess | 🔴 | codified |
 | 040 | [Nested fences resolve by same-character count (k+1) — directive emitters must outrank any code fence in their body](lessons/040-myst-nested-fence-count-rule.md) | myst | 🟡 | codified |
+| 041 | [A {list-table} nested in a {table} double-enumerates — suppress the inner with :enumerated: false](lessons/041-nested-table-directive-double-enumerates.md) | myst | 🟡 | codified |
 
 ## By category
 
@@ -55,7 +56,7 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 - **pandoc:** 027
 - **preprocess:** 028, 029, 030, 039
 - **katex:** 003, 006
-- **myst:** 013, 040
+- **myst:** 013, 040, 041
 - **tooling:** 009, 010, 038
 
 ## Open (gaps to close on the next book)

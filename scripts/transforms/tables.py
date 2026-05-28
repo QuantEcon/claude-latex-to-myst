@@ -629,20 +629,12 @@ def convert_simple_tables(text: str) -> str:
             # ``tab-convergence_cases``) and ``>= 2`` (rare multiline
             # multi-header), we fall back to ``{list-table}`` so the
             # output doesn't carry a synthetic blank header row or a
-            # malformed multi-header. The fallback re-introduces the
-            # phantom-enumerator behaviour for the inner directive,
-            # but only when the outer ``{table}`` is captioned AND
-            # header detection fails — affects almost nothing in
-            # practice (zero captioned-0-header tables in the
-            # Deep-Learning book corpus; one in book-dp2 where the
-            # phantom enum is invisible because no other tables exist
-            # in the chapter to drift against).
-            #
-            # The proper fix is in flight as a follow-up: bypass
-            # pandoc's lossy LaTeX-tabular reader entirely via a
-            # marker preprocessor (Path C — see issue linked from PR
-            # #41's final comment). That would push these tables into
-            # the pipe-table path and the fallback becomes inert.
+            # malformed multi-header. The inner directive carries
+            # ``:enumerated: false`` so it does NOT claim its own table
+            # number — the outer ``{table}`` is the enumerable container.
+            # Without that, the inner ``{list-table}`` consumed a phantom
+            # ``tab-N.M`` slot and drifted every later table's ``{numref}``
+            # by one (issue #52, fixed below).
             out.append('````{table}')
             if directive_name:
                 out.append(f':name: {directive_name}')
@@ -652,8 +644,14 @@ def convert_simple_tables(text: str) -> str:
             if header_rows_count == 1:
                 out.extend(_emit_pipe_table(all_rows))
             else:
+                # ``:enumerated: false`` so the nested ``{list-table}``
+                # doesn't claim its own ``tab-N.M`` slot — the enclosing
+                # ``{table}`` is the enumerable container. Without it the
+                # inner directive drifts every later table's ``{numref}``
+                # by one (issue #52; verified honoured in mystmd 1.9.1).
                 out.append('```{list-table}')
                 out.append(f':header-rows: {header_rows_count}')
+                out.append(':enumerated: false')
                 out.append('')
                 for row in all_rows:
                     out.append(f'* - {row[0]}')
