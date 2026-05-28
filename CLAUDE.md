@@ -169,6 +169,19 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   `scripts/setup_fixtures.sh`). Never run the pipeline directly inside
   `../book-dp1` or `../book-dp2` — those may have in-progress branches
   you'd disturb.
+- **Fence-aware transforms use a fence-stack state machine, not regex
+  pairing of openers and closers.** Any transform that needs to know
+  whether a line is inside a fenced code block / inline-code span /
+  content directive walks the text line-by-line, maintaining
+  `[(tick_count, kind), …]` on a stack. Closers are identified by the
+  stack (a bare `` ``` `` of ≥ the top's tick count pops), never by a
+  second regex match. Stash/restore tricks for "code vs content"
+  regions are also rejected — a single in-place scan keeps content-loss
+  classes (marker-leakage, restore-order bugs) structurally impossible.
+  Established by `fix_spacing_superscript` (math.py) after four
+  iterations of regex-pairing bugs (#84, #85, #86, #87); see lesson
+  [042](lessons/042-katex-thin-space-superscript-needs-empty-base.md)
+  for the rationale.
 
 ## Working-style conventions
 

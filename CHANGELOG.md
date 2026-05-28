@@ -389,7 +389,10 @@ haven't validated. Everything below is on `main` and available now.
   class is also structurally impossible. Existing 559 tests pass
   unmodified; 3 new regression tests for both #87 bugs and the
   content-directive-wrapping-code case. End-to-end myst build of the
-  reproducer: 0 KaTeX errors, code-block intact, no marker leak.
+  reproducer: 0 KaTeX errors, code-block intact, no marker leak. The
+  fence-stack state-machine pattern is now codified in CLAUDE.md's
+  "Settled architectural decisions" as the template for any future
+  fence-aware transform in this repo.
 - **`fix_spacing_superscript` missed math inside `{table}` cells (and
   other base64-encoded marker bodies)** ([#85], follow-on to [#45]):
   the original transform ran early in the pipeline, before
