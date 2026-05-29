@@ -56,9 +56,9 @@ byte-equality. Validation uses **two baselines** — a pinned per-book
 snapshot of current tool output proves each refactor is behavior-preserving
 (byte-identity), while the diff against the worked-on `mystmd/` measures the
 parity gap to drive down. The fixture-validation harness
-(`scripts/validate_fixture.sh`, added with the common-fixture-validation
-work) runs both: `--against snapshot` for the safety check, the default for
-the parity gap. Because refactor-safety rides on the snapshot, reaching
+(`scripts/validate_fixture.sh`, introduced in the common-fixture-validation
+PR #101) runs both: `--against snapshot` for the safety check, the default
+for the parity gap. Because refactor-safety rides on the snapshot, reaching
 parity is *not* a precondition for starting the phases.
 
 ### Phase 1 — Validation gate + CI

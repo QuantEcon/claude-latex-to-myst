@@ -28,8 +28,8 @@ Running parallel to the phases is a standing objective: **get close to
 parity across all three real-world fixtures** (`book-dp1`, `book-dp2`,
 `book-dp-deep-learning`). Synthetic cases can't supply the translation
 complexity real books do, so the books are the benchmark — and every gap
-closed gets a `golden_tex` reproducer so the corpus grows as understanding
-does. Parity is aspirational: the worked-on `mystmd/` on each
+closed gets a `tests/golden_tex/` reproducer so the corpus grows as
+understanding does. Parity is aspirational: the worked-on `mystmd/` on each
 `mystmd-conversion` branch has hand-edits the deterministic tool won't
 reproduce, so "close / only documented drift" is the bar, not byte-equality.
 
@@ -41,9 +41,10 @@ Validation therefore uses **two baselines**, and they must not be confused:
 - the **worked-on `mystmd/`** — the parity *target*, a gap to drive down,
   never a hard gate and never overwritten by the tool.
 
-The fixture-validation harness (`scripts/validate_fixture.sh`, added with the
-common-fixture-validation work) implements both (`--against snapshot` for the
-gate, default for the parity gap). Because safety rides on the snapshot,
+The fixture-validation harness (`scripts/validate_fixture.sh`, introduced in
+the common-fixture-validation PR #101 — not yet on `main` if you're reading
+this before it merges) implements both (`--against snapshot` for the gate,
+default for the parity gap). Because safety rides on the snapshot,
 parity is pursued *across* the refactoring, not as a precondition.
 
 ## Phases (priority order)
