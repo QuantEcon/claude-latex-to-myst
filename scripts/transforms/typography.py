@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import re
 
+from conversion_context import current_context
+
 
 def strip_pandoc_html_separators(text: str) -> str:
     r"""Strip pandoc's empty-HTML-comment lexer-defeat artifacts.
@@ -72,7 +74,7 @@ def cleanup_typography(text: str) -> str:
     return text
 
 
-def compress_directive_whitespace(text: str) -> str:
+def compress_directive_whitespace(text: str, ctx=None) -> str:
     """Trim blank lines between adjacent fenced directives.
 
     A no-op when ``whitespace_compression: readable`` is configured (the
@@ -87,11 +89,11 @@ def compress_directive_whitespace(text: str) -> str:
     around ``(label)=`` anchors. Compact mode is an approximation, not a
     byte-identical reproduction of dp1's hand-tuned output.
 
-    State coupling: reads ``postprocess._WHITESPACE_STYLE``. Late-import
-    of postprocess to avoid circular import at module load (P3a).
+    Reads ``ctx.whitespace_style`` (Phase 3); falls back to the current
+    context when called without an explicit ``ctx`` (unit-test path).
     """
-    import postprocess
-    if postprocess._WHITESPACE_STYLE != 'compact':
+    ctx = ctx if ctx is not None else current_context()
+    if ctx.whitespace_style != 'compact':
         return text
 
     lines = text.split('\n')

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 
+from conversion_context import current_context
 from ._helpers import convert_label_colons
 
 
@@ -80,7 +81,7 @@ def convert_standalone_labels(text: str) -> str:
     return text
 
 
-def apply_postprocess_rewrites(text: str, stem: str) -> str:
+def apply_postprocess_rewrites(text: str, stem: str, ctx=None) -> str:
     """Apply book-specific Markdown rewrites declared in
     ``config.postprocess.rewrites``.
 
@@ -96,15 +97,15 @@ def apply_postprocess_rewrites(text: str, stem: str) -> str:
     regexes with ``re.MULTILINE`` so ``^...$`` matches line
     boundaries — the common shape for editorial-heading patterns.
     """
-    import postprocess
-    for pattern, replacement, stems in postprocess.POSTPROCESS_REWRITES:
+    ctx = ctx if ctx is not None else current_context()
+    for pattern, replacement, stems in ctx.postprocess_rewrites:
         if stems is not None and stem not in stems:
             continue
         text = pattern.sub(replacement, text)
     return text
 
 
-def add_frontmatter(text: str, title: str, style: str | None = None) -> str:
+def add_frontmatter(text: str, title: str, style: str | None = None, ctx=None) -> str:
     """Emit frontmatter / chapter heading in the configured style.
 
     Two valid MyST conventions, both round-trip:
@@ -127,9 +128,9 @@ def add_frontmatter(text: str, title: str, style: str | None = None) -> str:
           (c-foo)=
           # Foo
 
-    ``style`` overrides the module-level ``_FRONTMATTER_STYLE`` for this
-    one call — used by ``process_file`` to honour per-chapter overrides
-    declared in ``config.chapters[].frontmatter_style`` or
+    ``style`` overrides ``ctx.frontmatter_style`` for this one call — used
+    by ``process_file`` to honour per-chapter overrides declared in
+    ``config.chapters[].frontmatter_style`` or
     ``config.extra_files[].frontmatter_style``.
 
     Idempotent: re-processing a file already in either style is a no-op
@@ -137,8 +138,8 @@ def add_frontmatter(text: str, title: str, style: str | None = None) -> str:
     are preserved so chapter cross-references like ``{prf:ref}`c-egs```
     keep resolving even if the LaTeX source no longer carries the label.
     """
-    import postprocess
-    effective_style = style if style is not None else postprocess._FRONTMATTER_STYLE
+    ctx = ctx if ctx is not None else current_context()
+    effective_style = style if style is not None else ctx.frontmatter_style
     # Strip any existing YAML frontmatter, capturing label: if present so
     # we don't lose it across re-runs.
     existing_label = None

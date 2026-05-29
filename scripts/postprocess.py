@@ -27,57 +27,34 @@ import re
 import sys
 from pathlib import Path
 
-# When invoked as ``python3 postprocess.py …`` this module loads under the
-# name ``__main__``. Transforms in ``scripts/transforms/`` late-import via
-# ``import postprocess`` to read module-level state (TIKZ_FIGURE_MAP,
-# ENV_MAP, CHAPTER_TITLES, …) populated by apply_config / load_overrides.
-# Without this alias, that import loads a *second* copy of the module
-# under the name ``postprocess`` with the defaults frozen and every
-# mutation done in ``__main__`` invisible — TikZ figures, extra env
-# mappings, custom cross-ref routing all silently no-op. See lesson 038
-# and GH issue #42.
-if __name__ == '__main__':
-    sys.modules['postprocess'] = sys.modules[__name__]
+# Phase 3 — run state lives in a ``ConversionContext``, not module globals.
+# ``apply_config`` builds one and registers it as the *current context*;
+# the former module attributes (``ENV_MAP``, ``TIKZ_FIGURE_MAP``, …) are now
+# transparent VIEWS on that context, provided by the module-proxy installed
+# at the bottom of this file (test-compat shim). This is why lesson 038's
+# ``sys.modules['postprocess'] = sys.modules[__name__]`` alias is GONE: the
+# state no longer lives in ``postprocess`` (so a second module copy can't
+# freeze it) — it lives in ``conversion_context`` (imported once) and is
+# threaded explicitly through ``process_text``. See
+# ``notes/design/phase-3-conversion-context.md``.
+import types  # noqa: E402  (module-proxy install, bottom of file)
+
+import conversion_context as _ctxmod  # noqa: E402
+from conversion_context import (  # noqa: E402
+    ConversionContext,
+    current_context,
+    set_current_context,
+)
 
 # ── Environment mapping ──────────────────────────────────────────────────────
-
-# Default mapping from pandoc-emitted ``::: envname`` divs to MyST directive
-# names. Extended per-project via ``config.extra_environments`` / consumed
-# (skip-only) via ``config.skip_environments``. Both lists are merged into
-# the module-level dicts by ``apply_config`` — never edit per-book entries
-# in this file.
-ENV_MAP = {
-    # sphinx-proof environments
-    'theorem':        'prf:theorem',
-    'boxtheorem':     'prf:theorem',
-    'lemma':          'prf:lemma',
-    'proof':          'prf:proof',
-    'definition':     'prf:definition',
-    'boxdefinition':  'prf:definition',
-    'proposition':    'prf:proposition',
-    'boxproposition': 'prf:proposition',
-    'corollary':      'prf:corollary',
-    'boxcorollary':   'prf:corollary',
-    'example':        'prf:example',
-    'remark':         'prf:remark',
-    'assumption':     'prf:assumption',
-    'algorithm':      'prf:algorithm',
-    # MyST exercise directive
-    'Exercise':       'exercise',
-    'Answer':         'solution',
-}
-
-# Track the last exercise label so we can associate solutions
-_last_exercise_label = None
-
-# Counter for auto-generated exercise labels (reset per file)
-_exercise_counter = 0
-
-# Chapter prefix for auto-generated labels (set per file)
-_chapter_prefix = ''
-
-# Environments to skip (remove the div wrapper, keep content)
-ENV_SKIP = {'multicols', 'minipage', 'center'}
+#
+# The default env→directive map and skip set are constants on
+# ``conversion_context`` (``DEFAULT_ENV_MAP`` / ``DEFAULT_ENV_SKIP``);
+# ``ConversionContext.from_config`` merges in the per-book extras. The
+# former module globals ``ENV_MAP`` / ``ENV_SKIP`` (and the per-file
+# counters ``_last_exercise_label`` / ``_exercise_counter`` /
+# ``_chapter_prefix``) are now views on the current context via the
+# module-proxy at the bottom of this file.
 
 # Prose nouns that get doubled by writers in front of a {prf:ref}. Sphinx-proof
 # auto-renders the noun (e.g. "Theorem 1.2"), so leaving the prose noun produces
@@ -153,14 +130,12 @@ from transforms.frontmatter import (  # noqa: E402  (re-exports for P3a)
     add_frontmatter,
 )
 
-# Per-book extension of the routing table. Populated by ``apply_config``
-# from ``cross_ref_routing`` in config.yaml. Extras take precedence over
-# defaults so a book can override the role for a prefix the defaults
-# already match.
-_EXTRA_CROSS_REF_ROUTING: list[tuple[tuple[str, ...], str]] = []
-
-
-
+# Run state below (cross-ref routing extras, TikZ maps, doubled-noun extras,
+# listing base, postprocess rewrites, chapter titles/styles, frontmatter /
+# whitespace style) is now held on the current ``ConversionContext`` and
+# reached through the module-proxy at the bottom of this file. The comments
+# documenting each field are kept here for orientation; the assignments are
+# gone (the data is built by ``ConversionContext.from_config``).
 
 
 # ── TikZ figure resolution ───────────────────────────────────────────────────
@@ -173,18 +148,15 @@ _EXTRA_CROSS_REF_ROUTING: list[tuple[tuple[str, ...], str]] = []
 # `(image_path, optional_caption_override)` tuples.
 #
 # Empty by default; projects without TikZ leave it empty.
-TIKZ_FIGURE_MAP: dict = {}
 
 # Inline tikzcd math blocks to replace with image directives.
 # Keyed by chapter stem; each entry matches a $$ tikzcd $$ block.
 # Populated from tikz_overrides.py.
-TIKZCD_INLINE_MAP: dict = {}
 
 
 # Per-book extension of the doubled-noun list. Populated by
 # ``apply_config`` from ``doubled_noun_refs`` in config.yaml. Books
 # with custom theorem-class nouns extend without forking.
-_EXTRA_DOUBLED_NOUN_REFS: list[tuple[str, str]] = []
 
 
 # Label-prefix families for which qe-v5 auto-renders a noun ("Section
@@ -210,7 +182,6 @@ _EXTRA_DOUBLED_NOUN_REFS: list[tuple[str, str]] = []
 
 # Base directory for resolving ``\inputminted`` paths. Populated by
 # apply_config() from config.yaml's ``source_code_base`` (default: source_dir).
-_LISTING_SOURCE_BASE: Path | None = None
 
 
 # ── algorithm2e → {prf:algorithm} ────────────────────────────────────────────
@@ -234,28 +205,23 @@ _LISTING_SOURCE_BASE: Path | None = None
 # - ``stems_or_None=None``: rewrite applies to every chapter (global).
 # - ``stems_or_None={'a', 'b'}``: rewrite applies only to those stems.
 # Populated from ``config.postprocess.rewrites`` at runtime.
-POSTPROCESS_REWRITES: list = []
 
 
 # Chapter titles mapping — populated from config.yaml at runtime.
-CHAPTER_TITLES: dict = {}
 
 # Per-stem frontmatter_style override. A book with mixed conventions (e.g.
 # dp1: numbered chapters in ``standalone``, front-matter in ``absorbed``)
 # can opt individual stems out of the global default. Populated from
 # ``chapters[].frontmatter_style`` / ``extra_files[].frontmatter_style``
 # in config.yaml. Stems not present here inherit ``_FRONTMATTER_STYLE``.
-CHAPTER_STYLES: dict = {}
 
 # Frontmatter style: 'absorbed' (YAML block, dp2 style — the default) or
 # 'standalone' ((label)= + # heading, dp1 style). Populated by apply_config.
-_FRONTMATTER_STYLE: str = 'absorbed'
 
 # Whitespace compression: 'readable' (default; keep blank lines around
 # directives for source readability) or 'compact' (dp1 style; strip blank
 # lines after :label: and between adjacent directives). Populated by
 # apply_config.
-_WHITESPACE_STYLE: str = 'readable'
 
 
 # ── Config loading ───────────────────────────────────────────────────────────
@@ -274,16 +240,18 @@ def load_config(config_path: Path) -> dict:
         )
 
 
-def load_overrides(overrides_path: Path) -> None:
-    """Load TIKZ_FIGURE_MAP and TIKZCD_INLINE_MAP from a project .py file."""
-    global TIKZ_FIGURE_MAP, TIKZCD_INLINE_MAP
+def load_overrides(overrides_path: Path, ctx: ConversionContext | None = None) -> None:
+    """Load TIKZ_FIGURE_MAP and TIKZCD_INLINE_MAP from a project .py file into
+    the current context (or ``ctx`` if given). Phase 5 widens this to the full
+    ``project_overrides.py`` surface."""
+    ctx = ctx if ctx is not None else current_context()
     spec = importlib.util.spec_from_file_location("project_overrides", overrides_path)
     if spec is None or spec.loader is None:
         raise SystemExit(f"Cannot load overrides file: {overrides_path}")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    TIKZ_FIGURE_MAP = getattr(mod, 'TIKZ_FIGURE_MAP', {})
-    TIKZCD_INLINE_MAP = getattr(mod, 'TIKZCD_INLINE_MAP', {})
+    ctx.tikz_figure_map = getattr(mod, 'TIKZ_FIGURE_MAP', {})
+    ctx.tikzcd_inline_map = getattr(mod, 'TIKZCD_INLINE_MAP', {})
 
 
 # Top-level config schema. Keys map to ``(allowed_types, required?)``. A
@@ -378,177 +346,42 @@ def validate_config(config: dict) -> None:
                 )
 
 
-def apply_config(config: dict, base_dir: Path | None = None) -> None:
-    """Populate module-level state from a loaded config dict.
+def apply_config(config: dict, base_dir: Path | None = None) -> ConversionContext:
+    """Validate ``config``, build a :class:`ConversionContext` from it, and
+    register it as the current context (so transforms called without an
+    explicit ``ctx`` — and the ~600 unit tests — see this book's state).
+    Returns the context for callers that want to thread it explicitly.
 
     ``base_dir`` is the directory containing config.yaml; relative paths in
-    config (``source_dir``, ``source_code_base``) are resolved against it.
-    Tests that call ``apply_config`` without a base_dir won't get listing
+    config (``source_dir``, ``source_code_base``) resolve against it. Tests
+    that call ``apply_config`` without a base_dir won't get listing
     resolution, which is fine — listings are an opt-in feature.
+
+    Phase 3: this is now a thin wrapper. The parsing that used to mutate a
+    dozen module globals lives in ``ConversionContext.from_config``; this
+    function keeps the ``validate_config`` schema check (whose ``_CONFIG_SCHEMA``
+    lives here) and registers the result.
     """
-    global CHAPTER_TITLES, CHAPTER_STYLES, POSTPROCESS_REWRITES
-    global _LISTING_SOURCE_BASE, _FRONTMATTER_STYLE, _WHITESPACE_STYLE
-    global ENV_MAP, ENV_SKIP
     validate_config(config)
-    CHAPTER_TITLES = {
-        entry['stem']: entry.get('title', entry['stem'])
-        for entry in (config.get('chapters') or []) + (config.get('extra_files') or [])
-    }
-    CHAPTER_STYLES = {
-        entry['stem']: entry['frontmatter_style']
-        for entry in (config.get('chapters') or []) + (config.get('extra_files') or [])
-        if 'frontmatter_style' in entry
-    }
-
-    # Extend the env→directive map with project-specific environments. Use
-    # for theorem-like environments not in the default ENV_MAP (e.g.
-    # ``Conjecture: prf:conjecture``, ``Notation: prf:remark``). Project
-    # entries override defaults if the same key appears in both.
-    extra_envs = config.get('extra_environments') or {}
-    if not isinstance(extra_envs, dict):
-        raise SystemExit(
-            f"config.extra_environments must be a mapping, got {type(extra_envs).__name__}"
-        )
-    ENV_MAP = {**ENV_MAP, **extra_envs}
-
-    # Extend the "div wrappers to strip" set with project-specific
-    # environments — e.g. layout commands that pandoc preserves as ``:::``
-    # blocks but have no MyST equivalent (``columns``, ``framed`` …).
-    skip_envs = config.get('skip_environments') or []
-    if not isinstance(skip_envs, (list, tuple, set)):
-        raise SystemExit(
-            f"config.skip_environments must be a list, got {type(skip_envs).__name__}"
-        )
-    ENV_SKIP = ENV_SKIP | set(skip_envs)
-
-    # Per-book extension of the label-prefix → role routing used by
-    # ``convert_cross_references.make_ref``. Each entry: ``{prefix: "X",
-    # role: "numref|ref|eq|prf:ref"}``. ``prefix`` may be a string
-    # ("lst" expands to ("lst:", "lst-")) or an explicit list. Useful
-    # when a book uses a non-default label convention (e.g. ``lst:`` for
-    # listings instead of the QuantEcon default ``list:``).
-    global _EXTRA_CROSS_REF_ROUTING
-    _EXTRA_CROSS_REF_ROUTING = []
-    for i, rule in enumerate(config.get('cross_ref_routing') or []):
-        if not isinstance(rule, dict):
-            raise SystemExit(
-                f"config.cross_ref_routing[{i}] must be a mapping"
-            )
-        if 'prefix' not in rule or 'role' not in rule:
-            raise SystemExit(
-                f"config.cross_ref_routing[{i}] requires 'prefix' and 'role'"
-            )
-        role = rule['role']
-        if not isinstance(role, str):
-            raise SystemExit(
-                f"config.cross_ref_routing[{i}].role must be a string"
-            )
-        raw = rule['prefix']
-        if isinstance(raw, str):
-            # ``"lst"`` expands to both colon- and hyphen-bearing forms,
-            # mirroring how labels arrive after ``convert_label_colons``.
-            prefixes = (f'{raw}:', f'{raw}-')
-        elif isinstance(raw, list) and all(isinstance(p, str) for p in raw):
-            prefixes = tuple(raw)
-        else:
-            raise SystemExit(
-                f"config.cross_ref_routing[{i}].prefix must be a string "
-                "or list of strings"
-            )
-        _EXTRA_CROSS_REF_ROUTING.append((prefixes, role))
-
-    # Per-book extension of the doubled-noun list used by
-    # ``strip_doubled_noun_refs``. Each entry: ``{noun: "X", prefix: "x-"}``.
-    # Useful when a book defines custom theorem classes with their own
-    # display nouns ("Claim", "Conjecture", "Fact" …).
-    global _EXTRA_DOUBLED_NOUN_REFS
-    _EXTRA_DOUBLED_NOUN_REFS = []
-    for i, rule in enumerate(config.get('doubled_noun_refs') or []):
-        if not isinstance(rule, dict):
-            raise SystemExit(
-                f"config.doubled_noun_refs[{i}] must be a mapping"
-            )
-        noun = rule.get('noun')
-        prefix = rule.get('prefix')
-        if not isinstance(noun, str) or not isinstance(prefix, str):
-            raise SystemExit(
-                f"config.doubled_noun_refs[{i}] requires string 'noun' "
-                "and 'prefix' keys"
-            )
-        _EXTRA_DOUBLED_NOUN_REFS.append((noun, prefix))
-
-    style = config.get('frontmatter_style', 'absorbed')
-    if style not in ('absorbed', 'standalone'):
-        raise SystemExit(
-            f"config.frontmatter_style must be 'absorbed' or 'standalone', got {style!r}"
-        )
-    _FRONTMATTER_STYLE = style
-
-    ws = config.get('whitespace_compression', 'readable')
-    if ws not in ('readable', 'compact'):
-        raise SystemExit(
-            f"config.whitespace_compression must be 'readable' or 'compact', got {ws!r}"
-        )
-    _WHITESPACE_STYLE = ws
-
-    # Book-specific Markdown rewrites. Each entry: { from: regex, to: repl,
-    # stems?: [stem1, stem2] }. Compile patterns once at config load.
-    post_section = config.get('postprocess') or {}
-    if not isinstance(post_section, dict):
-        raise SystemExit(
-            f"config.postprocess must be a mapping, got {type(post_section).__name__}"
-        )
-    raw_rewrites = post_section.get('rewrites') or []
-    if not isinstance(raw_rewrites, list):
-        raise SystemExit(
-            f"config.postprocess.rewrites must be a list, got {type(raw_rewrites).__name__}"
-        )
-    POSTPROCESS_REWRITES = []
-    for i, rule in enumerate(raw_rewrites):
-        if not isinstance(rule, dict):
-            raise SystemExit(
-                f"config.postprocess.rewrites[{i}] must be a mapping"
-            )
-        if 'from' not in rule or 'to' not in rule:
-            raise SystemExit(
-                f"config.postprocess.rewrites[{i}] requires 'from' and 'to' keys"
-            )
-        if not isinstance(rule['from'], str) or not isinstance(rule['to'], str):
-            raise SystemExit(
-                f"config.postprocess.rewrites[{i}]: 'from' and 'to' must be strings"
-            )
-        stems_field = rule.get('stems')
-        if stems_field is not None:
-            if (not isinstance(stems_field, list)
-                    or not all(isinstance(s, str) for s in stems_field)):
-                raise SystemExit(
-                    f"config.postprocess.rewrites[{i}].stems must be a list of strings"
-                )
-            stems_set = frozenset(stems_field)
-        else:
-            stems_set = None
-        try:
-            compiled = re.compile(rule['from'], re.MULTILINE)
-        except re.error as exc:
-            raise SystemExit(
-                f"config.postprocess.rewrites[{i}]: bad regex {rule['from']!r}: {exc}"
-            )
-        POSTPROCESS_REWRITES.append((compiled, rule['to'], stems_set))
-
-    if base_dir is not None:
-        # source_code_base anchors paths inside \inputminted{lang}{path}.
-        # Defaults to source_dir so dp1-style layouts (``\inputminted{julia}
-        # {../source_code_jl/foo.jl}`` from a tex file in ``book/``) work
-        # without extra config.
-        src_base = config.get('source_code_base') or config.get('source_dir', '.')
-        _LISTING_SOURCE_BASE = (base_dir / src_base).resolve()
+    ctx = ConversionContext.from_config(config, base_dir)
+    set_current_context(ctx)
+    return ctx
 
 
 def process_text(text: str, stem: str, title: str | None = None,
-                 *, style: str | None = None) -> str:
+                 *, style: str | None = None,
+                 ctx: ConversionContext | None = None) -> str:
     """Pure in-memory transform pipeline. Same order as ``process_file``;
     no file I/O. Extracted so golden-file tests can exercise the full
     pipeline against checked-in fixtures (P0c).
+
+    ``ctx`` is the :class:`ConversionContext` for this run. When given it is
+    registered as the current context (so any transform that still falls back
+    to it sees this book's state) and threaded explicitly to the stateful
+    transforms below; when omitted the current context is used (the test /
+    single-book path). Passing two different contexts across two
+    ``process_text`` calls in one process is what makes the pipeline
+    reentrant.
 
     Order matters:
       - fix_text_dollar first (before eq conversion changes $$ structure)
@@ -560,11 +393,12 @@ def process_text(text: str, stem: str, title: str | None = None,
     The canonical sequence is locked in ``tests/test_pipeline_order.py``
     (lesson 008). Update both places together if you intentionally reorder.
     """
-    global _last_exercise_label, _exercise_counter, _chapter_prefix
-    _last_exercise_label = None
-    _exercise_counter = 0
-    # Chapter prefix for auto-generated labels: strip leading 'ch_' if present.
-    _chapter_prefix = stem[3:] if stem.startswith('ch_') else stem
+    if ctx is not None:
+        set_current_context(ctx)
+    ctx = current_context()
+    # Per-file exercise numbering — reset exactly where the old module-global
+    # counters were reset, so numbering never bleeds across files.
+    ctx.counters.reset_for(stem)
 
     text = strip_pandoc_html_separators(text)
     text = fix_text_dollar(text)
@@ -593,26 +427,26 @@ def process_text(text: str, stem: str, title: str | None = None,
     # into the post-resolve text where the decoder regex can match it
     # (closes #92). Phase 1 — subfigure shapes still fall through to
     # ``convert_html_figures`` (Phase 2 — issue #94).
-    text = resolve_figure_markers(text)
+    text = resolve_figure_markers(text, ctx)
     text = convert_simple_tables(text)
-    text = convert_environment_divs(text)
+    text = convert_environment_divs(text, ctx)
     text = convert_description_lists(text)         # decode DESCITEM markers (lesson 022)
     text = resolve_exercise_markers(text)          # decode EXERCISE markers (closes #69)
     text = convert_equations(text)
     text = decode_natbib_markers(text)              # before cross-refs (lesson 020)
-    text = convert_cross_references(text)
-    text = strip_doubled_noun_refs(text)           # needs MyST refs in place
+    text = convert_cross_references(text, ctx)
+    text = strip_doubled_noun_refs(text, ctx)      # needs MyST refs in place
     text = strip_doubled_section_symbol(text)      # qe-v5 § Section dedupe
     text = convert_figures(text)
-    text = convert_html_figures(text)
-    text = resolve_tikz_figures(text, stem)
+    text = convert_html_figures(text, ctx)
+    text = resolve_tikz_figures(text, stem, ctx)
     text = convert_section_labels(text)
     text = convert_citations(text)
     text = convert_standalone_labels(text)
     # Listings and algorithms run LATE so source-code bodies don't get
     # touched by the citation / cross-ref / typography transforms above
     # (Julia ``@views`` etc. would otherwise be eaten by convert_citations).
-    text = resolve_listings(text)                  # decode minted markers
+    text = resolve_listings(text, ctx)             # decode minted markers
     text = resolve_algorithms(text)                # decode algorithm2e markers
     text = resolve_algorithmics(text)              # decode standalone algorithmicx markers (lesson 023)
     text = fix_spacing_superscript(text)           # \,^ → \,{}^ for KaTeX — runs AFTER decoders so table-cell math is visible (closes #45, #85)
@@ -621,21 +455,23 @@ def process_text(text: str, stem: str, title: str | None = None,
     text = cleanup_typography(text)                # caps blank-line runs; strips \qedhere
     text = strip_blank_lines_in_math(text)         # MUST run AFTER \qedhere removal (issue #11)
     text = strip_footnote_refs(text)               # operates on cleaned text
-    text = compress_directive_whitespace(text)     # opt-in (compact mode)
+    text = compress_directive_whitespace(text, ctx)  # opt-in (compact mode)
 
     resolved_title = title if title is not None else stem
-    text = add_frontmatter(text, resolved_title, style=style)
-    text = apply_postprocess_rewrites(text, stem)
+    text = add_frontmatter(text, resolved_title, style=style, ctx=ctx)
+    text = apply_postprocess_rewrites(text, stem, ctx)
     return text
 
 
-def process_file(input_path: Path, output_path: Path = None):
+def process_file(input_path: Path, output_path: Path = None,
+                 ctx: ConversionContext | None = None):
     """Process a single pandoc markdown file into MyST."""
+    ctx = ctx if ctx is not None else current_context()
     stem = input_path.stem
     text = input_path.read_text(encoding='utf-8')
-    title = CHAPTER_TITLES.get(stem, stem)
-    style = CHAPTER_STYLES.get(stem)
-    text = process_text(text, stem, title, style=style)
+    title = ctx.chapter_titles.get(stem, stem)
+    style = ctx.chapter_styles.get(stem)
+    text = process_text(text, stem, title, style=style, ctx=ctx)
 
     out = output_path or input_path
     out.write_text(text, encoding='utf-8')
@@ -653,7 +489,7 @@ def main():
     config_path = args.config.resolve()
     config = load_config(config_path)
     base_dir = config_path.parent
-    apply_config(config, base_dir)
+    ctx = apply_config(config, base_dir)
     output_dir = (base_dir / config.get('output_dir', '.')).resolve()
 
     # Load TikZ overrides if configured
@@ -661,13 +497,13 @@ def main():
     if tikz_overrides:
         overrides_path = (base_dir / tikz_overrides).resolve()
         if overrides_path.exists():
-            load_overrides(overrides_path)
+            load_overrides(overrides_path, ctx)
         else:
             print(f'  WARN: tikz_overrides file not found: {overrides_path}', file=sys.stderr)
 
     if args.inputs:
         for path in args.inputs:
-            process_file(path)
+            process_file(path, ctx=ctx)
         return
 
     # Process every chapter + extra file from config. Entries marked
@@ -679,9 +515,68 @@ def main():
             continue
         md = output_dir / f"{entry['stem']}.md"
         if md.exists():
-            process_file(md)
+            process_file(md, ctx=ctx)
         else:
             print(f'  WARN: {md} not found, skipping', file=sys.stderr)
+
+
+# ── Backward-compat module proxy (test-compat shim) ──────────────────────────
+#
+# The former module globals (``ENV_MAP``, ``TIKZ_FIGURE_MAP``,
+# ``POSTPROCESS_REWRITES``, the per-file counters, …) no longer exist as real
+# attributes — the run state lives on the current ``ConversionContext``
+# (``conversion_context``). To keep the ~600 unit tests (and any external
+# caller) that read / mutate / rebind ``postprocess.<NAME>`` working, this
+# proxy forwards those specific names to the current context. Tests do e.g.
+# ``postprocess.TIKZ_FIGURE_MAP['fig-x'] = …`` (in-place mutate — the getattr
+# returns the live ctx dict) and ``postprocess._FRONTMATTER_STYLE = "absorbed"``
+# (rebind — the setattr writes onto the ctx). Production code threads ``ctx``
+# explicitly and does not rely on this. Installed last so the load-time
+# ``def``/``import`` attribute sets use the normal module ``__setattr__``.
+_CTX_ATTRS = {
+    'ENV_MAP': 'env_map',
+    'ENV_SKIP': 'env_skip',
+    'CHAPTER_TITLES': 'chapter_titles',
+    'CHAPTER_STYLES': 'chapter_styles',
+    'TIKZ_FIGURE_MAP': 'tikz_figure_map',
+    'TIKZCD_INLINE_MAP': 'tikzcd_inline_map',
+    '_EXTRA_CROSS_REF_ROUTING': 'cross_ref_routing',
+    '_EXTRA_DOUBLED_NOUN_REFS': 'doubled_noun_refs',
+    '_LISTING_SOURCE_BASE': 'listing_source_base',
+    'POSTPROCESS_REWRITES': 'postprocess_rewrites',
+    '_FRONTMATTER_STYLE': 'frontmatter_style',
+    '_WHITESPACE_STYLE': 'whitespace_style',
+}
+_COUNTER_ATTRS = {
+    '_last_exercise_label': 'last_exercise_label',
+    '_exercise_counter': 'exercise_counter',
+    '_chapter_prefix': 'chapter_prefix',
+}
+
+
+class _ContextProxyModule(types.ModuleType):
+    """Module subclass that maps the legacy global names onto the current
+    ``ConversionContext`` (and its ``counters``)."""
+
+    def __getattr__(self, name):  # only invoked when normal lookup fails
+        if name in _CTX_ATTRS:
+            return getattr(_ctxmod.current_context(), _CTX_ATTRS[name])
+        if name in _COUNTER_ATTRS:
+            return getattr(_ctxmod.current_context().counters, _COUNTER_ATTRS[name])
+        raise AttributeError(
+            f"module {__name__!r} has no attribute {name!r}"
+        )
+
+    def __setattr__(self, name, value):
+        if name in _CTX_ATTRS:
+            setattr(_ctxmod.current_context(), _CTX_ATTRS[name], value)
+        elif name in _COUNTER_ATTRS:
+            setattr(_ctxmod.current_context().counters, _COUNTER_ATTRS[name], value)
+        else:
+            super().__setattr__(name, value)
+
+
+sys.modules[__name__].__class__ = _ContextProxyModule
 
 
 if __name__ == '__main__':

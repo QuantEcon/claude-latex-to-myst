@@ -15,6 +15,29 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Changed — Phase 3: ConversionContext state threading (architecture evolution 3/5)
+
+Behavior-preserving (snapshot byte-identical ×3) removal of the module-level
+mutable globals that made the post-pandoc pipeline non-reentrant and were the
+root cause of lesson 038.
+
+- **`scripts/conversion_context.py`** — `ConversionContext` (config-derived
+  run state) + `FileCounters` (per-file exercise numbering) + `from_config`
+  (the pure-constructor successor to the old `apply_config` parsing) +
+  `default` + a `current_context()` / `set_current_context()` registry.
+- **`postprocess.apply_config`** is now a thin wrapper: validate → build ctx
+  → register → return it. `process_text(…, ctx=…)` threads the context; the
+  six stateful transform families (typography, refs, code, frontmatter,
+  envs, figures/figures_from_latex) read `ctx` instead of `import
+  postprocess`. `math`/`cite` stayed pure.
+- **Module globals + the lesson-038 `sys.modules` alias are gone.** A
+  backward-compat module proxy at the bottom of `postprocess.py` forwards the
+  legacy `postprocess.ENV_MAP` / `TIKZ_FIGURE_MAP` / … names to the current
+  context (test-compat shim) so the ~600 unit tests were untouched.
+- **Reentrant:** `tests/test_conversion_context.py` converts two books (two
+  contexts) in one process with no bleed and proves per-file counters reset.
+  Lesson 038 marked `superseded`.
+
 ### Changed — Phase 2: marker shared base + hybrid boundary (architecture evolution 2/5)
 
 Pure refactor (snapshot byte-identical ×3) consolidating the duplicated

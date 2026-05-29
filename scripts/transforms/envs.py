@@ -20,10 +20,11 @@ from __future__ import annotations
 import base64
 import re
 
+from conversion_context import current_context
 from ._helpers import convert_label_colons, outer_fence
 
 
-def convert_environment_divs(text: str) -> str:
+def convert_environment_divs(text: str, ctx=None) -> str:
     """Convert ::: envname ... ::: blocks to MyST directives.
 
     Handles:
@@ -33,9 +34,10 @@ def convert_environment_divs(text: str) -> str:
     - Nested labels []{#label label="label"} → :label: converted-label
     - *Proof.* markers inside proof blocks → removed (sphinx-proof adds its own)
     """
-    import postprocess as pp
-    env_map = pp.ENV_MAP
-    env_skip = pp.ENV_SKIP
+    ctx = ctx if ctx is not None else current_context()
+    env_map = ctx.env_map
+    env_skip = ctx.env_skip
+    counters = ctx.counters
 
     lines = text.split('\n')
     result = []
@@ -163,14 +165,14 @@ def convert_environment_divs(text: str) -> str:
                 # Track exercise label for pairing with solution
                 if not label:
                     # Auto-generate label for unlabeled exercises
-                    pp._exercise_counter += 1
-                    label = f'ex-{pp._chapter_prefix}-auto-{pp._exercise_counter}'
-                pp._last_exercise_label = label
+                    counters.exercise_counter += 1
+                    label = f'ex-{counters.chapter_prefix}-auto-{counters.exercise_counter}'
+                counters.last_exercise_label = label
             elif myst_env == 'solution':
                 # Solution needs the exercise label as argument
-                if pp._last_exercise_label:
-                    header = f'{fence}{{solution}} {pp._last_exercise_label}'
-                pp._last_exercise_label = None
+                if counters.last_exercise_label:
+                    header = f'{fence}{{solution}} {counters.last_exercise_label}'
+                counters.last_exercise_label = None
 
             # Emit any extra labels as sibling ``{div}`` anchor blocks
             # ahead of the directive. Multiple consecutive ``(label)=``

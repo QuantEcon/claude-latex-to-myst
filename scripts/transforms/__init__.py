@@ -5,40 +5,44 @@ themselves live in themed submodules of this package. ``postprocess.py``
 re-exports every public symbol so the test surface and external import
 path (``import postprocess; postprocess.convert_X(...)``) remain stable.
 
-## State-coupling pattern
+## State threading (``ConversionContext`` — Phase 3)
 
-Mutable module-level state lives on ``postprocess`` (populated by
-``apply_config`` / ``load_overrides``):
+Run state lives on a :class:`conversion_context.ConversionContext`, built
+once by ``ConversionContext.from_config`` and threaded as an argument — no
+more mutated module globals on ``postprocess``. The context carries:
 
-  - ``ENV_MAP`` / ``ENV_SKIP`` — environment-div mapping
-  - ``CHAPTER_TITLES`` / ``CHAPTER_STYLES`` — per-file frontmatter
-  - ``TIKZ_FIGURE_MAP`` / ``TIKZCD_INLINE_MAP`` — TikZ overrides
-  - ``_LISTING_SOURCE_BASE`` — minted source-code base path
-  - ``_EXTRA_CROSS_REF_ROUTING`` / ``_EXTRA_DOUBLED_NOUN_REFS`` —
-    per-book config-extension lists
-  - ``POSTPROCESS_REWRITES`` — book-specific post-rewrites
-  - ``_FRONTMATTER_STYLE`` / ``_WHITESPACE_STYLE`` — config flags
-  - ``_last_exercise_label`` / ``_exercise_counter`` /
-    ``_chapter_prefix`` — per-file state reset by ``process_text``
+  - ``env_map`` / ``env_skip`` — environment-div mapping
+  - ``chapter_titles`` / ``chapter_styles`` — per-file frontmatter
+  - ``tikz_figure_map`` / ``tikzcd_inline_map`` — TikZ overrides
+  - ``listing_source_base`` — minted source-code base path
+  - ``cross_ref_routing`` / ``doubled_noun_refs`` — per-book extras
+  - ``postprocess_rewrites`` — book-specific post-rewrites
+  - ``frontmatter_style`` / ``whitespace_style`` — config flags
+  - ``counters`` — per-file exercise numbering, reset by ``process_text``
 
-Transform modules that need this state late-import ``postprocess``
-*inside* the function (not at module load) to avoid the circular
-import that would otherwise happen at package load. Modules that
-need it mark this in their docstring under a "State coupling"
-header.
+A transform that needs state takes ``ctx`` and reads from it; transforms
+that are already pure (most of ``math`` / ``cite``) stay pure. When called
+without an explicit ``ctx`` (the unit-test path), a transform falls back to
+``conversion_context.current_context()`` — the context ``apply_config``
+registered. ``process_text`` threads ``ctx`` explicitly, which is what
+makes the pipeline reentrant (two books, two contexts, one process).
 
 Example::
 
     # transforms/envs.py
-    def convert_environment_divs(text: str) -> str:
-        import postprocess as pp
-        env_map = pp.ENV_MAP
-        env_skip = pp.ENV_SKIP
+    from conversion_context import current_context
+
+    def convert_environment_divs(text: str, ctx=None) -> str:
+        ctx = ctx if ctx is not None else current_context()
+        env_map = ctx.env_map
+        env_skip = ctx.env_skip
         # ... use env_map / env_skip
 
-The single-source-of-truth on ``postprocess`` means ``apply_config``
-mutates state in one place, and all transform modules see the
-updates at their next call.
+For backward compatibility the old ``postprocess.ENV_MAP`` (etc.) names
+still work — they are transparent views on the current context, provided by
+the module-proxy at the bottom of ``postprocess.py`` (a test-compat shim;
+production code threads ``ctx``). Lesson 038's ``sys.modules`` alias is gone
+because the state no longer lives on ``postprocess``.
 
 ## Adding a new transform module
 

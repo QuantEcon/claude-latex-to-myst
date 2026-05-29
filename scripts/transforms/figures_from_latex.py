@@ -26,6 +26,7 @@ from __future__ import annotations
 import re
 from dataclasses import asdict, dataclass, field
 
+from conversion_context import current_context
 from ._helpers import convert_label_colons
 from ._markers import decode_payload, encode_payload
 
@@ -301,28 +302,22 @@ def decode_marker(payload_b64: str) -> FigureSpec:
 # ── post-pandoc resolver ────────────────────────────────────────────────────
 
 
-def _lookup_tikz_map(name: str | None) -> tuple[str, str | None] | None:
-    """Look up ``name`` in the per-project ``TIKZ_FIGURE_MAP`` (populated
-    from the consumer book's ``tikz_overrides.py``). Returns
+def _lookup_tikz_map(name: str | None, ctx=None) -> tuple[str, str | None] | None:
+    """Look up ``name`` in the per-project ``ctx.tikz_figure_map`` (populated
+    from the consumer book's overrides file). Returns
     ``(path, caption_override)`` or None.
 
-    Late-imported from ``postprocess`` to avoid the load-time circular
-    per the state-coupling pattern used in ``figures.py``. The map is a
-    runtime concern: consumer books call ``apply_config`` which
-    populates ``postprocess.TIKZ_FIGURE_MAP``; the parsers / emitters
-    here read it at call time.
+    The map is a runtime concern: consumer books call ``apply_config`` then
+    ``load_overrides`` which populate the context; the parsers / emitters
+    here read it at call time. ``ctx`` defaults to the current context.
     """
     if not name:
         return None
-    try:
-        import postprocess as pp
-    except Exception:
-        return None
-    entry = pp.TIKZ_FIGURE_MAP.get(name)
-    return entry
+    ctx = ctx if ctx is not None else current_context()
+    return ctx.tikz_figure_map.get(name)
 
 
-def _emit_figure(spec: FigureSpec) -> str:
+def _emit_figure(spec: FigureSpec, ctx=None) -> str:
     """Emit a MyST ``{figure}`` directive from a FigureSpec (Phase 1).
 
     Image-source resolution priority:
@@ -390,7 +385,7 @@ def _emit_figure(spec: FigureSpec) -> str:
     # ``figures/`` prefix). Adding a prefix would silently misroute any
     # entry that uses a bare filename or a non-``figures/`` root
     # (caught by Copilot review on PR #97).
-    mapped = _lookup_tikz_map(spec.name)
+    mapped = _lookup_tikz_map(spec.name, ctx)
     if mapped is not None:
         mapped_path, caption_override = mapped
         final_body = caption_override if caption_override else body
@@ -426,7 +421,7 @@ _MARKER_RE = re.compile(
 )
 
 
-def resolve_figure_markers(text: str) -> str:
+def resolve_figure_markers(text: str, ctx=None) -> str:
     """Decode every ``<!--FIGURE payload=...-->`` marker in ``text`` into
     a ``{figure}`` directive."""
     def repl(m: re.Match) -> str:
@@ -442,7 +437,7 @@ def resolve_figure_markers(text: str) -> str:
         # unanticipated failure modes.
         try:
             spec = decode_marker(m.group(1))
-            return _emit_figure(spec)
+            return _emit_figure(spec, ctx)
         except Exception:
             return m.group(0)
 

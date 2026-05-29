@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 
+from conversion_context import current_context
 from ._helpers import convert_label_colons
 
 
@@ -123,10 +124,10 @@ _DEFAULT_CROSS_REF_ROUTING: list[tuple[tuple[str, ...], str]] = [
 _DOUBLED_SECTION_SYMBOL_PREFIXES = ('s-', 'ss-', 'sss-', 'sec-', 'eg-')
 
 
-def routing_role(target: str) -> str:
+def routing_role(target: str, ctx=None) -> str:
     """Return the MyST role name (``eq`` / ``numref`` / ``prf:ref`` /
     ``ref``) for a label, honouring per-book extras from
-    ``postprocess._EXTRA_CROSS_REF_ROUTING``.
+    ``ctx.cross_ref_routing``.
 
     Single source of truth for label-prefix → role mapping. Callers
     compose the role name with the directive syntax themselves —
@@ -137,18 +138,18 @@ def routing_role(target: str) -> str:
 
     The target string may carry either the source ``thm:foo`` shape
     or the converted ``thm-foo`` shape — both are recognised by the
-    default routing table.
+    default routing table. ``ctx`` defaults to the current context
+    (Phase 3) so existing callers without a ctx keep working.
     """
-    # Late-import the mutable extras (populated by apply_config).
-    import postprocess
-    extras = postprocess._EXTRA_CROSS_REF_ROUTING
+    ctx = ctx if ctx is not None else current_context()
+    extras = ctx.cross_ref_routing
     for prefixes, role in extras + _DEFAULT_CROSS_REF_ROUTING:
         if target.startswith(prefixes):
             return role
     return 'ref'
 
 
-def convert_cross_references(text: str) -> str:
+def convert_cross_references(text: str, ctx=None) -> str:
     """Convert pandoc cross-reference syntax to MyST.
 
     Patterns:
@@ -156,12 +157,14 @@ def convert_cross_references(text: str) -> str:
     - [display](#target){reference-type="ref+label" reference="target"} → {ref/numref/prf:ref}`target`
     - [display](#target){reference-type="ref" reference="target"} → {ref}`target`
     """
+    ctx = ctx if ctx is not None else current_context()
+
     def make_ref(target):
         """Generate the appropriate MyST ref role for a single target.
         Routing is delegated to ``routing_role`` (module-level) so the
         same prefix→role table services both body and caption refs."""
         target_converted = convert_label_colons(target)
-        return '{' + routing_role(target) + '}`' + target_converted + '`'
+        return '{' + routing_role(target, ctx) + '}`' + target_converted + '`'
 
     def replace_ref(m):
         display = m.group(1)  # not used — MyST generates its own display
@@ -194,7 +197,7 @@ def convert_cross_references(text: str) -> str:
     return text
 
 
-def strip_doubled_noun_refs(text: str) -> str:
+def strip_doubled_noun_refs(text: str, ctx=None) -> str:
     """Drop the prose noun before a MyST ref that auto-expands to that noun.
 
     Sphinx-proof renders ``{prf:ref}`t-foo``` as "Theorem 1.2", so prose like
@@ -210,10 +213,12 @@ def strip_doubled_noun_refs(text: str) -> str:
 
     Matches either a regular space or a non-breaking space (U+00A0) between
     the noun and the ref, since pandoc emits NBSP for LaTeX ``~`` ties.
+
+    Reads ``ctx.doubled_noun_refs`` (Phase 3); falls back to the current
+    context when called without an explicit ``ctx``.
     """
-    # Late-import the mutable extras.
-    import postprocess
-    extras = postprocess._EXTRA_DOUBLED_NOUN_REFS
+    ctx = ctx if ctx is not None else current_context()
+    extras = ctx.doubled_noun_refs
 
     for noun, prefix in extras + _DOUBLED_NOUN_REFS:
         # Negative lookbehind on a word char so we don't strip inside a longer
