@@ -47,8 +47,8 @@ POST_CONVERT      = None             # optional: callable(text, stem, ctx) -> te
 The loader reads attributes that are present and ignores the rest. The
 **closed** quality is the whole point: there is no registration API, no
 hook ordering, no lifecycle — just a fixed handful of slots and at most
-one or two named insertion points (`POST_CONVERT`, run at a single
-documented position in `process_text`). This is the line between the
+one named insertion point (`POST_CONVERT`, run at a single documented
+position in `process_text`). This is the line between the
 *override file* we want and the *plugin framework* the project has
 already declined (ROADMAP "won't add a hooks framework"; phase 2 "resist
 a MarkerPlugin base class").
