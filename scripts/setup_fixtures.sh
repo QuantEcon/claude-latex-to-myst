@@ -150,7 +150,20 @@ clone_fixture() {
   local src; src="$(_src_for "$book")"
 
   if [[ -d "$dst" && "$REFRESH" -eq 0 ]]; then
-    echo "fixtures/$dir exists (use --refresh to re-clone)"
+    # Accept an existing fixture only if it is actually a clone on the branch
+    # — otherwise a pre-PR selective-copy (no .git) or a clone on the wrong
+    # branch would silently survive, and the rest of the harness assumes a
+    # uniform clone on $BRANCH.
+    local existing; existing="$(git -C "$dst" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+    if [[ -z "$existing" ]]; then
+      echo "ERROR: fixtures/$dir exists but is not a git clone (pre-clone copy?). Re-run with --refresh to re-clone." >&2
+      return 1
+    fi
+    if [[ "$existing" != "$BRANCH" ]]; then
+      echo "ERROR: fixtures/$dir is on '$existing', expected '$BRANCH'. Run 'git -C fixtures/$dir checkout $BRANCH', or re-run with --refresh." >&2
+      return 1
+    fi
+    echo "fixtures/$dir exists (clone @ $BRANCH; use --refresh to re-clone)"
     return 0
   fi
   if [[ ! -d "$src/.git" ]]; then

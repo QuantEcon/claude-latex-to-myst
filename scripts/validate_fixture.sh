@@ -107,8 +107,10 @@ validate_one() {
     snapshot) ref="$fixture/_snapshot" ;;
   esac
 
+  local mode_note="against: $AGAINST"
+  [[ "$PIN" -eq 1 ]] && mode_note="pinning snapshot"
   echo "================================================================"
-  echo "  $book  ($dir)   [against: $AGAINST${PIN:+, pinning}]"
+  echo "  $book  ($dir)   [$mode_note]"
   echo "================================================================"
 
   # --- regenerate ----------------------------------------------------------
@@ -135,20 +137,37 @@ validate_one() {
   # --- pin mode: snapshot the regen output and stop ------------------------
   if [[ "$PIN" -eq 1 ]]; then
     mkdir -p "$fixture/_snapshot"
-    local pinned=0
+    local pinned=0 pinfail=0 stem
     while IFS= read -r stem; do
       [[ -n "$stem" ]] || continue
-      [[ -f "$output_dir/$stem.md" ]] && cp "$output_dir/$stem.md" "$fixture/_snapshot/$stem.md" && pinned=$((pinned + 1))
+      if [[ ! -f "$output_dir/$stem.md" ]]; then
+        echo "  MISSING regen output, cannot pin: $stem.md"; pinfail=1; continue
+      fi
+      if cp "$output_dir/$stem.md" "$fixture/_snapshot/$stem.md"; then
+        pinned=$((pinned + 1))
+      else
+        echo "  cp failed while pinning: $stem.md"; pinfail=1
+      fi
     done < <(regen_stems "$config")
-    echo "  PINNED $pinned stems -> $fixture/_snapshot/"
+    if [[ "$pinfail" -eq 0 ]]; then
+      echo "  PINNED $pinned stems -> $fixture/_snapshot/"
+    else
+      echo "  PIN INCOMPLETE — $pinned pinned but some stems missing/failed; snapshot is unreliable"
+    fi
     echo ""
-    return 0
+    return "$pinfail"
   fi
 
   # --- signal C: per-stem diff against the chosen reference ----------------
   if [[ ! -d "$ref" ]]; then
-    echo "  (C) SKIP — reference $ref missing"
-    [[ "$AGAINST" == snapshot ]] && echo "      (run with --pin first to create the snapshot)"
+    if [[ "$AGAINST" == snapshot ]]; then
+      # No snapshot to compare against ⇒ the safety gate has nothing to
+      # prove. Fail (don't silently pass) — pin one first.
+      echo "  (C) FAIL — no snapshot at $ref; run 'validate_fixture.sh $book --pin' first"
+      echo ""
+      return 1
+    fi
+    echo "  (C) SKIP — baseline $ref missing"
     echo ""
     return "$bfail"
   fi
@@ -193,18 +212,24 @@ validate_one() {
 }
 
 TARGETS=()
-for arg in "$@"; do
-  case "$arg" in
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     all) TARGETS=(dp1 dp2 deep-learning) ;;
-    dp1|dp2|deep-learning) TARGETS+=("$arg") ;;
-    --against) ;;                       # value consumed below
-    baseline|snapshot) AGAINST="$arg" ;;
-    --against=*) AGAINST="${arg#*=}" ;;
+    dp1|dp2|deep-learning) TARGETS+=("$1") ;;
+    --against=*) AGAINST="${1#*=}" ;;
+    --against)
+      [[ $# -ge 2 ]] || { echo "ERROR: --against needs a value (baseline|snapshot)" >&2; exit 2; }
+      AGAINST="$2"; shift ;;
     --pin) PIN=1 ;;
     -h|--help) sed -n '2,/^# ===/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "Unknown arg: $arg" >&2; exit 2 ;;
+    *) echo "Unknown arg: $1" >&2; exit 2 ;;
   esac
+  shift
 done
+case "$AGAINST" in
+  baseline|snapshot) ;;
+  *) echo "ERROR: invalid --against '$AGAINST' (use baseline|snapshot)" >&2; exit 2 ;;
+esac
 [[ ${#TARGETS[@]} -eq 0 ]] && { echo "Usage: validate_fixture.sh <dp1|dp2|deep-learning|all> [--against baseline|snapshot] [--pin]" >&2; exit 2; }
 
 overall=0
