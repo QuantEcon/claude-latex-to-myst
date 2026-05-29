@@ -141,6 +141,7 @@ def _unflatten_figure_text(spec: FigureSpec, converted: list[str]) -> FigureSpec
         name=spec.name,
         caption=new_caption,
         image_src=spec.image_src,
+        width=spec.width,
         tikz_input=spec.tikz_input,
         sub_captions=new_subs,
         placement=spec.placement,

@@ -15,6 +15,46 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — figure-marker parser completeness ([#98])
+
+A regen of all three consumer books against the figure-marker work
+(#95/#97) surfaced four shipped regressions — none visible to `validate.py`
+counts (a figure still counts as a figure), all caught only by diffing the
+regenerated `.md` against the committed baselines. Each is now fixed in the
+pipeline and locked by a `tests/golden_tex/` case:
+
+- **`:width:` restored** — `FigureSpec` gains a `width` field;
+  `_convert_includegraphics_width` reproduces pandoc's conversion
+  (`0.95\textwidth` → `95%`, bare `\textwidth` → `100%`). 31 figures in dp2.
+- **Leading-space captions fixed** — `parse_figure_block` strips a `\label{}`
+  embedded in `\caption{\label{} …}` (the label is already captured as
+  `:name:`), so pandoc no longer emits a `[]{#…}` span + stray leading space.
+  66 captions in dp2.
+- **Raw `\begin{tikzpicture}` figures bail to the post-pandoc path** — a
+  syntactic bail (mirroring the `subfigure` bail) so `resolve_tikz_figures`
+  can apply the consumer's `TIKZ_FIGURE_MAP` SVG. Stops `{\footnotesize}`
+  tikz node labels leaking as sub-captions (dp2 `f-coase_*`) and restores
+  78/88 inline-tikz figures in `book-dp-deep-learning` (the #96 class).
+- **Image no longer dropped when the path is on the next line** —
+  `_INCLUDEGRAPHICS_RE` allows `\s*` between `[opts]` and `{path}`
+  (dp1 `f-finite_lq_1`, wrapped in `\scalebox`).
+- **`decode_natbib_markers` tolerates unescaped brackets** — the tikz bail
+  re-routed `\citep`-bearing captions through pandoc's HTML emission, which
+  leaves `[[CITEP:X]]` unescaped (vs the marker path's `\[\[…\]\]`); the
+  decoder now matches both, re-closing #92 for the bailed path.
+
+### Added — testing infrastructure
+
+- **`.tex`-rooted golden tier** (`tests/golden_tex/`, Phase-1 down payment):
+  a harness that runs the whole pipeline (preprocess marker scripts → pandoc
+  → `process_text`) against a hand-authored `input.tex` and byte-diffs the
+  committed `expected.md`. Seeded with the four #98 reproducers — the gate
+  that would have caught them pre-merge. See lesson 044 and
+  `notes/design/phase-1-validation-gate.md`.
+- **`deep-learning` target in `scripts/setup_fixtures.sh`** + a `regen/`
+  config for the DL fixture (separate `output_dir`, reuses the rendered
+  `tikz_overrides.py` map) so it follows the dp1/dp2 regen pattern.
+
 ### Added — pipeline transforms
 
 - **Directive fences widen to outrank nested code blocks** ([#79]):
@@ -1191,6 +1231,7 @@ haven't validated. Everything below is on `main` and available now.
 [#93]: https://github.com/QuantEcon/claude-latex-to-myst/issues/93
 [#95]: https://github.com/QuantEcon/claude-latex-to-myst/pull/95
 [#96]: https://github.com/QuantEcon/claude-latex-to-myst/issues/96
+[#98]: https://github.com/QuantEcon/claude-latex-to-myst/issues/98
 [020]: lessons/020-natbib-bracket-markers-precede-cross-refs.md
 [023]: lessons/023-algpseudocode-native-parser.md
 [014]: lessons/014-algorithm2e-resolution.md

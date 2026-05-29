@@ -1,0 +1,10 @@
+# #98 #4 reproducer: \includegraphics[opts] whose {path} sits on the NEXT line
+# (the real dp1 f-finite_lq_1 shape, wrapped in \scalebox with a [trim=…]
+# option). The old _INCLUDEGRAPHICS_RE required [...]{path} adjacency and
+# dropped the image entirely; the \s* in the regex now tolerates the newline.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Path on the next line" }

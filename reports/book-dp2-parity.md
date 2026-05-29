@@ -100,3 +100,42 @@ commit `e73d8a4`.
 The extraction is faithful. The drift after porting dp1 transforms is
 deliberate, small, and strictly improves the output. dp2 can be regenerated
 when convenient.
+
+---
+
+## Status update (2026-05-29) — #98 figure-marker regen audit
+
+Re-ran the regen against the figure-marker work (#95/#97) and fixed three of
+the four #98 regressions that surface in dp2 (the fourth, dropped-image, is
+dp1's). All fixes are in `scripts/transforms/figures_from_latex.py`; counts
+are unchanged (they fix output *quality*, not structure):
+
+| #98 | dp2 symptom | before | after |
+|-----|-------------|-------:|------:|
+| #1 width | `[width=0.95\textwidth]` dropped | 31 missing `:width:` | **0** (95%/85%/80%/… restored) |
+| #2 caption | leading space on `\caption{\label{} …}` | 66 captions | **0** |
+| #3 tikz leak | `f-coase_subp`/`f-coase_no` node labels | leaked | **0** (bail → `{figure} …coase.svg` via map) |
+
+One intentional width *improvement* remains as drift: the single
+`width=\textwidth` (no fraction) figure (`f-ti_iterates`) now emits
+`:width: 100%` instead of the baseline's broken `:width: \\textwidth` (pandoc
+left it as a literal control word).
+
+**`validate.py` status (honest):** does **not** exit 0, but the regen is
+*strictly better* than the committed baseline — running `validate.py` against
+`mystmd/` itself shows ~30 `{ref}\`algo-*\`` / `{ref}\`eg-*\`` directive-type
+mismatches and the same equation/cross-ref count quirks; the regen has **1**
+directive-type mismatch (`ex-rsigrv`). The residual count mismatches are
+pre-existing in both:
+
+- `ch_adps` figures 6/5 and `ch_approx_learning` 11/10 — `\begin{subfigure}`
+  blocks whose per-panel SVGs are each mapped, collapsed to one `{figure}` by
+  the `#49` composite-override fast path in `convert_html_figures`. This is
+  **#94 (Phase-2 subfigure)** — noted there, deliberately not half-fixed here.
+- `ch_*` equation counts off by 1–2 (unlabeled `equation`/`align` blocks) and
+  cross-ref MyST > LaTeX (multi-target `\cref{a,b}` expansion) — counting
+  artifacts, identical in baseline and regen.
+
+Locked by `tests/golden_tex/figure_width_option`,
+`figure_label_in_caption`, `figure_raw_tikzpicture_with_override_bails`. See
+lesson [044](../lessons/044-marker-migration-needs-differential-tex-gate.md).

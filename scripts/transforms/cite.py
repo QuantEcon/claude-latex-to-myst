@@ -38,6 +38,16 @@ def decode_natbib_markers(text: str) -> str:
     {reference-type=...}`` greedily — the leading ``[`` of the marker
     would otherwise pair with a downstream eqref's closing ``](#…)``,
     swallowing entire paragraphs (lesson 002 / lesson 020).
+
+    Tolerates **both** bracket forms. Pandoc escapes ``[[`` → ``\\[\\[``
+    when it emits *markdown* (the figure-marker batch-convert path, #92),
+    but leaves ``[[…]]`` **unescaped** when it emits the brackets into an
+    *HTML* ``<figcaption>`` — which is what happens for a ``\\begin{figure}``
+    wrapping a raw ``\\begin{tikzpicture}`` that bails the marker path
+    (#98 #3) and flows through pandoc whole-file. The optional ``\\\\?``
+    before each bracket matches either form; the ``(CITE…):`` prefix keeps
+    the match tight enough that the unescaped form can't swallow ordinary
+    ``[link]`` text.
     """
     def replace_marker(m):
         role, parenthesize = _NATBIB_MARKER_ROLE[m.group(1)]
@@ -47,9 +57,12 @@ def decode_natbib_markers(text: str) -> str:
 
     # ``CITE`` is listed last: it is a prefix of the others, so the
     # longer, more-specific alternatives must be tried first (only
-    # ``CITE:`` — with the colon — reaches the final branch).
+    # ``CITE:`` — with the colon — reaches the final branch). The key
+    # group excludes ``]`` and ``\\`` so the non-greedy match stops at the
+    # closing brackets in both the escaped and unescaped forms.
     return re.sub(
-        r'\\\[\\\[(CITEP|CITEALP|CITEALT|CITEAUTHOR|CITEYEAR|CITEYEARPAR|CITE):([^\\]+?)\\\]\\\]',
+        r'\\?\[\\?\[(CITEP|CITEALP|CITEALT|CITEAUTHOR|CITEYEAR|CITEYEARPAR|CITE):'
+        r'([^\]\\]+?)\\?\]\\?\]',
         replace_marker,
         text,
     )

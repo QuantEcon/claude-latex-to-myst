@@ -50,13 +50,14 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 041 | [A {list-table} nested in a {table} double-enumerates — suppress the inner with :enumerated: false](lessons/041-nested-table-directive-double-enumerates.md) | myst | 🟡 | codified |
 | 042 | [KaTeX errors on `\\,^X` (superscript right after thin space) — insert an empty base `\\,{}^X`](lessons/042-katex-thin-space-superscript-needs-empty-base.md) | katex | 🟡 | codified |
 | 043 | [Pandoc figure-caption emit drops citations and minipage sub-captions — recover from HTML attributes and sibling divs](lessons/043-pandoc-figure-caption-content-loss.md) | post-processing | 🟡 | codified |
+| 044 | [Migrating a construct fallback→marker re-implements a parser that starts incomplete — lock it with a .tex-rooted differential gate, not counts](lessons/044-marker-migration-needs-differential-tex-gate.md) | preprocess | 🔴 | codified |
 
 ## By category
 
 - **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043
 - **regex-safety:** 002, 017, 024, 031, 035, 036
 - **pandoc:** 027
-- **preprocess:** 028, 029, 030, 039
+- **preprocess:** 028, 029, 030, 039, 044
 - **katex:** 003, 006, 042
 - **myst:** 013, 040, 041
 - **tooling:** 009, 010, 038
