@@ -44,8 +44,8 @@ Validation therefore uses **two baselines**, and they must not be confused:
 The fixture-validation harness (`scripts/validate_fixture.sh`, introduced in
 the common-fixture-validation PR #101 — not yet on `main` if you're reading
 this before it merges) implements both (`--against snapshot` for the gate,
-default for the parity gap). Because safety rides on the snapshot,
-parity is pursued *across* the refactoring, not as a precondition.
+the default `--against baseline` for the parity gap). Because safety rides on
+the snapshot, parity is pursued *across* the refactoring, not as a precondition.
 
 ## Phases (priority order)
 
