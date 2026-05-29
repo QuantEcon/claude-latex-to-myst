@@ -35,10 +35,10 @@ content falls through unchanged so pandoc still gets a chance.
 
 from __future__ import annotations
 
-import base64
-import json
 import re
 from dataclasses import asdict, dataclass, field
+
+from ._markers import decode_payload, encode_payload
 
 
 # A row terminator: ``\\`` optionally followed by ``[Xpt]`` length
@@ -962,26 +962,21 @@ def _starts_in_comment(text: str, pos: int) -> bool:
 # without spawning pandoc itself, and lets downstream transforms
 # (make_ref, citations, math) process the cell content the same way
 # they process pandoc's other output.
-_MARKER_OPEN = '<!--TABLE '
-_MARKER_CLOSE = '-->'
-
 _MARKER_RE = re.compile(
     r'\\?<!--TABLE\s+payload=(?P<payload>[A-Za-z0-9+/=]+)--\\?>',
 )
 
 
 def encode_marker(spec: TableSpec) -> str:
-    """Encode a ``TableSpec`` as a one-line HTML-comment marker.
+    """Encode a ``TableSpec`` as a one-line ``<!--TABLE payload=…-->`` marker
+    (shared base64+JSON codec — ``transforms._markers``).
 
     Cells should already be markdown-converted before this is called
     (see ``_apply_table_markers.py``). The marker is a single line so
     pandoc treats it as a self-contained block; multi-line markers
     risk paragraph splitting on certain pandoc versions.
     """
-    payload = base64.b64encode(
-        json.dumps(asdict(spec), ensure_ascii=False).encode('utf-8')
-    ).decode('ascii')
-    return f'{_MARKER_OPEN}payload={payload}{_MARKER_CLOSE}'
+    return encode_payload('TABLE', asdict(spec))
 
 
 def decode_marker(payload_b64: str) -> TableSpec:
@@ -995,8 +990,7 @@ def decode_marker(payload_b64: str) -> TableSpec:
     ``header_rows``, and ``body_rows`` are structural and indexed
     directly so missing keys raise ``KeyError``.
     """
-    raw = base64.b64decode(payload_b64.encode('ascii')).decode('utf-8')
-    data = json.loads(raw)
+    data = decode_payload(payload_b64)
     return TableSpec(
         name=data.get('name'),
         caption=data.get('caption'),

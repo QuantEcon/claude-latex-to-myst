@@ -15,6 +15,27 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Changed — Phase 2: marker shared base + hybrid boundary (architecture evolution 2/5)
+
+Pure refactor (snapshot byte-identical ×3) consolidating the duplicated
+marker scaffolding the figure and table preprocessors re-implemented.
+
+- **`scripts/transforms/_markers.py`** — the shared base, once:
+  `pandoc_batch_convert` (the single `<!--CELL_N-->`-sentinel batch pandoc
+  call, with an optional `paren_guard` for figure sub-captions and the
+  `` `<!-- -->`{=html} `` adjacency scrub), `encode_payload`/`decode_payload`
+  (the base64+JSON marker codec), and `reassemble` (blank-line-wrapped,
+  source-order stream rebuild). **Plain functions, no `MarkerPlugin` class.**
+- `_apply_figure_markers.py` and `_apply_table_markers.py` now import the
+  base; `figures_from_latex`/`tables_from_latex` `encode_marker`/`decode_marker`
+  delegate to the shared codec.
+- **Bail-predicate audit** documented at the top of `_markers.py`
+  (figure: subfigure / raw tikzpicture / multi-image; table: longtable
+  routing + fall-through). Default stance: bail unless fully modelled.
+- **CLAUDE.md** now states the pandoc/marker boundary explicitly (a
+  "Settled architectural decisions" entry) so it stops moving by accretion;
+  retiring the HTML fallbacks is the Phase-4 payoff.
+
 ### Added — Phase 1: validation gate + CI (architecture evolution 1/5)
 
 The keystone safety net for the architecture-evolution work. A `.tex`-rooted

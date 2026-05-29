@@ -227,6 +227,27 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   iterations of regex-pairing bugs (#84, #85, #86, #87); see lesson
   [042](lessons/042-katex-thin-space-superscript-needs-empty-base.md)
   for the rationale.
+- **The pandoc/marker boundary is explicit (Phase 2).** *Pandoc owns
+  inline prose, paragraph/inline math, native inline citations
+  (`\cite`/`\citet`/`\citep`), and cross-ref plumbing (the
+  `data-reference` recovery path). Everything structural — floats,
+  tabulars, algorithms, listings, description/enumerate lists — is
+  extracted to a marker pre-pandoc and decoded post-pandoc. New
+  structural constructs follow the marker pattern; do not add a new
+  post-pandoc HTML-scraping path.* The shared scaffolding for the
+  constructs whose cells need pandoc conversion (figure, table) lives once
+  in [`transforms/_markers.py`](scripts/transforms/_markers.py)
+  (`pandoc_batch_convert`, `encode_payload`/`decode_payload`,
+  `reassemble`) — **plain functions, not a `MarkerPlugin` class** (the win
+  is deduplication, not extensibility). A marker preprocessor's
+  "should I marker-ize this block?" decision must be **purely syntactic
+  and conservative**: bail (return `None`) on any shape it can't fully
+  model, because it runs pre-pandoc and cannot see post-pandoc config
+  (`TIKZ_FIGURE_MAP`, `ENV_MAP`, routing) — the #98 #3 lesson. The audited
+  per-construct bail predicates are documented at the top of
+  `transforms/_markers.py`. Retiring the post-pandoc HTML fallbacks (one
+  path per construct) is the Phase-4 payoff; the boundary is locked now so
+  it stops moving by accretion.
 
 ## Working-style conventions
 

@@ -1,6 +1,18 @@
 # Phase 2 — Marker shared base + hybrid boundary
 
-**Status:** proposed · **Effort:** ~1–2 days · **Risk:** low · **Depends on:** Phase 1 gate
+**Status:** LANDED (architecture-evolution branch, commit 2/5) · **Effort:** ~1–2 days · **Risk:** low · **Depends on:** Phase 1 gate
+
+> **Landed.** `scripts/transforms/_markers.py` holds the shared base
+> (`pandoc_batch_convert` with an optional `paren_guard`,
+> `encode_payload`/`decode_payload`, `reassemble`) imported by both
+> `_apply_figure_markers.py` and `_apply_table_markers.py`; the figure/table
+> codecs (`encode_marker`/`decode_marker`) now delegate to the shared codec.
+> Plain functions, no `MarkerPlugin` class. The bail predicates are audited
+> and documented at the top of `_markers.py` (figure already bails on
+> subfigure / raw tikzpicture / multi-image from #98; table routes longtable
+> and falls through on unparseable shapes). The pandoc/marker boundary is
+> written into CLAUDE.md. Pure refactor — snapshot byte-identical ×3, suite
+> 637 passed.
 
 ## Problem
 

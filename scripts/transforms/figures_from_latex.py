@@ -23,12 +23,11 @@ output (#92).
 
 from __future__ import annotations
 
-import base64
-import json
 import re
 from dataclasses import asdict, dataclass, field
 
 from ._helpers import convert_label_colons
+from ._markers import decode_payload, encode_payload
 
 
 @dataclass
@@ -279,24 +278,15 @@ def find_figure_blocks(text: str) -> list[tuple[int, int, str, str | None]]:
 
 
 def encode_marker(spec: FigureSpec) -> str:
-    """Encode a ``FigureSpec`` as a single-line HTML-comment marker.
-
-    Format::
-
-        <!--FIGURE payload=BASE64-->
-
-    where BASE64 is the base64 of JSON-encoded spec fields. Single-line
-    so pandoc treats it as a self-contained block.
-    """
-    payload = base64.b64encode(
-        json.dumps(asdict(spec), ensure_ascii=False).encode('utf-8')
-    ).decode('ascii')
-    return f'<!--FIGURE payload={payload}-->'
+    """Encode a ``FigureSpec`` as a single-line ``<!--FIGURE payload=…-->``
+    marker (shared base64+JSON codec — ``transforms._markers``). Single-line
+    so pandoc treats it as a self-contained block."""
+    return encode_payload('FIGURE', asdict(spec))
 
 
 def decode_marker(payload_b64: str) -> FigureSpec:
     """Decode a base64 payload back into a FigureSpec."""
-    data = json.loads(base64.b64decode(payload_b64).decode('utf-8'))
+    data = decode_payload(payload_b64)
     return FigureSpec(
         name=data.get('name'),
         caption=data.get('caption'),
