@@ -221,7 +221,7 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { echo "ERROR: --against needs a value (baseline|snapshot)" >&2; exit 2; }
       AGAINST="$2"; shift ;;
     --pin) PIN=1 ;;
-    -h|--help) sed -n '2,/^# ===/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) awk 'NR==1 && /^#!/ {next} /^#/ {sub(/^# ?/,""); print; next} {exit}' "$0"; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; exit 2 ;;
   esac
   shift

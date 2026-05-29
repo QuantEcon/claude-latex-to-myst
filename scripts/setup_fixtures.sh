@@ -63,7 +63,10 @@ for arg in "$@"; do
     --regen-only) REGEN_ONLY=1 ;;
     dp1|dp2|deep-learning) TARGETS+=("$arg") ;;
     --help|-h)
-      sed -n '2,/^# ===/p' "$0" | sed 's/^# \{0,1\}//'
+      # Print the leading comment block (skip the shebang, strip "# "), up to
+      # the first non-comment line. A plain `2,/^# ===/` range would stop at
+      # the closing rule of the title banner, before the Usage section.
+      awk 'NR==1 && /^#!/ {next} /^#/ {sub(/^# ?/,""); print; next} {exit}' "$0"
       exit 0
       ;;
     *) echo "Unknown arg: $arg" >&2; exit 1 ;;
