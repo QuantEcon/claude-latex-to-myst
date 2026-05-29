@@ -284,7 +284,20 @@ def load_overrides(overrides_path: Path, ctx: ConversionContext | None = None) -
                     "(pattern, repl) or (pattern, repl, stems)"
                 )
             pat, repl = rule[0], rule[1]
-            stems = frozenset(rule[2]) if len(rule) == 3 and rule[2] else None
+            stems = None
+            if len(rule) == 3 and rule[2]:
+                stems_field = rule[2]
+                # Guard the footgun: a bare string ``'ch_only'`` would become
+                # ``frozenset('ch_only')`` = {'c','h',…} and silently never
+                # match. Require a list/tuple of stem strings (same contract
+                # as config.postprocess.rewrites[].stems).
+                if (not isinstance(stems_field, (list, tuple))
+                        or not all(isinstance(s, str) for s in stems_field)):
+                    raise SystemExit(
+                        f"{overrides_path}: EXTRA_REWRITES[{i}] stems must be a "
+                        f"list of stem strings, got {stems_field!r}"
+                    )
+                stems = frozenset(stems_field)
             ctx.postprocess_rewrites.append((re.compile(pat, re.MULTILINE), repl, stems))
 
     # POST_CONVERT — the one optional named hook. Held on the context and

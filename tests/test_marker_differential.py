@@ -114,6 +114,29 @@ class FigureFeatures:
     leaks_cite_marker: bool       # ``[[CITEP`` / ``[[CITE`` survived
 
 
+def _has_figure_caption_body(md: str) -> bool:
+    """True iff some ``{figure}`` directive carries real caption *text* — a
+    body line that is not a directive option (``:name:`` / ``:width:`` …), not
+    a fence, and not blank. A loose ``\\S``-after-the-fence test would treat
+    an options-only figure as captioned, so a marker path that drops the
+    caption but keeps name/width would slip past the gate (it's exactly the
+    caption-loss class the gate exists to catch — lesson 045)."""
+    in_fig = False
+    for line in md.split('\n'):
+        stripped = line.strip()
+        if stripped.startswith('```{figure}'):
+            in_fig = True
+            continue
+        if in_fig:
+            if stripped.startswith('```'):       # closing fence
+                in_fig = False
+                continue
+            if not stripped or stripped.startswith(':'):
+                continue                          # blank or directive option
+            return True                           # a real caption-text line
+    return False
+
+
 def figure_features(md: str) -> FigureFeatures:
     import re
     return FigureFeatures(
@@ -121,7 +144,7 @@ def figure_features(md: str) -> FigureFeatures:
         n_widths=len(re.findall(r'^:width:', md, re.MULTILINE)),
         n_named=len(re.findall(r'^:name:', md, re.MULTILINE)),
         n_images=len(re.findall(r'figures/\S+', md)),
-        has_nonempty_caption=bool(re.search(r'```{figure}[^\n]*\n(?:[^\n]*\n)*?\s*\S', md)),
+        has_nonempty_caption=_has_figure_caption_body(md),
         leaks_marker=('<!--FIGURE' in md) or ('CELL_' in md),
         leaks_raw_latex=('\\begin{tikzpicture}' in md) or ('\\includegraphics' in md),
         leaks_cite_marker=('[[CITEP' in md) or ('[[CITE:' in md),

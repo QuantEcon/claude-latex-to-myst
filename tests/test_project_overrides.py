@@ -81,6 +81,17 @@ def test_post_convert_can_be_fence_aware(tmp_path):
     assert 'code TOK here' in out          # code block untouched
 
 
+def test_extra_rewrites_string_stems_rejected(tmp_path):
+    """Footgun guard (Copilot review): a bare-string ``stems`` (instead of a
+    list) would become ``frozenset('ch_only')`` = {'c','h',…} and silently
+    never match. It must raise instead."""
+    import pytest
+    ctx = ConversionContext.from_config({'source_dir': '.'})
+    ov = _write(tmp_path, "EXTRA_REWRITES = [(r'X', 'Y', 'ch_only')]\n")
+    with pytest.raises(SystemExit):
+        postprocess.load_overrides(ov, ctx)
+
+
 def test_post_convert_must_be_callable(tmp_path):
     import pytest
     ctx = ConversionContext.from_config({'source_dir': '.'})

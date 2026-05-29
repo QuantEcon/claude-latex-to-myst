@@ -45,15 +45,24 @@ must be **purely syntactic** and **conservative**: bail (return ``None`` for
 the spec, leaving the block for the post-pandoc path) on any shape it cannot
 fully model. The audited bail predicates per construct:
 
-  - **figure** (``parse_figure_block``): bail on ``\\begin{subfigure}``
-    (#94, Phase 4), on a raw ``\\begin{tikzpicture}`` body (so the
-    post-pandoc ``TIKZ_FIGURE_MAP`` override applies — #98 #3), and on
-    multi-image ``\\input{tikz/…}`` blocks (would drop all but the first).
+  - **figure** (``parse_figure_block``):
+      * ``\\begin{subfigure}`` floats are marker-ized when *every* panel is a
+        plain ``\\includegraphics`` (#94, Phase 4 — one ``{figure}`` per
+        panel); a panel that isn't (dp1's ``\\scalebox{\\input{…pdf_t}}``)
+        bails the whole float.
+      * a raw ``\\begin{tikzpicture}`` body is marker-ized **caption-only**
+        (Phase 6, lesson 045 — the tikz region is stripped first so node text
+        isn't scooped, #98 #3); the image comes from the post-pandoc
+        ``TIKZ_FIGURE_MAP`` override (``_emit_figure`` does the lookup).
+      * multi-image ``\\input{tikz/…}`` blocks bail (would drop all but the
+        first).
   - **table** (``parse_table_block``): longtable is routed to a dedicated
     multi-page parser; unparseable shapes return ``None`` and fall through
     to ``convert_simple_tables``.
 
-Default stance: **bail unless fully modelled.**
+Default stance: **model only what's fully modelled; bail (or, for the
+tikz/subfigure cases above, carry only the part that IS modelled — the
+caption — and let the override supply the image).**
 """
 
 from __future__ import annotations

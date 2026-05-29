@@ -169,13 +169,23 @@ clone_fixture() {
     echo "fixtures/$dir exists (clone @ $BRANCH; use --refresh to re-clone)"
     return 0
   fi
-  if [[ ! -d "$src/.git" ]]; then
-    echo "ERROR: source repo not found or not a git repo: $src" >&2
-    return 1
+  # ``$src`` may be a local sibling path OR a remote URL (the CI
+  # fixture-counts job passes ``https://…`` / ``git@…`` via secrets).
+  # ``git clone`` handles both; only the local-path sanity checks (the
+  # ``.git`` dir, the current-branch note) apply to local sources.
+  local is_remote=0
+  case "$src" in
+    *://*|git@*) is_remote=1 ;;
+  esac
+  if [[ "$is_remote" -eq 0 ]]; then
+    if [[ ! -d "$src/.git" ]]; then
+      echo "ERROR: source repo not found or not a git repo: $src" >&2
+      return 1
+    fi
+    local cur; cur="$(git -C "$src" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+    [[ "$cur" != "$BRANCH" ]] && \
+      echo "NOTE: $src is on '$cur'; cloning its committed '$BRANCH' branch." >&2
   fi
-  local cur; cur="$(git -C "$src" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
-  [[ "$cur" != "$BRANCH" ]] && \
-    echo "NOTE: $src is on '$cur'; cloning its committed '$BRANCH' branch." >&2
 
   rm -rf "$dst"
   # Clone just the conversion branch from the local sibling (hardlinks objects

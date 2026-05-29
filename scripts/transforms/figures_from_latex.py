@@ -469,16 +469,28 @@ def _emit_figure(spec: FigureSpec, ctx=None) -> str:
                 mapped_path, spec.name, caption_override if caption_override else body
             )
         parts: list[str] = []
+        outer_used = False
         for i, sub in enumerate(spec.subfigures):
             name = sub.get('name')
             if not name and spec.name:
-                name = spec.name if i == 0 else f'{spec.name}-{chr(ord("a") + i)}'
+                if i == 0:
+                    name, outer_used = spec.name, True
+                else:
+                    name = f'{spec.name}-{chr(ord("a") + i)}'
             path = sub.get('image_src') or ''
             if path and '/' not in path:
                 path = 'figures/' + path
             cap = (sub.get('caption') or '').strip()
             parts.append(_emit_figure_directive(path, name, cap))
-        return '\n'.join(parts)
+        out = '\n'.join(parts)
+        # If the float carried an outer \label that NO panel adopted (every
+        # panel had its own \label), emit it as a target anchor before the
+        # first panel so an outer-label reference (e.g. {numref}`f-outer`)
+        # still resolves — the lesson-021 "parent label takes the first child
+        # slot" rule. Without this the outer ref would dangle.
+        if spec.name and not outer_used:
+            out = f'({spec.name})=\n\n{out}'
+        return out
 
     # Priority 1: ``\includegraphics`` literal path from source. Mirror
     # ``figures.make_figure`` — when the source path has no directory

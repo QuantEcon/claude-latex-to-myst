@@ -185,6 +185,7 @@ def test_golden_tex_seeded():
         'figure_raw_tikzpicture_with_override_bails',
         'figure_includegraphics_path_on_next_line',
         'subfigure_includegraphics',      # #94 (Phase 4)
+        'subfigure_outer_and_panel_labels',  # Copilot review: outer label kept
         'tikz_figure_caption_math',        # Phase 6 tikz caption-math preservation
         'post_convert_fence_aware',        # Phase 5 book-side POST_CONVERT
         # Phase-1 seeding from the lesson catalogue (lesson id in comment)
