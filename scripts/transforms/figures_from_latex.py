@@ -68,6 +68,11 @@ _SUBFIGURE_BLOCK_RE = re.compile(
     re.DOTALL,
 )
 _TIKZPICTURE_RE = re.compile(r'\\begin\{tikzpicture\}')
+# A whole ``\begin{tikzpicture}…\end{tikzpicture}`` region — stripped before
+# caption/label extraction so tikz node text isn't scooped (#98 #3).
+_TIKZPICTURE_BLOCK_RE = re.compile(
+    r'\\begin\{tikzpicture\}.*?\\end\{tikzpicture\}', re.DOTALL
+)
 _LABEL_RE = re.compile(r'\\label\{([^}]+)\}')
 # group(1) = the optional ``[opts]`` (or None), group(2) = the ``{path}``.
 # ``\s*`` between them tolerates an ``\includegraphics[…]`` whose ``{path}``
@@ -221,18 +226,40 @@ def parse_figure_block(body: str, placement: str | None) -> FigureSpec | None:
             spec.caption = _LABEL_RE.sub('', outer_cap).strip() or None
         return spec
 
-    # A ``\begin{figure}`` wrapping a raw ``\begin{tikzpicture}`` is left
-    # for the post-pandoc path (``convert_html_figures`` →
-    # ``resolve_tikz_figures``), which CAN consult ``TIKZ_FIGURE_MAP`` to
-    # substitute the consumer's pre-rendered SVG. This preprocessor runs as
-    # a separate process and cannot see that map, so the decision to bail
-    # must be purely syntactic — otherwise
-    # ``_extract_footnotesize_subcaptions`` scoops the tikz ``{\footnotesize
-    # …}`` node labels in as sub-captions and they leak above the override
-    # caption (#98 #3). Mirrors the ``subfigure`` bail above; "bail unless
-    # fully modelled" per ``design/phase-2-marker-shared-base.md``.
+    # A ``\begin{figure}`` wrapping a raw ``\begin{tikzpicture}``: the tikz
+    # BODY can't be modelled (it's rendered via the consumer's
+    # ``TIKZ_FIGURE_MAP`` override post-pandoc — `_emit_figure` does the
+    # lookup, since the preprocessor can't see the map). But the CAPTION can
+    # be — and pandoc's HTML figcaption FLATTENS its math
+    # (``$\theta_0$`` → ``<span class=math><sub>…``→ unicode ``θ0``), losing
+    # fidelity across DL's 78 inline-tikz figures. So extract label + caption
+    # from the body with the tikzpicture region REMOVED first — that strip is
+    # what stops ``_extract_footnotesize_subcaptions`` scooping the tikz
+    # ``{\footnotesize …}`` node labels as sub-captions (the #98 #3 bug the
+    # old unconditional bail avoided). The batch-pandoc caption conversion in
+    # ``_apply_figure_markers`` then preserves the math. No image/tikz_input
+    # is set, so ``_emit_figure`` resolves via the override (mapped SVG +
+    # math caption) or, with no override, falls back to a caption admonition.
     if _TIKZPICTURE_RE.search(body):
-        return None
+        outer = _TIKZPICTURE_BLOCK_RE.sub('', body)
+        spec = FigureSpec(placement=placement)
+        label_m = _LABEL_RE.search(outer)
+        if label_m:
+            spec.name = convert_label_colons(label_m.group(1))
+        cap, _ = _extract_caption(outer)
+        if cap is not None:
+            spec.caption = _LABEL_RE.sub('', cap).strip() or None
+        # Legitimate ``{\footnotesize (a) …}`` sub-panel captions live OUTSIDE
+        # the tikzpicture (between/after panels); the tikz NODE labels lived
+        # inside it and were just stripped — so extracting from ``outer`` here
+        # recovers the real sub-captions (multi-panel figures, e.g. DL's
+        # volume-ratio figure) without re-introducing the #98 #3 node scoop.
+        spec.sub_captions = _extract_footnotesize_subcaptions(outer)
+        # Nothing to carry (no label, no caption, no sub-captions) ⇒ leave it
+        # for the HTML path exactly as before — marker-izing gains nothing.
+        if not spec.name and not spec.caption and not spec.sub_captions:
+            return None
+        return spec
 
     # Phase 1 is single-figure scope. Multi-image / multi-tikz layouts
     # (side-by-side panels without ``\begin{subfigure}``) would silently

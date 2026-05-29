@@ -110,29 +110,36 @@ def test_parse_bails_on_scalebox_input_subfigure():
     assert parse_figure_block(body, placement=None) is None
 
 
-def test_parse_bails_on_raw_tikzpicture():
-    """#98 #3: a ``\\begin{figure}`` wrapping a raw ``\\begin{tikzpicture}``
-    must bail to the post-pandoc path so ``resolve_tikz_figures`` can
-    consult ``TIKZ_FIGURE_MAP`` for the pre-rendered SVG. If the
-    preprocessor marker-izes it instead, ``_extract_footnotesize_subcaptions``
-    scoops the tikz ``{\\footnotesize …}`` node labels (e.g. ``$a_3$``) in
-    as sub-captions and they leak above the override caption (dp2
-    ``f-coase_subp`` / ``f-coase_no``)."""
+def test_parse_tikzpicture_caption_only_no_node_scoop():
+    """#98 #3 + Phase 6: a ``\\begin{figure}`` wrapping a raw
+    ``\\begin{tikzpicture}`` is now marker-ized **caption-only** — the tikz
+    body (and its ``{\\footnotesize …}`` node labels, e.g. ``$a_3$``) is
+    stripped BEFORE caption/label extraction, so node text is never scooped
+    (the #98 #3 protection), but the figure caption + label are carried so
+    their math survives. The image still comes from the post-pandoc
+    ``TIKZ_FIGURE_MAP`` override (``_emit_figure`` does the lookup)."""
     body = (
         '\\begin{tikzpicture}[scale=1]\n'
         '\\node {\\footnotesize $a_3$};\n'
         '\\end{tikzpicture}\n'
         '\\caption{\\label{f:coase_no} Notation}\n'
     )
-    assert parse_figure_block(body, placement=None) is None
+    spec = parse_figure_block(body, placement=None)
+    assert spec is not None
+    assert spec.name == 'f-coase_no'
+    assert spec.caption == 'Notation'
+    assert spec.image_src is None and spec.tikz_input is None
+    # Critical (#98 #3): the tikz node text was NOT scooped.
+    assert spec.sub_captions == []
+    assert 'a_3' not in (spec.caption or '')
 
 
-def test_parse_bails_on_tikzpicture_inside_minipage():
-    """The bail is purely syntactic — any ``\\begin{tikzpicture}`` in the
-    body bails, including the minipage-wrapped sub-panel shape (former
-    #90/#93 marker path). Those figures are pre-rendered as SVG by the
-    consumer and resolved post-pandoc; their ``{\\footnotesize}`` node
-    labels belong in the SVG, not the caption."""
+def test_parse_tikzpicture_inside_minipage_recovers_subcaptions():
+    """The minipage-wrapped sub-panel shape: the tikz body is stripped (so
+    tikz NODE labels are not scooped — #98 #3), but a legitimate
+    ``{\\footnotesize (a) …}`` panel caption that sits OUTSIDE the tikzpicture
+    is recovered as a sub-caption (DL multi-panel figures). The float
+    ``\\caption`` + ``\\label`` are carried too."""
     body = (
         '\\begin{minipage}{0.4\\textwidth}\n'
         '\\begin{tikzpicture}\\end{tikzpicture}\\\\\n'
@@ -141,7 +148,12 @@ def test_parse_bails_on_tikzpicture_inside_minipage():
         '\\caption{Main.}\n'
         '\\label{fig:vp}\n'
     )
-    assert parse_figure_block(body, placement=None) is None
+    spec = parse_figure_block(body, placement=None)
+    assert spec is not None
+    assert spec.name == 'fig-vp'
+    assert spec.caption == 'Main.'
+    assert spec.sub_captions == ['(a) the unit ball']
+    assert 'unit ball' not in (spec.caption or '')
 
 
 def test_parse_footnotesize_subcaption_on_non_tikz_figure():
@@ -662,15 +674,14 @@ def test_e2e_citet_in_figure_caption_closes_issue_89():
 
 
 @pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
-def test_e2e_raw_tikzpicture_bails_node_labels_dropped_closes_issue_98_3():
-    """#98 #3 (supersedes the old #93 marker-path handling): a figure
-    wrapping a raw ``\\begin{tikzpicture}`` with ``{\\footnotesize}`` node
-    labels bails the marker path, flows through pandoc, and is resolved by
-    ``resolve_tikz_figures`` via ``TIKZ_FIGURE_MAP``. The node labels
-    (``$a_3$``) live in the pre-rendered SVG and must NOT leak into the
-    caption; the real caption survives. Mirrors dp2 ``f-coase_no``."""
+def test_e2e_raw_tikzpicture_caption_only_node_labels_dropped_closes_issue_98_3():
+    """#98 #3 + Phase 6: a figure wrapping a raw ``\\begin{tikzpicture}`` with
+    ``{\\footnotesize}`` node labels is now marker-ized **caption-only** — the
+    tikz body is stripped, so node labels (``$a_3$``) are NOT scooped, while
+    the float caption + label are carried (math intact). ``_emit_figure``
+    resolves the image from ``TIKZ_FIGURE_MAP``; node text must NOT appear in
+    the caption. Mirrors dp2 ``f-coase_no``."""
     import postprocess
-    from transforms.figures import convert_html_figures, resolve_tikz_figures
     src = (
         '\\begin{figure}\n'
         '\\begin{tikzpicture}\n'
@@ -681,22 +692,23 @@ def test_e2e_raw_tikzpicture_bails_node_labels_dropped_closes_issue_98_3():
         '\\end{figure}\n'
     )
     markered = pre.process_text(src)
-    assert '<!--FIGURE' not in markered          # bailed — no marker emitted
+    assert '<!--FIGURE' in markered               # caption-only marker emitted
     r = subprocess.run(
         ['pandoc', '-f', 'latex', '-t', 'markdown', '--wrap=none'],
         input=markered, capture_output=True, text=True, check=True,
     )
-    out = resolve_figure_markers(r.stdout)        # no-op (no marker)
-    out = convert_html_figures(out)
     saved = dict(postprocess.TIKZ_FIGURE_MAP)
     try:
         postprocess.TIKZ_FIGURE_MAP.clear()
         postprocess.TIKZ_FIGURE_MAP['f-coase_no'] = ('figures/coase_no.svg', None)
-        out = resolve_tikz_figures(out, 'ch_apps')
+        out = resolve_figure_markers(r.stdout)    # override → mapped SVG + caption
     finally:
         postprocess.TIKZ_FIGURE_MAP.clear()
         postprocess.TIKZ_FIGURE_MAP.update(saved)
     assert '```{figure} figures/coase_no.svg' in out
+    assert ':name: f-coase_no' in out
+    assert 'Notation' in out
+    assert 'a_3' not in out and 'a_2' not in out  # node text NOT leaked (#98 #3)
     assert ':name: f-coase_no' in out
     assert 'Notation' in out
     # Tikz node labels must NOT leak into the caption.

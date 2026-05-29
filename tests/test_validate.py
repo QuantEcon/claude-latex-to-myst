@@ -76,6 +76,38 @@ def test_count_figures_mixed_figures_and_subfigures():
     assert v.count_latex(tex)['figures'] == 6
 
 
+# ── Phase 6: marker-aware counting for split-source books ────────────────────
+# ``validate`` reads the *preprocessed* tmp file for ``preprocess.split:``
+# books (e.g. Deep-Learning), where figures/citations are already markers.
+# Counting must see through the markers or it under-counts the source (a
+# measurement artifact — the markdown is faithful).
+
+def test_count_figures_counts_figure_markers():
+    """A ``<!--FIGURE payload=…-->`` marker (preprocessed figure) counts as a
+    figure, alongside any raw ``\\begin{figure}`` blocks."""
+    from transforms.figures_from_latex import FigureSpec, encode_marker
+    marker = encode_marker(FigureSpec(name='f-x', caption='C'))
+    tex = marker + "\n\n" + r"\begin{figure}\includegraphics{y}\end{figure}" "\n"
+    assert v.count_latex(tex)['figures'] == 2
+
+
+def test_count_figures_marker_honours_subfigure_panels():
+    """A subfigure-float marker counts as N (one per panel)."""
+    from transforms.figures_from_latex import FigureSpec, encode_marker
+    spec = FigureSpec(name='f-x', subfigures=[
+        {'name': None, 'caption': 'a', 'image_src': 'a.pdf', 'width': None},
+        {'name': None, 'caption': 'b', 'image_src': 'b.pdf', 'width': None},
+    ])
+    assert v.count_latex(encode_marker(spec))['figures'] == 2
+
+
+def test_count_citations_counts_natbib_markers():
+    """``[[CITEP:…]]`` / ``[[CITEALT:…]]`` markers (preprocessed natbib) count
+    as citations alongside raw ``\\cite…`` commands."""
+    tex = r"\citet{a} and [[CITEP:b,c]] and [[CITEALT:d]]." "\n"
+    assert v.count_latex(tex)['citations'] == 3
+
+
 # ── #16: MyST equation count includes labeled-close fences ───────────────────
 
 

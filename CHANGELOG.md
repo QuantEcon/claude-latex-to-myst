@@ -15,6 +15,35 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Changed — Phase 6: Deep-Learning parity pass — tikz figure-caption math (architecture evolution 6/6)
+
+Exercises the new architecture on the book furthest from parity, to prove it
+generalizes across all three books. Intentionally changes DL output (snapshot
+re-pinned after a reviewed equal-or-better diff); dp1/dp2 byte-identical.
+
+- **Figure-caption math preserved for `tikzpicture` figures** (lesson 045).
+  DL's 78 inline-tikz figures bail the marker path (so the `TIKZ_FIGURE_MAP`
+  SVG applies), which sent the caption through pandoc's HTML figcaption —
+  flattening `$\theta_0$` → unicode `θ0`. Now the float is marker-ized
+  *caption-only*: the `\begin{tikzpicture}…\end{tikzpicture}` region is
+  stripped first (no node-text scoop — #98 #3 holds), the caption + label +
+  legitimate `{\footnotesize}` sub-panel captions are extracted and
+  batch-converted (math intact), and `_emit_figure` resolves the SVG via the
+  override path. Locked by `golden_tex/tikz_figure_caption_math`.
+- **Result:** DL parity diff vs the worked-on baseline fell **166 → 20 lines**
+  (7 of 12 chapters now byte-identical). Remaining lines are documented drift
+  (`:width:` additions that are *more* source-faithful; tikz node-text labels
+  that belong in the SVG).
+- **`validate.py` is now marker-aware** (`count_latex` counts `<!--FIGURE-->`
+  markers — decoded for subfigure panels — and `[[CITE…]]` natbib markers).
+  The apparent DL citation (`61/130`) / figure (`10/11`) "gaps" were
+  *measurement artifacts*: for `preprocess.split` books validate reads the
+  preprocessed tmp file where those constructs are already markers. After the
+  fix appA_glossary citations go `1/20 → 20/20`, ch02 figures `10/11 → 11/11`,
+  ch01 citations `61 → 111` (residual = multi-key `\citet{a,b}` → 2 roles,
+  inherent). dp1/dp2 read pristine source (no markers) → counts unchanged.
+  See `notes/design/phase-6-dl-parity.md`.
+
 ### Added — Phase 5: book-side project_overrides + graduation rule (architecture evolution 5/5)
 
 Behavior-preserving (snapshot byte-identical ×3) — gives book-specific

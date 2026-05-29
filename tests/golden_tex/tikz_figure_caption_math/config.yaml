@@ -1,0 +1,11 @@
+# Phase 6: a \begin{figure} wrapping a raw \begin{tikzpicture} is marker-ized
+# CAPTION-ONLY. The image comes from the consumer's TIKZ_FIGURE_MAP override;
+# the caption math ($h_\theta$) is PRESERVED (vs pandoc's HTML figcaption
+# flattening it to unicode). The tikz node text ($a_3$) is NOT scooped.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+project_overrides: project_overrides.py
+
+chapters:
+  - { stem: input, title: "A TikZ figure" }

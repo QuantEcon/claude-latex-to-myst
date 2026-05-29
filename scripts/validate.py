@@ -24,15 +24,44 @@ def _strip_latex_comments(text: str) -> str:
     return re.sub(r'(?m)^[ \t]*%.*$', '', text)
 
 
+# Markers the preprocessors leave in the source they hand to pandoc. For a
+# book that uses ``preprocess.split:`` (e.g. Deep-Learning), ``validate`` reads
+# this *preprocessed tmp* file — where ``\begin{figure}`` / ``\cite…`` have
+# already been replaced by markers. Counting only the raw LaTeX would then
+# under-count every marker-ized construct (figures dropping to 0, ~half the
+# citations invisible), a pure measurement artifact. So count the markers too.
+_FIGURE_MARKER_RE = re.compile(r'<!--FIGURE\s+payload=([A-Za-z0-9+/=]+)-->')
+_CITE_MARKER_RE = re.compile(r'\[\[CITE[A-Z]*:')
+
+
+def _figure_marker_count(text: str) -> int:
+    """Figures contributed by ``<!--FIGURE payload=…-->`` markers — decode each
+    to honour subfigure expansion (N panels → N figures), else 1."""
+    try:
+        from transforms.figures_from_latex import decode_marker
+    except Exception:
+        # Can't decode → count each marker as one figure (still better than 0).
+        return len(_FIGURE_MARKER_RE.findall(text))
+    n = 0
+    for b64 in _FIGURE_MARKER_RE.findall(text):
+        try:
+            spec = decode_marker(b64)
+            n += len(spec.subfigures) or 1
+        except Exception:
+            n += 1
+    return n
+
+
 def _count_figures_latex(text: str) -> int:
     """Count figures the pipeline will materialize on the MyST side.
 
     A ``\\begin{figure}`` block containing N ``\\begin{subfigure}`` blocks
     emits N ``{figure}`` directives (one per subfigure label, outer
     wrapper discarded). A ``\\begin{figure}`` with no subfigures emits
-    one. GH #15.
+    one. GH #15. Figures already extracted to ``<!--FIGURE-->`` markers by
+    the preprocessor (split-source books) are counted via the marker.
     """
-    n = 0
+    n = _figure_marker_count(text)
     for m in re.finditer(r'\\begin\{figure\}(.*?)\\end\{figure\}', text, flags=re.DOTALL):
         subs = len(re.findall(r'\\begin\{subfigure\}', m.group(1)))
         n += max(subs, 1)
@@ -58,9 +87,13 @@ def count_latex(text: str) -> dict:
         # cite written as ``\citep[see][ch. 2]{key}`` is under-counted
         # (1 instance in book-dp1, 1 in book-dp2, 28 in the
         # Deep_Learning corpus — #67's Copilot review).
+        # Raw ``\cite…{`` commands PLUS natbib markers ``[[CITEP:…]]`` /
+        # ``[[CITEALT:…]]`` that ``_apply_rewrites`` left in a split book's
+        # preprocessed source (each marker is one citation command, decoded
+        # to a ``{cite:*}`` role post-pandoc).
         'citations':       len(re.findall(
             r'\\cite[a-z]*(?:\s*\[[^\]]*\]){0,2}\s*\{', text
-        )),
+        )) + len(_CITE_MARKER_RE.findall(text)),
         'cross_refs':      len(re.findall(r'\\(cref|Cref|ref|eqref|autoref)\{', text)),
     }
 

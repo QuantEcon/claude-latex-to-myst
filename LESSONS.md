@@ -51,10 +51,11 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 042 | [KaTeX errors on `\\,^X` (superscript right after thin space) — insert an empty base `\\,{}^X`](lessons/042-katex-thin-space-superscript-needs-empty-base.md) | katex | 🟡 | codified |
 | 043 | [Pandoc figure-caption emit drops citations and minipage sub-captions — recover from HTML attributes and sibling divs](lessons/043-pandoc-figure-caption-content-loss.md) | post-processing | 🟡 | codified |
 | 044 | [Migrating a construct fallback→marker re-implements a parser that starts incomplete — lock it with a .tex-rooted differential gate, not counts](lessons/044-marker-migration-needs-differential-tex-gate.md) | preprocess | 🔴 | codified |
+| 045 | [Pandoc's HTML figcaption flattens caption math for tikzpicture figures — extract the caption from source instead](lessons/045-tikzpicture-figcaption-math-flattened-by-pandoc-html.md) | post-processing | 🔴 | codified |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045
 - **regex-safety:** 002, 017, 024, 031, 035, 036
 - **pandoc:** 027
 - **preprocess:** 028, 029, 030, 039, 044
@@ -73,7 +74,7 @@ coverage.**
   construct. These *shrink* as constructs move onto the marker path (the
   marker bypasses pandoc for that construct), then survive only as a
   `golden_tex` lock: 007, 014, 015, 016, 017, 019, 020, 021, 022, 023, 026,
-  027, 028, 029, 030, 031, 032, 033, 034, 035, 036, 037, 043.
+  027, 028, 029, 030, 031, 032, 033, 034, 035, 036, 037, 043, 045.
 - **permanent** — a fact about MyST / KaTeX / sphinx-proof rendering, a
   property of our own transforms/architecture, or tooling. Not pandoc's
   fault; won't disappear by marker-izing anything: 001, 002, 003, 004, 005,

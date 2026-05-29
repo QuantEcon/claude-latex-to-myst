@@ -2,7 +2,7 @@
   "chapters": {
     "appA_glossary": {
       "citations": [
-        1,
+        20,
         20
       ],
       "cross_refs": [
@@ -112,7 +112,7 @@
     },
     "appF_solutions": {
       "citations": [
-        10,
+        12,
         12
       ],
       "cross_refs": [
@@ -134,11 +134,11 @@
     },
     "ch01_intro": {
       "citations": [
-        61,
+        111,
         130
       ],
       "cross_refs": [
-        66,
+        63,
         71
       ],
       "equations": [
@@ -156,11 +156,11 @@
     },
     "ch02_deqns": {
       "citations": [
-        37,
+        47,
         48
       ],
       "cross_refs": [
-        117,
+        109,
         120
       ],
       "equations": [
@@ -168,7 +168,7 @@
         24
       ],
       "figures": [
-        10,
+        11,
         11
       ],
       "theorems": [
@@ -178,7 +178,7 @@
     },
     "ch03_irbc": {
       "citations": [
-        18,
+        22,
         22
       ],
       "cross_refs": [
@@ -200,7 +200,7 @@
     },
     "ch04_nas": {
       "citations": [
-        17,
+        25,
         33
       ],
       "cross_refs": [
@@ -222,11 +222,11 @@
     },
     "ch05_olg": {
       "citations": [
-        13,
+        15,
         16
       ],
       "cross_refs": [
-        67,
+        64,
         69
       ],
       "equations": [
@@ -244,12 +244,12 @@
     },
     "ch06_ha_youngs": {
       "citations": [
-        61,
+        67,
         81
       ],
       "cross_refs": [
-        75,
-        75
+        72,
+        76
       ],
       "equations": [
         13,
@@ -266,11 +266,11 @@
     },
     "ch07_pinns": {
       "citations": [
-        21,
+        35,
         40
       ],
       "cross_refs": [
-        59,
+        55,
         63
       ],
       "equations": [
@@ -288,7 +288,7 @@
     },
     "ch08_ctime_ha": {
       "citations": [
-        23,
+        27,
         30
       ],
       "cross_refs": [
@@ -310,11 +310,11 @@
     },
     "ch09_surrogates_gps": {
       "citations": [
-        57,
+        83,
         91
       ],
       "cross_refs": [
-        80,
+        79,
         83
       ],
       "equations": [
@@ -322,7 +322,7 @@
         24
       ],
       "figures": [
-        10,
+        12,
         12
       ],
       "theorems": [
@@ -332,11 +332,11 @@
     },
     "ch10_smm": {
       "citations": [
-        18,
+        31,
         32
       ],
       "cross_refs": [
-        30,
+        28,
         30
       ],
       "equations": [
@@ -344,7 +344,7 @@
         12
       ],
       "figures": [
-        1,
+        2,
         2
       ],
       "theorems": [
@@ -354,11 +354,11 @@
     },
     "ch11_climate": {
       "citations": [
-        88,
+        106,
         119
       ],
       "cross_refs": [
-        228,
+        220,
         260
       ],
       "equations": [
@@ -366,7 +366,7 @@
         72
       ],
       "figures": [
-        7,
+        13,
         13
       ],
       "theorems": [
@@ -376,11 +376,11 @@
     },
     "ch12_synthesis": {
       "citations": [
-        19,
+        24,
         25
       ],
       "cross_refs": [
-        26,
+        20,
         21
       ],
       "equations": [
@@ -464,7 +464,7 @@
     },
     "preface": {
       "citations": [
-        19,
+        26,
         27
       ],
       "cross_refs": [
