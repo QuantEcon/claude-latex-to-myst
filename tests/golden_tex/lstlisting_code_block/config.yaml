@@ -1,0 +1,7 @@
+# Seeded from lesson 034: lstlisting becomes a MyST {code-block} directive
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Listing Code Block" }

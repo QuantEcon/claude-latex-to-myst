@@ -1,0 +1,7 @@
+# Seeded from lesson 003: $ inside \text{} split out (KaTeX cannot parse it)
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Text Dollar" }

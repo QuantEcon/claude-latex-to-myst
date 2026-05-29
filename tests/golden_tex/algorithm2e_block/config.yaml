@@ -1,0 +1,7 @@
+# Seeded from lesson 014: algorithm2e body parsed to {prf:algorithm}, structure preserved
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Algorithm Block" }

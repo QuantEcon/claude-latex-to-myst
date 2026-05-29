@@ -1,0 +1,7 @@
+# Seeded from lesson 017: unnumbered section \label not leaked into frontmatter label
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Notation" }

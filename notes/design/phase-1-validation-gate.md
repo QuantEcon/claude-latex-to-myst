@@ -1,6 +1,14 @@
 # Phase 1 — Validation gate + CI
 
-**Status:** ESCALATED — urgent (was: proposed) · **Effort:** ~1–2 days · **Risk:** low · **Unblocks:** Phases 2–4
+**Status:** LANDED (architecture-evolution branch, commit 1/5) · **Effort:** ~1–2 days · **Risk:** low · **Unblocks:** Phases 2–4
+
+> **Landed.** `.github/workflows/test.yml` (push + PR, pinned pandoc),
+> `tests/golden_tex/` seeded from the lesson catalogue (16 new cases +
+> `LESSON_COVERAGE.md`), the §1b differential gate
+> (`tests/test_marker_differential.py`, lesson 044), and the per-book count
+> baseline (`scripts/count_baseline.py` + `tests/baselines/*.json`). Verified:
+> a reverted #98 #1 width fix turns 5 gates red (3 golden_tex + both
+> differential tests); snapshot gate behavior-preserved ×3.
 
 > **Escalation (2026-05-29, GH #98).** A dp2/dp1 regen against the
 > figure-marker work (#95/#97) surfaced four shipped regressions — dropped

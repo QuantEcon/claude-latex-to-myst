@@ -1,0 +1,7 @@
+# Seeded from lesson 032: per-row \label inside align extracted as anchors
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Per-row Align Labels" }

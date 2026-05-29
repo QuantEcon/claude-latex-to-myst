@@ -1,0 +1,7 @@
+# Seeded from lesson 042: \,^{X} gets an empty base so KaTeX accepts it
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Thin Space Superscript" }

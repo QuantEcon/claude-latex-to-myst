@@ -1,0 +1,294 @@
+{
+  "chapters": {
+    "appA": {
+      "citations": [
+        3,
+        3
+      ],
+      "cross_refs": [
+        2,
+        2
+      ],
+      "equations": [
+        3,
+        3
+      ],
+      "figures": [
+        0,
+        0
+      ],
+      "theorems": [
+        1,
+        1
+      ]
+    },
+    "appB": {
+      "citations": [
+        2,
+        2
+      ],
+      "cross_refs": [
+        25,
+        25
+      ],
+      "equations": [
+        12,
+        12
+      ],
+      "figures": [
+        0,
+        0
+      ],
+      "theorems": [
+        1,
+        1
+      ]
+    },
+    "ch_adps": {
+      "citations": [
+        4,
+        4
+      ],
+      "cross_refs": [
+        94,
+        94
+      ],
+      "equations": [
+        20,
+        20
+      ],
+      "figures": [
+        1,
+        1
+      ],
+      "theorems": [
+        13,
+        13
+      ]
+    },
+    "ch_ctime": {
+      "citations": [
+        25,
+        25
+      ],
+      "cross_refs": [
+        200,
+        200
+      ],
+      "equations": [
+        107,
+        107
+      ],
+      "figures": [
+        5,
+        5
+      ],
+      "theorems": [
+        15,
+        15
+      ]
+    },
+    "ch_fps": {
+      "citations": [
+        14,
+        14
+      ],
+      "cross_refs": [
+        114,
+        114
+      ],
+      "equations": [
+        67,
+        66
+      ],
+      "figures": [
+        14,
+        15
+      ],
+      "theorems": [
+        17,
+        17
+      ]
+    },
+    "ch_intro": {
+      "citations": [
+        29,
+        29
+      ],
+      "cross_refs": [
+        114,
+        114
+      ],
+      "equations": [
+        61,
+        61
+      ],
+      "figures": [
+        12,
+        12
+      ],
+      "theorems": [
+        5,
+        5
+      ]
+    },
+    "ch_mcs": {
+      "citations": [
+        19,
+        19
+      ],
+      "cross_refs": [
+        110,
+        110
+      ],
+      "equations": [
+        58,
+        58
+      ],
+      "figures": [
+        7,
+        7
+      ],
+      "theorems": [
+        4,
+        4
+      ]
+    },
+    "ch_mdps": {
+      "citations": [
+        126,
+        126
+      ],
+      "cross_refs": [
+        205,
+        205
+      ],
+      "equations": [
+        114,
+        114
+      ],
+      "figures": [
+        15,
+        15
+      ],
+      "theorems": [
+        9,
+        9
+      ]
+    },
+    "ch_opt_stop": {
+      "citations": [
+        18,
+        18
+      ],
+      "cross_refs": [
+        99,
+        99
+      ],
+      "equations": [
+        57,
+        57
+      ],
+      "figures": [
+        4,
+        4
+      ],
+      "theorems": [
+        5,
+        5
+      ]
+    },
+    "ch_rdps": {
+      "citations": [
+        60,
+        60
+      ],
+      "cross_refs": [
+        307,
+        306
+      ],
+      "equations": [
+        142,
+        142
+      ],
+      "figures": [
+        2,
+        2
+      ],
+      "theorems": [
+        19,
+        19
+      ]
+    },
+    "ch_state_dep": {
+      "citations": [
+        57,
+        57
+      ],
+      "cross_refs": [
+        171,
+        171
+      ],
+      "equations": [
+        78,
+        78
+      ],
+      "figures": [
+        7,
+        7
+      ],
+      "theorems": [
+        10,
+        10
+      ]
+    },
+    "ch_val": {
+      "citations": [
+        89,
+        89
+      ],
+      "cross_refs": [
+        175,
+        175
+      ],
+      "equations": [
+        61,
+        61
+      ],
+      "figures": [
+        6,
+        5
+      ],
+      "theorems": [
+        13,
+        13
+      ]
+    },
+    "preface": {
+      "citations": [
+        6,
+        6
+      ],
+      "cross_refs": [
+        24,
+        24
+      ],
+      "equations": [
+        0,
+        0
+      ],
+      "figures": [
+        0,
+        0
+      ],
+      "theorems": [
+        0,
+        0
+      ]
+    }
+  },
+  "totals": {
+    "type_mismatches": 1,
+    "unresolved": 0
+  }
+}

@@ -1,0 +1,7 @@
+# Seeded from lesson 020: natbib citealp / citeyearpar / citep[loc] variants
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Natbib Variants" }

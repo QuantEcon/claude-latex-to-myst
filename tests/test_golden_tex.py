@@ -167,13 +167,38 @@ def test_golden_tex(case: str):
 
 
 def test_golden_tex_seeded():
-    """Guard: the #98 regression reproducers must stay in the corpus."""
+    """Guard: the seeded reproducers must stay in the corpus.
+
+    Two groups: the four #98 figure-marker regressions (the cases that
+    motivated this tier), and the Phase-1 seeding from the pandoc-quirk
+    lesson catalogue (each maps to a codified lesson — see
+    ``LESSON_COVERAGE.md``). A lesson with no reproducer here is one that
+    can silently regress, so the corpus is not allowed to shrink below this
+    set without a deliberate edit to this guard."""
     cases = set(_cases())
     required = {
+        # #98 figure-marker regression reproducers (the motivating cases)
         'figure_width_option',
         'figure_label_in_caption',
         'figure_raw_tikzpicture_with_override_bails',
         'figure_includegraphics_path_on_next_line',
+        # Phase-1 seeding from the lesson catalogue (lesson id in comment)
+        'table_float_hline',              # 019 / 025
+        'cite_textual_colon_key',         # 031 / 035
+        'cite_natbib_variants',           # 020
+        'cref_comma_split',               # 007
+        'doubled_noun_ref',               # 011
+        'math_text_dollar',               # 003
+        'math_percent_comment',           # 006
+        'math_thin_space_superscript',    # 042
+        'align_per_row_labels',           # 032
+        'description_item_labels',        # 022
+        'lstlisting_code_block',          # 034
+        'unnumbered_section_label',       # 017
+        'figure_caption_citation',        # 043
+        'algorithm2e_block',              # 014 / 023
+        'enumerate_exercise',             # 039
+        'multline_gather_labels',         # 037
     }
     missing = required - cases
-    assert not missing, f'golden_tex missing #98 reproducer cases: {sorted(missing)}'
+    assert not missing, f'golden_tex missing seeded reproducer cases: {sorted(missing)}'

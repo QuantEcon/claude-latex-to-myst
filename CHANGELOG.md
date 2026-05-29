@@ -15,6 +15,31 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Added — Phase 1: validation gate + CI (architecture evolution 1/5)
+
+The keystone safety net for the architecture-evolution work. A `.tex`-rooted
+gate that would have caught #96 and the four #98 regressions pre-merge.
+
+- **CI workflow** (`.github/workflows/test.yml`) — runs on every push *and*
+  PR (push coverage guards the phase commits before the single end-PR
+  exists), pins pandoc to the exact local version, runs the full suite
+  (unit + `tests/golden` + `tests/golden_tex` + the §1b differential gate).
+  A second, label-gated, non-blocking job (`fixture-check`) clones the
+  consumer books and diffs `validate.py` counts against committed baselines.
+- **`tests/golden_tex/` seeded from the lesson catalogue** — 16 new
+  `.tex → .md` reproducers covering the codified pandoc-quirk lessons
+  (tables/figures/citations/refs/math/algorithms/listings); coverage map in
+  `tests/golden_tex/LESSON_COVERAGE.md`, locked by `test_golden_tex_seeded`.
+- **§1b differential migration gate** (`tests/test_marker_differential.py`)
+  — runs *both* the fallback (HTML) and marker paths over a corpus of real
+  figure blocks and asserts the marker path is equal-or-better (feature-based,
+  not byte-based). The scaffold Phase 4 uses to prove the subfigure migration
+  before retiring the fallback. (Lesson 044.)
+- **Per-book count baseline** (`scripts/count_baseline.py`,
+  `tests/baselines/*.json`) — reuses `validate.py`'s counting primitives to
+  emit/check a tiny committed JSON of per-chapter counts + resolution totals
+  per fixture; catches whole-book *drops* the byte-diff tiers don't.
+
 ### Fixed — figure-marker parser completeness ([#98])
 
 A regen of all three consumer books against the figure-marker work

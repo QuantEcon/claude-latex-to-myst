@@ -1,0 +1,7 @@
+# Seeded from lesson 019/025: table-float marker path preserves \hline header row
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Table Float" }

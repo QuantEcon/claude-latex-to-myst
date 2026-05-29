@@ -1,0 +1,7 @@
+# Seeded from lesson 022: \item[Term] labels preserved via description markers
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Description List" }
