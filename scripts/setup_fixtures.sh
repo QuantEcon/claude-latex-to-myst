@@ -174,10 +174,17 @@ setup_dl() {
   fi
   # Derive the regen config: same as the committed one, but output to a
   # separate regen/ dir and read the already-generated map from ../mystmd/.
-  mkdir -p "$dst/regen"
-  cp "$dst/mystmd/config.yaml" "$dst/regen/config.yaml"
-  sedi 's|^tikz_overrides:.*|tikz_overrides: ../mystmd/tikz_overrides.py|' \
-    "$dst/regen/config.yaml"
+  # Guarded: if the upstream repo layout ever drops mystmd/config.yaml, fail
+  # with a clear message instead of an opaque `set -e` abort on the cp.
+  if [[ -f "$dst/mystmd/config.yaml" ]]; then
+    mkdir -p "$dst/regen"
+    cp "$dst/mystmd/config.yaml" "$dst/regen/config.yaml"
+    sedi 's|^tikz_overrides:.*|tikz_overrides: ../mystmd/tikz_overrides.py|' \
+      "$dst/regen/config.yaml"
+  else
+    echo "ERROR: $dst/mystmd/config.yaml not found — cannot derive regen config" >&2
+    return 1
+  fi
   echo "fixtures/book-dp-deep-learning ready ($(ls "$dst/mystmd"/*.md 2>/dev/null | wc -l | tr -d ' ') baseline .md files)"
 }
 

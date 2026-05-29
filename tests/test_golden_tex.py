@@ -107,9 +107,10 @@ def _run_pipeline(case_dir: Path) -> str:
                 [sys.executable, str(SCRIPTS / script), str(tex)],
                 check=True, capture_output=True, text=True,
             )
-        # Stage 2: pandoc latex → markdown.
+        # Stage 2: pandoc latex → markdown. Use the resolved PANDOC path the
+        # skip guard checked, so the binary run matches the one tested for.
         md = subprocess.run(
-            ['pandoc', str(tex), '-f', 'latex', '-t', 'markdown', '--wrap=none'],
+            [PANDOC, str(tex), '-f', 'latex', '-t', 'markdown', '--wrap=none'],
             check=True, capture_output=True, text=True,
         ).stdout
 
