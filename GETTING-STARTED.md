@@ -52,7 +52,7 @@ Claude will:
 1. Re-run the pipeline.
 2. Build with `myst build --html`.
 3. Group warnings (typically by `duplicate_id`, `xref_not_found`, `math_parse`, `directive_unknown`, …).
-4. Identify the highest-count category and propose either a **config rewrite** (in your book's `mystmd/config.yaml`, for book-specific shapes) or a **pipeline transform** (in the tool's `scripts/postprocess.py`, for shapes that will recur in other books).
+4. Identify the highest-count category and route the fix to the right tier: a **`config.yaml` rewrite** (declarative, book-specific shapes), a **book-side `project_overrides.py`** (programmatic but one-book — `EXTRA_REWRITES` or a fence-aware `POST_CONVERT` hook), or a **generic pipeline transform** (in the tool's `scripts/`, for shapes that recur across books). The **graduation rule:** one book needs it → book-side override; a *second* book needs it → it graduates into the generic pipeline with a lesson + golden case.
 5. Implement, re-run, recount.
 
 One regex fix usually eliminates 50–200 build errors. Repeat until the remaining errors are genuinely per-file edge cases — at that point, hand-fixing the markdown directly is appropriate (but ask Claude to do it; it can review the diff for collateral damage).

@@ -253,18 +253,32 @@ preprocess:
 #     # Global Markdown fix (every chapter)
 #     - { from: '\bSI\b', to: 'System I' }
 
-# --- TikZ handling ----------------------------------------------------------
+# --- Book-side overrides (project_overrides.py) -----------------------------
 
-# `\input{tikz/...}` references are replaced with placeholder admonitions
-# during preprocessing. The post-processor then resolves them to figure
-# directives using a Python overrides file.
+# A closed, optional book-side Python file the loader reads into the
+# ConversionContext. Path is relative to this config file. It may define any
+# of these attributes (present ones are read, the rest ignored — there is no
+# registration API or hook ordering, by design):
 #
-# Path is relative to this config file. The file should define:
-#   TIKZ_FIGURE_MAP = { "label": ("path/to/image.svg", "optional caption") }
+#   TIKZ_FIGURE_MAP   = { "label": ("path/to/image.svg", "optional caption") }
+#       Resolves `\input{tikz/...}` / inline `\begin{tikzpicture}` figures to
+#       a pre-rendered image. An outer-label entry also overrides a
+#       marker-ized subfigure float (composite image).
 #   TIKZCD_INLINE_MAP = { "chapter_stem": [ ... regex entries ... ] }
+#   EXTRA_REWRITES    = [ (pattern, repl) | (pattern, repl, [stems]), ... ]
+#       Book-only postprocess rewrites in code (vs config.postprocess.rewrites
+#       in YAML) — for when the fix needs a pattern the YAML layer can't
+#       express cleanly. Appended to the context's rewrite list.
+#   POST_CONVERT      = callable(text, stem, ctx) -> text
+#       One optional hook, run once on the fully-converted MyST near the end
+#       of process_text. MUST be fence-aware / conservative (it runs book code
+#       on final output) — respect code fences / math, bail on shapes it can't
+#       model. This is the graduation-rule "one book → book-side" tier.
 #
-# Set to null if your book has no TikZ.
-tikz_overrides: "tikz_overrides.py"
+# `project_overrides` is the preferred config key. `tikz_overrides` is the
+# retained alias (same loader); books with only the two TikZ maps may keep it.
+# Set to null if your book has no overrides.
+project_overrides: "project_overrides.py"
 
 # --- Validation -------------------------------------------------------------
 
