@@ -156,7 +156,7 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   *code* and only one book hits it, it goes in that book's
   `project_overrides.py` (the generalized successor to `tikz_overrides.py`
   — a book-side file with a **closed** set of extension points: data maps,
-  extra rewrites, and one or two named post-hooks). **The rule:** one book
+  extra rewrites, and one optional named post-hook (`POST_CONVERT`)). **The rule:** one book
   needs it → book-side override; a **second** book needs it → it graduates
   into the generic pipeline with a lesson + a golden case. This makes the
   over-/under-specialization tradeoff a *location* decision with a counting
