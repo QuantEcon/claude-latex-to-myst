@@ -93,9 +93,12 @@ derive_regen_config() {
         "$dst/regen/config.yaml" ;;
     copy)
       # tikz_overrides.py is referenced relative to the config dir, so it
-      # must sit beside the derived regen config.
-      [[ -f "$src_mystmd/tikz_overrides.py" ]] \
-        && cp "$src_mystmd/tikz_overrides.py" "$dst/regen/tikz_overrides.py" ;;
+      # must sit beside the derived regen config. Optional: an `if` (not a
+      # `&&` list) so the no-file case succeeds under `set -e` while a real
+      # cp failure still aborts.
+      if [[ -f "$src_mystmd/tikz_overrides.py" ]]; then
+        cp "$src_mystmd/tikz_overrides.py" "$dst/regen/tikz_overrides.py"
+      fi ;;
   esac
 }
 
