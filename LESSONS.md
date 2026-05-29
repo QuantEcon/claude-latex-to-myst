@@ -62,6 +62,24 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 - **myst:** 013, 040, 041
 - **tooling:** 009, 010, 038
 
+## By axis: pandoc-quirk vs permanent (Phase 4 re-tagging)
+
+A second classification, orthogonal to category, that makes catalogue
+*growth* interpretable (Phase 4 §4). **A rising quirk-count means the
+pandoc/marker boundary is leaking; a rising permanent-count is just normal
+coverage.**
+
+- **pandoc-emission quirk** — a workaround for what pandoc *emits* for a
+  construct. These *shrink* as constructs move onto the marker path (the
+  marker bypasses pandoc for that construct), then survive only as a
+  `golden_tex` lock: 007, 014, 015, 016, 017, 019, 020, 021, 022, 023, 026,
+  027, 028, 029, 030, 031, 032, 033, 034, 035, 036, 037, 043.
+- **permanent** — a fact about MyST / KaTeX / sphinx-proof rendering, a
+  property of our own transforms/architecture, or tooling. Not pandoc's
+  fault; won't disappear by marker-izing anything: 001, 002, 003, 004, 005,
+  006, 008, 009, 010, 011, 012, 013, 018, 024, 025, 038 (superseded), 039,
+  040, 041, 042, 044.
+
 ## Open (gaps to close on the next book)
 
 _None — all currently catalogued lessons are codified. New lessons will

@@ -1,0 +1,10 @@
+# #94 (Phase 4): a \begin{figure} whose \begin{subfigure} panels are plain
+# \includegraphics emits one {figure} per panel (outer label -> first panel,
+# -b suffix for the second). Math in panel captions is PRESERVED ($\alpha$),
+# unlike the old convert_html_figures path which flattened it to unicode.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Two-panel figure" }

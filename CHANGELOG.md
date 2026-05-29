@@ -15,6 +15,28 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Changed — Phase 4: surface reduction + subfigure markers + decision records (architecture evolution 4/5)
+
+The one phase that intentionally changes output (snapshot re-pinned after a
+reviewed, equal-or-better diff via the §1b differential gate).
+
+- **#94 subfigure markers** — a `\begin{figure}` whose every
+  `\begin{subfigure}` panel is a plain `\includegraphics` is now marker-ized
+  (one `{figure}` per panel; outer label → first panel, `-b`/`-c` suffix for
+  later unlabelled panels). Panels that aren't plain `\includegraphics`
+  (e.g. dp1's `\scalebox{\input{…pdf_t}}`) bail to the HTML path
+  (conservatism). An outer-label `TIKZ_FIGURE_MAP` override still wins
+  (composite-image case, dp1 `f-du` → `du.svg`) — the check moved
+  post-pandoc into `_emit_figure`, where the map is visible. Fidelity win:
+  panel-caption math (`$\alpha=0.7$`) is preserved, vs the old fallback
+  flattening it to unicode. Locked by `golden_tex/subfigure_includegraphics`.
+- **No custom AST decision record** + **HTML-fallback reassessment** in
+  CLAUDE.md: `convert_html_figures` is *retained* (not removed) because the
+  `\begin{tikzpicture}` (#98 #3) and scalebox/input-subfigure bails route
+  through it for the post-pandoc override. Revised goal: one path per
+  *fully-modelled* construct, fallback kept for the bail set.
+- **Lessons re-tagged** quirk-vs-permanent (LESSONS.md "By axis").
+
 ### Changed — Phase 3: ConversionContext state threading (architecture evolution 3/5)
 
 Behavior-preserving (snapshot byte-identical ×3) removal of the module-level

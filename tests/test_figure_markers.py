@@ -74,15 +74,38 @@ def test_parse_balanced_braces_in_caption():
     assert spec.caption == 'Some \\textbf{bold} text and \\citet{X} too.'
 
 
-def test_parse_bails_on_subfigure():
-    """Phase 1 bails on any ``\\begin{subfigure}`` — those blocks fall
-    through to ``convert_html_figures`` for the existing handling
-    (issue #94 tracks Phase 2)."""
+def test_parse_subfigure_includegraphics_panels():
+    """#94 (Phase 4): a subfigure float whose every panel is a plain
+    ``\\includegraphics`` is fully modelled — parse one panel spec per
+    subfigure, with the outer label captured on the spec."""
     body = (
         '\\begin{subfigure}{0.5\\textwidth}\n'
         '\\includegraphics{a.pdf}\n'
+        '\\caption{Panel A}\n'
         '\\end{subfigure}\n'
-        '\\caption{Outer.}\n'
+        '\\begin{subfigure}{0.5\\textwidth}\n'
+        '\\includegraphics{b.pdf}\n'
+        '\\caption{Panel B}\n'
+        '\\end{subfigure}\n'
+        '\\caption{\\label{f:outer} Outer.}\n'
+    )
+    spec = parse_figure_block(body, placement=None)
+    assert spec is not None
+    assert spec.name == 'f-outer'
+    assert [s['image_src'] for s in spec.subfigures] == ['a.pdf', 'b.pdf']
+    assert spec.image_src is None  # the float itself carries no single image
+
+
+def test_parse_bails_on_scalebox_input_subfigure():
+    """#94 conservatism: a subfigure panel that is NOT a plain
+    ``\\includegraphics`` (dp1's ``\\scalebox{\\input{…pdf_t}}``) can't be
+    modelled, so the whole float bails to ``convert_html_figures``."""
+    body = (
+        '\\begin{subfigure}[t]{0.4\\textwidth}\n'
+        '\\scalebox{0.45}{\\input{../figures/du_concave.pdf_t}}\n'
+        '\\caption{}\n'
+        '\\end{subfigure}\n'
+        '\\caption{\\label{f:du} Du.}\n'
     )
     assert parse_figure_block(body, placement=None) is None
 
@@ -703,10 +726,10 @@ def test_e2e_paren_leading_caption_not_math_escaped():
 
 
 @pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
-def test_e2e_subfigure_block_bails_to_existing_path():
-    """A figure block containing ``\\begin{subfigure}`` is left unchanged
-    by the marker preprocessor (Phase 1 bail). Pandoc handles it; the
-    existing ``convert_html_figures`` path takes over post-pandoc."""
+def test_e2e_subfigure_includegraphics_marker_ized():
+    """#94 (Phase 4): a figure whose subfigure panels are plain
+    ``\\includegraphics`` is now marker-ized by the preprocessor (one marker
+    for the float, expanded to N ``{figure}`` directives post-pandoc)."""
     src = (
         '\\begin{figure}\n'
         '\\begin{subfigure}{0.5\\textwidth}\n'
@@ -718,6 +741,25 @@ def test_e2e_subfigure_block_bails_to_existing_path():
         '\\end{figure}\n'
     )
     out = pre.process_text(src)
-    # No FIGURE marker emitted — block unchanged.
+    # A FIGURE marker IS emitted; the raw subfigure env is gone.
+    assert '<!--FIGURE' in out
+    assert '\\begin{subfigure}' not in out
+
+
+@pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
+def test_e2e_scalebox_subfigure_block_still_bails():
+    """A subfigure float with a non-``\\includegraphics`` panel
+    (``\\scalebox{\\input{…}}``) still bails — left for the HTML path."""
+    src = (
+        '\\begin{figure}\n'
+        '\\begin{subfigure}{0.5\\textwidth}\n'
+        '\\scalebox{0.45}{\\input{../figures/x.pdf_t}}\n'
+        '\\caption{}\n'
+        '\\end{subfigure}\n'
+        '\\caption{Outer.}\n'
+        '\\label{fig:outer}\n'
+        '\\end{figure}\n'
+    )
+    out = pre.process_text(src)
     assert '<!--FIGURE' not in out
     assert '\\begin{subfigure}' in out

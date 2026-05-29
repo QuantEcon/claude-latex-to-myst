@@ -45,23 +45,31 @@ from transforms.figures_from_latex import (  # noqa: E402
 
 
 def _flatten_figure_text(spec: FigureSpec) -> list[str]:
-    """Flatten a FigureSpec's caption + sub-captions into a single
-    ordered list for batched pandoc conversion. Order must match
-    ``_unflatten_figure_text``."""
+    """Flatten a FigureSpec's caption + sub-captions + subfigure-panel
+    captions into a single ordered list for batched pandoc conversion. Order
+    must match ``_unflatten_figure_text``."""
     flat: list[str] = [spec.caption or '']
     flat.extend(spec.sub_captions)
+    flat.extend((sf.get('caption') or '') for sf in spec.subfigures)
     return flat
 
 
 def _unflatten_figure_text(spec: FigureSpec, converted: list[str]) -> FigureSpec:
     """Apply ``converted`` (markdown) back to ``spec``. Order must match
-    ``_flatten_figure_text``."""
+    ``_flatten_figure_text``: [caption] + sub_captions + panel captions."""
     new_caption = converted[0] if spec.caption is not None else None
     if spec.caption is None and converted:
         # Slot 0 was empty (no caption) — skip the empty placeholder.
         pass
     n_sub = len(spec.sub_captions)
     new_subs = list(converted[1 : 1 + n_sub])
+    n_sf = len(spec.subfigures)
+    panel_caps = converted[1 + n_sub : 1 + n_sub + n_sf]
+    new_subfigures = []
+    for sf, cap in zip(spec.subfigures, panel_caps):
+        panel = dict(sf)
+        panel['caption'] = cap or None
+        new_subfigures.append(panel)
     return FigureSpec(
         name=spec.name,
         caption=new_caption,
@@ -70,6 +78,7 @@ def _unflatten_figure_text(spec: FigureSpec, converted: list[str]) -> FigureSpec
         tikz_input=spec.tikz_input,
         sub_captions=new_subs,
         placement=spec.placement,
+        subfigures=new_subfigures,
     )
 
 

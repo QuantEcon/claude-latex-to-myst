@@ -182,6 +182,7 @@ def test_golden_tex_seeded():
         'figure_label_in_caption',
         'figure_raw_tikzpicture_with_override_bails',
         'figure_includegraphics_path_on_next_line',
+        'subfigure_includegraphics',      # #94 (Phase 4)
         # Phase-1 seeding from the lesson catalogue (lesson id in comment)
         'table_float_hline',              # 019 / 025
         'cite_textual_colon_key',         # 031 / 035

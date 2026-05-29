@@ -248,6 +248,32 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   `transforms/_markers.py`. Retiring the post-pandoc HTML fallbacks (one
   path per construct) is the Phase-4 payoff; the boundary is locked now so
   it stops moving by accretion.
+- **No custom LaTeX → AST → MyST rewrite (Phase 4 decision record).**
+  Evaluated in [DESIGN-REVIEW §2](notes/DESIGN-REVIEW.md) and declined.
+  Pandoc's math/cite/prose reader is ~15 years hardened and would take
+  multiple quarters to match; a from-scratch parser is pure new bug surface.
+  The marker-hybrid already replaces pandoc exactly where it's weak
+  (structure) while keeping it where it's strong (inline prose, math, native
+  cites, ref plumbing). Revisit only if the marker boundary proves unable to
+  cover a structural construct that matters — which has not happened across
+  tables, figures (incl. subfigures), algorithms, listings, description, and
+  enumerate.
+- **The HTML fallbacks are NOT fully retired — deliberately (revised in
+  Phase 4).** The original Phase-4 plan was "subfigure (#94) is the last
+  shape on the fallback; then delete `convert_html_figures`." Reality (from
+  doing it): `convert_html_figures` + `resolve_tikz_figures` stay
+  **load-bearing** for the constructs the marker preprocessor *deliberately
+  bails on* — a `\begin{figure}` wrapping a raw `\begin{tikzpicture}`
+  (#98 #3) and subfigure panels that aren't plain `\includegraphics` (dp1's
+  `\scalebox{\input{…pdf_t}}`). Those bail pre-pandoc and rely on the
+  post-pandoc `TIKZ_FIGURE_MAP` override. So the rule is **one path per
+  *fully-modelled* construct, fallback retained for the bail set** — not
+  "delete the fallback." #94 moved the `\includegraphics`-subfigure shape
+  onto the marker path; the bail set keeps the fallback. An outer-label
+  override always wins post-pandoc, so a marker-ized subfigure float with a
+  composite-image override still renders the override (the check lives in
+  `figures_from_latex._emit_figure`, where the map is visible — the
+  preprocessor can't see it).
 
 ## Working-style conventions
 
