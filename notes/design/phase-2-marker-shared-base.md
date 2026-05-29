@@ -4,8 +4,8 @@
 
 ## Problem
 
-Five of eight preprocess scripts are marker-pattern preprocessors
-(tables, figures, algorithms, listings, description, enumerate). They
+Several preprocess scripts are marker-pattern preprocessors (tables, figures,
+algorithms, listings, description, enumerate). They
 re-implement the same scaffolding. Concretely,
 [`_apply_figure_markers.py`](../../scripts/_apply_figure_markers.py) and
 `_apply_table_markers.py` share, near line-for-line:
