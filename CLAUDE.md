@@ -167,6 +167,29 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   [phase 3](notes/design/phase-3-conversion-context.md) (overrides
   contribute to the context, never mutate module globals); design in
   [phase 5](notes/design/phase-5-book-overrides.md).
+- **Route every fix by repo tier.** Three repos can hold a change; pick
+  deliberately, because the tier decides *where* it's committed and whether
+  it's a code change at all.
+  1. **`claude-latex-to-myst` (this repo) — the converter.** Genuine
+     conversion bugs and transforms that generalize across books are fixed
+     here (the bulk of the work), each with a golden case. Default tier:
+     prefer a converter fix whenever the tool *can* emit correct, supported
+     MyST.
+  2. **A consuming book repo (`book-dp1`/`book-dp2`/…) — local/editorial.**
+     One-book editorial polish, a hand-curated file, or a book-only
+     `config.yaml` rewrite goes to that book's **`mystmd-conversion` branch
+     only** (never its default branch) — or is filed as an **issue** on the
+     book repo. This is the book-overrides graduation rule's "one book →
+     book-side" tier. A gitignored `fixtures/<book>/` copy is for local
+     testing, **not** a book-side fix.
+  3. **`QuantEcon/mystmd` — the publisher.** An **unsupported MyST feature /
+     rendering incompatibility** (the tool emits correct, spec-valid MyST
+     that mystmd can't publish) is an **issue only** on `QuantEcon/mystmd` —
+     never a workaround here that degrades output. Record the affected
+     fixture as documented drift.
+
+  Decision test when torn between tier 1 and tier 3: **malformed MyST ⇒ tier
+  1 (fix the converter); valid-but-unrendered ⇒ tier 3 (file upstream).**
 - **`uv` is the project manager.** Not pip, not conda, not raw venv. Per
   lesson [010](lessons/010-pep-668-system-python.md).
 - **No Perl in the pipeline.** Per lesson [009](lessons/009-bsd-sed-mapfile-portability.md).
