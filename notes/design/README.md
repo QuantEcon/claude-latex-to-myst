@@ -41,7 +41,8 @@ Validation therefore uses **two baselines**, and they must not be confused:
 - the **worked-on `mystmd/`** — the parity *target*, a gap to drive down,
   never a hard gate and never overwritten by the tool.
 
-`scripts/validate_fixture.sh` implements both (`--against snapshot` for the
+The fixture-validation harness (`scripts/validate_fixture.sh`, added with the
+common-fixture-validation work) implements both (`--against snapshot` for the
 gate, default for the parity gap). Because safety rides on the snapshot,
 parity is pursued *across* the refactoring, not as a precondition.
 
