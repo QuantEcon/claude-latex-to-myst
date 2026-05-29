@@ -22,6 +22,29 @@ The antidote to both is the same: **make the hybrid boundary explicit,
 thread state cleanly, and guard every change with a real end-to-end
 gate.** That shrinks surface instead of growing it.
 
+## The parity objective (why we keep three real books)
+
+Running parallel to the phases is a standing objective: **get close to
+parity across all three real-world fixtures** (`book-dp1`, `book-dp2`,
+`book-dp-deep-learning`). Synthetic cases can't supply the translation
+complexity real books do, so the books are the benchmark — and every gap
+closed gets a `golden_tex` reproducer so the corpus grows as understanding
+does. Parity is aspirational: the worked-on `mystmd/` on each
+`mystmd-conversion` branch has hand-edits the deterministic tool won't
+reproduce, so "close / only documented drift" is the bar, not byte-equality.
+
+Validation therefore uses **two baselines**, and they must not be confused:
+
+- a **pinned snapshot of current tool output** per book — the
+  refactor-safety gate; behavior-preserving phases must keep regen
+  byte-identical to it (tool-vs-tool, always achievable);
+- the **worked-on `mystmd/`** — the parity *target*, a gap to drive down,
+  never a hard gate and never overwritten by the tool.
+
+`scripts/validate_fixture.sh` implements both (`--against snapshot` for the
+gate, default for the parity gap). Because safety rides on the snapshot,
+parity is pursued *across* the refactoring, not as a precondition.
+
 ## Phases (priority order)
 
 Each phase is a self-contained unit of work with its own design doc,
