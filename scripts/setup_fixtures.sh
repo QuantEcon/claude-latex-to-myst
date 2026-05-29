@@ -46,11 +46,13 @@ BOOK_DP2_SRC="${BOOK_DP2_SRC:-$PROJECT_DIR/../book-dp2}"
 BOOK_DL_SRC="${BOOK_DL_SRC:-$PROJECT_DIR/../Deep_Learning_for_Solving_And_Estimating_Dynamic_Economic_Models}"
 
 REFRESH=0
+REGEN_ONLY=0
 TARGETS=()
 
 for arg in "$@"; do
   case "$arg" in
     --refresh) REFRESH=1 ;;
+    --regen-only) REGEN_ONLY=1 ;;
     dp1|dp2|deep-learning) TARGETS+=("$arg") ;;
     --help|-h)
       sed -n '2,/^# ===/p' "$0" | sed 's/^# \{0,1\}//'
@@ -62,6 +64,62 @@ done
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(dp1 dp2 deep-learning)
 
 mkdir -p "$FIXTURES_DIR"
+
+# Derive a fixture's regen/ config from a mystmd/config.yaml. The source
+# config's source_dir/output_dir/tmp_dir are relative to the config file's
+# own directory (convert.sh resolves them that way), and the fixture's
+# regen/ dir sits at the same depth as the mystmd/ dir — so the config works
+# verbatim, with output_dir: "." landing in regen/ instead of clobbering the
+# committed mystmd/ baseline. This is what makes all three fixtures validate
+# identically (diff mystmd/ <-> regen/) via scripts/validate_fixture.sh.
+#
+# tikz mode (4th arg):
+#   copy          — copy tikz_overrides.py beside the regen config (dp1/dp2:
+#                   the map is a static file we can self-contain).
+#   reuse-mystmd  — point tikz_overrides at ../mystmd/tikz_overrides.py (DL:
+#                   the map + pre-rendered SVGs live in mystmd/ and
+#                   render_tikz.py is not re-run during regen).
+derive_regen_config() {
+  local src_mystmd="$1" dst="$2" name="$3" tikz_mode="${4:-copy}"
+  if [[ ! -f "$src_mystmd/config.yaml" ]]; then
+    echo "ERROR: $src_mystmd/config.yaml not found — cannot derive regen config for $name" >&2
+    return 1
+  fi
+  mkdir -p "$dst/regen"
+  cp "$src_mystmd/config.yaml" "$dst/regen/config.yaml"
+  case "$tikz_mode" in
+    reuse-mystmd)
+      sedi 's|^tikz_overrides:.*|tikz_overrides: ../mystmd/tikz_overrides.py|' \
+        "$dst/regen/config.yaml" ;;
+    copy)
+      # tikz_overrides.py is referenced relative to the config dir, so it
+      # must sit beside the derived regen config.
+      [[ -f "$src_mystmd/tikz_overrides.py" ]] \
+        && cp "$src_mystmd/tikz_overrides.py" "$dst/regen/tikz_overrides.py" ;;
+  esac
+}
+
+# Re-derive only the regen/ config for a fixture, without rm -rf'ing it.
+# Lets a fixture pick up a source-config change cheaply, and is the only safe
+# way to (re)build the regen config for the DL fixture when it is a full git
+# clone (a destructive --refresh would wipe its .git). dp1/dp2 derive from
+# the sibling source repo's mystmd/; DL derives from its own committed mystmd/.
+regen_only() {
+  case "$1" in
+    dp1) derive_regen_config "$BOOK_DP1_SRC/mystmd" "$FIXTURES_DIR/book-dp1" book-dp1 copy ;;
+    dp2) derive_regen_config "$BOOK_DP2_SRC/mystmd" "$FIXTURES_DIR/book-dp2" book-dp2 copy ;;
+    deep-learning)
+      derive_regen_config "$FIXTURES_DIR/book-dp-deep-learning/mystmd" \
+        "$FIXTURES_DIR/book-dp-deep-learning" book-dl reuse-mystmd ;;
+  esac && echo "fixtures/$(_fixture_dir "$1")/regen/config.yaml re-derived"
+}
+
+_fixture_dir() {
+  case "$1" in
+    dp1) echo book-dp1 ;; dp2) echo book-dp2 ;;
+    deep-learning) echo book-dp-deep-learning ;;
+  esac
+}
 
 setup_dp1() {
   local dst="$FIXTURES_DIR/book-dp1"
@@ -100,6 +158,7 @@ setup_dp1() {
   if [[ -d "$BOOK_DP1_SRC/figures" ]]; then
     cp -R "$BOOK_DP1_SRC/figures" "$dst/figures"
   fi
+  derive_regen_config "$BOOK_DP1_SRC/mystmd" "$dst" book-dp1
   echo "fixtures/book-dp1 ready ($(find "$dst/book" -name '*.tex' | wc -l | tr -d ' ') .tex files)"
 }
 
@@ -131,6 +190,7 @@ setup_dp2() {
       [[ -f "$f" ]] && cp "$f" "$dst/mystmd/"
     done
   fi
+  derive_regen_config "$BOOK_DP2_SRC/mystmd" "$dst" book-dp2
   echo "fixtures/book-dp2 ready ($(find "$dst" -maxdepth 1 -name '*.tex' | wc -l | tr -d ' ') .tex files)"
 }
 
@@ -172,21 +232,17 @@ setup_dl() {
     done
     [[ -d "$BOOK_DL_SRC/mystmd/figures" ]] && cp -R "$BOOK_DL_SRC/mystmd/figures" "$dst/mystmd/figures"
   fi
-  # Derive the regen config: same as the committed one, but output to a
-  # separate regen/ dir and read the already-generated map from ../mystmd/.
-  # Guarded: if the upstream repo layout ever drops mystmd/config.yaml, fail
-  # with a clear message instead of an opaque `set -e` abort on the cp.
-  if [[ -f "$dst/mystmd/config.yaml" ]]; then
-    mkdir -p "$dst/regen"
-    cp "$dst/mystmd/config.yaml" "$dst/regen/config.yaml"
-    sedi 's|^tikz_overrides:.*|tikz_overrides: ../mystmd/tikz_overrides.py|' \
-      "$dst/regen/config.yaml"
-  else
-    echo "ERROR: $dst/mystmd/config.yaml not found — cannot derive regen config" >&2
-    return 1
-  fi
+  # Derive the regen config from the (just-copied) committed config, reusing
+  # the pre-rendered TikZ map in ../mystmd/ (render_tikz.py is not re-run).
+  derive_regen_config "$dst/mystmd" "$dst" book-dl reuse-mystmd || return 1
   echo "fixtures/book-dp-deep-learning ready ($(ls "$dst/mystmd"/*.md 2>/dev/null | wc -l | tr -d ' ') baseline .md files)"
 }
+
+# --regen-only: re-derive just the regen/ config for each target, no rm -rf.
+if [[ "$REGEN_ONLY" -eq 1 ]]; then
+  for t in "${TARGETS[@]}"; do regen_only "$t"; done
+  exit 0
+fi
 
 for t in "${TARGETS[@]}"; do
   case "$t" in
