@@ -150,6 +150,40 @@ def test_natbib_marker_citeyearpar_wraps_in_parens():
     assert '({cite:year}`bellman1957`)' in out
 
 
+@pytest.mark.parametrize("marker_role,decoded_role", [
+    ('CITEP',  'cite:p'),
+    ('CITE',   'cite'),
+])
+def test_natbib_marker_unescaped_brackets_decoded(marker_role, decoded_role):
+    """#98 #3 regression: a ``\\begin{figure}`` wrapping a raw
+    ``\\begin{tikzpicture}`` bails the marker path and flows through pandoc
+    whole-file, which emits the caption into an HTML ``<figcaption>`` with
+    the natbib bracket marker **unescaped** (``[[CITEP:key]]``) rather than
+    the markdown-escaped ``\\[\\[CITEP:key\\]\\]`` the marker path produces.
+    The decoder must handle both, or the marker leaks verbatim into the
+    rendered caption (DL ch01/02/04, re-opened by the #98 #3 tikz bail)."""
+    src = f'concentrate [[{marker_role}:aggarwal2001surprising]]; this is why'
+    out = postprocess.decode_natbib_markers(src)
+    assert '{' + decoded_role + '}`aggarwal2001surprising`' in out
+    assert '[[' not in out
+
+
+def test_natbib_marker_unescaped_multi_key():
+    """Unescaped multi-key form (comma-separated, as it appears in a
+    bailed figure caption) decodes with keys normalised."""
+    out = postprocess.decode_natbib_markers(
+        'again [[CITEP:belkin2019reconciling, nakkiran2020deep]].'
+    )
+    assert '{cite:p}`belkin2019reconciling,nakkiran2020deep`' in out
+
+
+def test_natbib_decode_leaves_plain_double_brackets_alone():
+    """The unescaped-form tolerance must not match ordinary ``[[text]]``
+    that lacks a ``CITE…:`` prefix (no false positives)."""
+    src = 'see [link](#eq-x) and a [[wiki style]] note'
+    assert postprocess.decode_natbib_markers(src) == src
+
+
 def test_textual_cite_in_mid_sentence_with_following_clause():
     """Common shape: ``..., per @KEY, the next ...`` — comma must
     terminate the key cleanly on both sides."""

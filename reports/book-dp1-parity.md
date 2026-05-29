@@ -175,3 +175,39 @@ The dp1 migration is no longer tracked here — the handover briefing now
 lives in the `book-dp1` repo (see commit `2cd78ae`). For the up-to-date
 list of pipeline changes since this report was written, see
 [CHANGELOG.md](../CHANGELOG.md) under `[Unreleased]`.
+
+---
+
+## Status update (2026-05-29) — #98 figure-marker regen audit
+
+dp1 is where #98 #4 (image dropped when `\includegraphics`'s `{path}` is on
+the next line) bites: `f-finite_lq_1` is `\scalebox{0.64}{\includegraphics[trim=…,clip]\n  {../figures/finite_lq_1.pdf}}`.
+Fixed by allowing `\s*` between `[opts]` and `{path}` in
+`_INCLUDEGRAPHICS_RE` — the figure is no longer dropped.
+
+While auditing, found the dp1 **regen fixture config was a deliberately-minimal
+smoke-test config** missing 4 of the 5 preprocess rewrites the canonical
+`book-dp1/mystmd/config.yaml` carries (scalebox×2, tikz-input placeholder,
+xfig `.pdf_t`). Without the xfig rewrite, the 5 `\input{…/foo.pdf_t}` overlay
+figures fell through to generic admonitions. **Ported all four verbatim into
+`fixtures/book-dp1/regen/config.yaml`** (book-specific config, not a pipeline
+change). Result — dp1 figures now at **full parity with the committed
+baseline**: every chapter has identical `{figure}` counts, 0 unresolved
+admonitions in both (`ch_intro` 12→12, `ch_mdps` 14→15, etc.).
+
+**`validate.py` status (honest):** does not exit 0; the residual figure
+mismatches are **pre-existing** (identical in baseline-validate): `ch_val`
+6/5 (`\begin{subfigure}` — #94), `ch_fps` 14/15, plus the usual unlabeled-eq
+and multi-`\cref` count quirks and one `{eq}\`ex-vmeml\`` directive-type
+mismatch. None introduced by this branch.
+
+**Documented drift (unchanged from this report's body):** the large
+frontmatter/whitespace stylistic divergence stands. One figure-path note: the
+`../figures/…` source paths emit `{figure} ../figures/foo.pdf` (the marker
+emitter's `'/' not in path` rule) vs the legacy baseline's
+`figures/../figures/foo.pdf` (its `startswith('figures/')` rule); both resolve
+to the same copied asset. The xfig figures emit `figures/foo.pdf` and match
+the baseline exactly.
+
+Locked by `tests/golden_tex/figure_includegraphics_path_on_next_line`. See
+lesson [044](../lessons/044-marker-migration-needs-differential-tex-gate.md).

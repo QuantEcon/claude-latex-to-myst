@@ -1,0 +1,9 @@
+# #98 #1 reproducer: \includegraphics[width=0.95\textwidth] must emit
+# `:width: 95%` (the marker path bypasses pandoc for the figure body, so the
+# percentage conversion happens in figures_from_latex._convert_includegraphics_width).
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Width option" }

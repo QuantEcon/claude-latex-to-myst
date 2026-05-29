@@ -41,6 +41,7 @@ class FigureSpec:
     name: str | None = None            # \label{...} → MyST anchor (colon→hyphen)
     caption: str | None = None         # \caption{...} body, markdown form
     image_src: str | None = None       # \includegraphics{path}, or None
+    width: str | None = None           # \includegraphics[width=…] → MyST :width:
     tikz_input: str | None = None      # \input{tikz/stem} → "stem", or None
     sub_captions: list[str] = field(default_factory=list)
     placement: str | None = None       # [ht]?  preserved for fidelity
@@ -54,10 +55,47 @@ _FIGURE_BLOCK_RE = re.compile(
     re.DOTALL,
 )
 _SUBFIGURE_RE = re.compile(r'\\begin\{subfigure\}')
+_TIKZPICTURE_RE = re.compile(r'\\begin\{tikzpicture\}')
 _LABEL_RE = re.compile(r'\\label\{([^}]+)\}')
-_INCLUDEGRAPHICS_RE = re.compile(r'\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}')
+# group(1) = the optional ``[opts]`` (or None), group(2) = the ``{path}``.
+# ``\s*`` between them tolerates an ``\includegraphics[…]`` whose ``{path}``
+# sits on the next line (#98 #4 — dp1 ``f-finite_lq_1``).
+_INCLUDEGRAPHICS_RE = re.compile(r'\\includegraphics(\[[^\]]*\])?\s*\{([^}]+)\}')
 _TIKZ_INPUT_RE = re.compile(r'\\input\{tikz/([^}]+?)(?:\.tex)?\}')
 _FOOTNOTESIZE_RE = re.compile(r'\{\\footnotesize\b')
+
+
+def _convert_includegraphics_width(opt: str | None) -> str | None:
+    """Convert the ``width=`` value of an ``\\includegraphics`` option
+    string to a MyST ``:width:`` value, matching pandoc's LaTeX→Markdown
+    behaviour (``0.95\\textwidth`` → ``95%``).
+
+    - ``<coef>\\textwidth`` / ``\\linewidth`` / ``\\columnwidth`` /
+      ``\\paperwidth`` → ``<coef*100>%`` (e.g. ``0.8\\linewidth`` → ``80%``).
+    - a bare ``\\textwidth`` (implied coefficient 1.0) → ``100%``.
+    - an absolute length (``3cm``, ``200pt``, ``300px``) → emitted verbatim.
+
+    Returns ``None`` when there is no ``width=`` key. This restores the
+    ``:width:`` the marker path dropped (#98 #1) — the old
+    ``figures.convert_figures`` path received the already-converted
+    percentage from pandoc; the marker path bypasses pandoc for the figure
+    body, so the conversion is reproduced here.
+    """
+    if not opt:
+        return None
+    m = re.search(r'\bwidth\s*=\s*([^,\]]+)', opt)
+    if not m:
+        return None
+    val = m.group(1).strip()
+    rel = re.fullmatch(
+        r'([0-9]*\.?[0-9]+)\s*\\(?:text|line|column|paper)width', val
+    )
+    if rel:
+        pct = float(rel.group(1)) * 100
+        return f'{pct:g}%'
+    if re.fullmatch(r'\\(?:text|line|column|paper)width', val):
+        return '100%'
+    return val
 
 
 def _find_balanced_brace(s: str, start: int) -> int:
@@ -128,6 +166,19 @@ def parse_figure_block(body: str, placement: str | None) -> FigureSpec | None:
     if _SUBFIGURE_RE.search(body):
         return None  # Phase 2 — issue #94
 
+    # A ``\begin{figure}`` wrapping a raw ``\begin{tikzpicture}`` is left
+    # for the post-pandoc path (``convert_html_figures`` →
+    # ``resolve_tikz_figures``), which CAN consult ``TIKZ_FIGURE_MAP`` to
+    # substitute the consumer's pre-rendered SVG. This preprocessor runs as
+    # a separate process and cannot see that map, so the decision to bail
+    # must be purely syntactic — otherwise
+    # ``_extract_footnotesize_subcaptions`` scoops the tikz ``{\footnotesize
+    # …}`` node labels in as sub-captions and they leak above the override
+    # caption (#98 #3). Mirrors the ``subfigure`` bail above; "bail unless
+    # fully modelled" per ``design/phase-2-marker-shared-base.md``.
+    if _TIKZPICTURE_RE.search(body):
+        return None
+
     # Phase 1 is single-figure scope. Multi-image / multi-tikz layouts
     # (side-by-side panels without ``\begin{subfigure}``) would silently
     # drop all but the first image if we proceeded — so bail and let
@@ -152,13 +203,23 @@ def parse_figure_block(body: str, placement: str | None) -> FigureSpec | None:
     # the spec.
     caption_text, _span = _extract_caption(body)
     if caption_text is not None:
-        spec.caption = caption_text
+        # Captions routinely embed their own \label (the LaTeX idiom
+        # ``\caption{\label{fig:x} Text}``). The label is captured
+        # separately as ``spec.name`` above; leaving it in the caption
+        # makes pandoc emit a ``[]{#…}`` span plus a stray leading space
+        # that survives into the rendered caption (#98 #2). Strip every
+        # ``\label`` here, at the assembly point, before the batch pandoc
+        # pass ever sees it.
+        caption_text = _LABEL_RE.sub('', caption_text).strip()
+        spec.caption = caption_text or None
 
-    # \includegraphics{path} or \input{tikz/stem} — bail above
-    # guarantees at most one of either.
+    # \includegraphics[opts]{path} or \input{tikz/stem} — bail above
+    # guarantees at most one of either. group(2) is the path; group(1) the
+    # optional ``[opts]`` we mine for ``width=`` (#98 #1).
     img_m = _INCLUDEGRAPHICS_RE.search(body)
     if img_m:
-        spec.image_src = img_m.group(1)
+        spec.image_src = img_m.group(2)
+        spec.width = _convert_includegraphics_width(img_m.group(1))
     else:
         tikz_m = _TIKZ_INPUT_RE.search(body)
         if tikz_m:
@@ -240,6 +301,7 @@ def decode_marker(payload_b64: str) -> FigureSpec:
         name=data.get('name'),
         caption=data.get('caption'),
         image_src=data.get('image_src'),
+        width=data.get('width'),
         tikz_input=data.get('tikz_input'),
         sub_captions=list(data.get('sub_captions') or []),
         placement=data.get('placement'),
@@ -305,10 +367,14 @@ def _emit_figure(spec: FigureSpec) -> str:
     body = '\n\n'.join(body_parts)
 
     def _emit_figure_directive(path: str, name: str | None,
-                               cap_body: str) -> str:
+                               cap_body: str, width: str | None = None) -> str:
         lines = [f'```{{figure}} {path}']
         if name:
             lines.append(f':name: {name}')
+        # ``:name:`` then ``:width:`` — matches the option order the legacy
+        # ``figures.convert_figures`` emitter used (#98 #1).
+        if width:
+            lines.append(f':width: {width}')
         lines.append('')
         if cap_body:
             lines.append(cap_body)
@@ -324,7 +390,7 @@ def _emit_figure(spec: FigureSpec) -> str:
         path = spec.image_src
         if '/' not in path:
             path = 'figures/' + path
-        return _emit_figure_directive(path, spec.name, body)
+        return _emit_figure_directive(path, spec.name, body, spec.width)
 
     # Priority 2: TIKZ_FIGURE_MAP lookup by label. Covers both inline
     # ``\begin{tikzpicture}`` bodies and ``\input{tikz/stem}`` references

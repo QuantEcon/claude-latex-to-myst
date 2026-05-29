@@ -1,0 +1,15 @@
+# #98 #3 reproducer: a \begin{figure} wrapping a raw \begin{tikzpicture} must
+# bail the marker preprocessor (purely syntactic — the preprocessor can't see
+# TIKZ_FIGURE_MAP) and flow through pandoc to the post-pandoc resolver, which
+# substitutes the consumer's pre-rendered SVG via the map. The {\footnotesize
+# $a_3$} tikz node labels must NOT leak as sub-captions, and the \citep in the
+# caption must decode (the post-pandoc path leaves the bracket marker
+# unescaped, so decode_natbib_markers tolerates both forms — the #92 re-open
+# that the #98 #3 bail would otherwise cause).
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+tikz_overrides: "tikz_overrides.py"
+
+chapters:
+  - { stem: input, title: "Raw tikzpicture with override" }

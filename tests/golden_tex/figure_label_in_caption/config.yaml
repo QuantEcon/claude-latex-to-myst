@@ -1,0 +1,11 @@
+# #98 #2 reproducer: the \caption{\label{fig:x} Text} idiom. The label is
+# captured separately as the figure :name:; if it is left inside the caption,
+# pandoc emits a []{#...} span and a stray leading space survives into the
+# rendered caption. parse_figure_block strips the \label before the batch
+# pandoc pass, so the caption is clean and there is no leading space.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Label embedded in caption" }

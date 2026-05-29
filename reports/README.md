@@ -24,6 +24,8 @@ multiple times across pipeline revisions, append a date or revision suffix.
 - [`book-dp2-parity.md`](book-dp2-parity.md) — extraction parity test against the
   originating project
 - [`book-dp1-parity.md`](book-dp1-parity.md) — first cross-project parity test
+- [`book-dp-deep-learning-parity.md`](book-dp-deep-learning-parity.md) — inline-TikZ
+  book; #98 #3 tikz-bail restores 88/88 figures off the held R13 pin
 
 ## Re-running parity tests
 

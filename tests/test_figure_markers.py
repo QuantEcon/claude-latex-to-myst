@@ -54,6 +54,7 @@ def test_parse_simple_figure_extracts_label_caption_image():
     assert spec.name == 'fig-plot'                 # colon → hyphen
     assert spec.caption == 'A plot.'
     assert spec.image_src == 'plot.pdf'
+    assert spec.width is None                      # no [width=…] option
     assert spec.tikz_input is None
     assert spec.sub_captions == []
     assert spec.placement == 'ht'
@@ -86,24 +87,29 @@ def test_parse_bails_on_subfigure():
     assert parse_figure_block(body, placement=None) is None
 
 
-def test_parse_bare_footnotesize_subcaption_extracted():
-    """Issue #93: ``{\\footnotesize ...}`` directly inside the figure
-    body (no ``\\begin{minipage}`` wrapper) was previously dropped.
-    The parser now captures it as a sub-caption."""
+def test_parse_bails_on_raw_tikzpicture():
+    """#98 #3: a ``\\begin{figure}`` wrapping a raw ``\\begin{tikzpicture}``
+    must bail to the post-pandoc path so ``resolve_tikz_figures`` can
+    consult ``TIKZ_FIGURE_MAP`` for the pre-rendered SVG. If the
+    preprocessor marker-izes it instead, ``_extract_footnotesize_subcaptions``
+    scoops the tikz ``{\\footnotesize …}`` node labels (e.g. ``$a_3$``) in
+    as sub-captions and they leak above the override caption (dp2
+    ``f-coase_subp`` / ``f-coase_no``)."""
     body = (
-        '\\begin{tikzpicture}\\end{tikzpicture}\n'
-        '{\\footnotesize Verification: $0.05 = m$.}\n'
-        '\\caption{Main caption.}\n'
-        '\\label{fig:young}\n'
+        '\\begin{tikzpicture}[scale=1]\n'
+        '\\node {\\footnotesize $a_3$};\n'
+        '\\end{tikzpicture}\n'
+        '\\caption{\\label{f:coase_no} Notation}\n'
     )
-    spec = parse_figure_block(body, placement=None)
-    assert spec is not None
-    assert spec.sub_captions == ['Verification: $0.05 = m$.']
+    assert parse_figure_block(body, placement=None) is None
 
 
-def test_parse_minipage_wrapped_footnotesize_subcaption_extracted():
-    """Issue #90: ``{\\footnotesize ...}`` inside a ``\\begin{minipage}``
-    is also captured (the wrapper doesn't affect extraction)."""
+def test_parse_bails_on_tikzpicture_inside_minipage():
+    """The bail is purely syntactic — any ``\\begin{tikzpicture}`` in the
+    body bails, including the minipage-wrapped sub-panel shape (former
+    #90/#93 marker path). Those figures are pre-rendered as SVG by the
+    consumer and resolved post-pandoc; their ``{\\footnotesize}`` node
+    labels belong in the SVG, not the caption."""
     body = (
         '\\begin{minipage}{0.4\\textwidth}\n'
         '\\begin{tikzpicture}\\end{tikzpicture}\\\\\n'
@@ -112,28 +118,23 @@ def test_parse_minipage_wrapped_footnotesize_subcaption_extracted():
         '\\caption{Main.}\n'
         '\\label{fig:vp}\n'
     )
-    spec = parse_figure_block(body, placement=None)
-    assert spec is not None
-    assert spec.sub_captions == ['(a) the unit ball']
+    assert parse_figure_block(body, placement=None) is None
 
 
-def test_parse_multiple_subcaptions_in_source_order():
-    """Two minipages → two sub-captions, in source order."""
+def test_parse_footnotesize_subcaption_on_non_tikz_figure():
+    """``_extract_footnotesize_subcaptions`` is still live for figures with
+    NO ``\\begin{tikzpicture}`` — e.g. an ``\\includegraphics`` panel with a
+    ``{\\footnotesize}`` note. Only the tikz case bails (above)."""
     body = (
-        '\\begin{minipage}{0.4\\textwidth}\n'
-        '\\begin{tikzpicture}\\end{tikzpicture}\\\\\n'
-        '{\\footnotesize (a) first}\n'
-        '\\end{minipage}\\hfill\n'
-        '\\begin{minipage}{0.5\\textwidth}\n'
-        '\\begin{tikzpicture}\\end{tikzpicture}\\\\\n'
-        '{\\footnotesize (b) second}\n'
-        '\\end{minipage}\n'
+        '\\includegraphics{panel.pdf}\\\\\n'
+        '{\\footnotesize (a) the unit ball}\n'
         '\\caption{Main.}\n'
-        '\\label{fig:multi}\n'
+        '\\label{fig:vp}\n'
     )
     spec = parse_figure_block(body, placement=None)
     assert spec is not None
-    assert spec.sub_captions == ['(a) first', '(b) second']
+    assert spec.image_src == 'panel.pdf'
+    assert spec.sub_captions == ['(a) the unit ball']
 
 
 def test_parse_tikz_input_captured():
@@ -164,6 +165,85 @@ def test_find_figure_blocks_in_source_order():
     assert blocks[0][3] is None
     # Second block: ht
     assert blocks[1][3] == 'ht'
+
+
+# ── 1b. #98 regression locks: width / label-in-caption / path-on-next-line ──
+
+
+def test_parse_width_textwidth_fraction_to_percent():
+    """#98 #1: ``\\includegraphics[width=0.95\\textwidth]`` → ``95%``,
+    matching pandoc's LaTeX→Markdown conversion that the old
+    ``convert_figures`` path relied on. The marker path bypasses pandoc
+    for the figure body, so the conversion happens in the parser."""
+    body = (
+        '\\includegraphics[width=0.95\\textwidth]{plot.pdf}\n'
+        '\\caption{C.}\n\\label{fig:w}\n'
+    )
+    spec = parse_figure_block(body, placement=None)
+    assert spec is not None
+    assert spec.width == '95%'
+
+
+def test_parse_width_various_fractions_and_units():
+    """Fraction × {text,line,column,paper}width → percent; bare
+    ``\\textwidth`` → ``100%``; absolute units pass through verbatim."""
+    cases = {
+        '[width=0.8\\textwidth]': '80%',
+        '[width=0.55\\linewidth]': '55%',
+        '[width=\\textwidth]': '100%',
+        '[width=\\linewidth]': '100%',
+        '[height=3cm,width=0.5\\columnwidth]': '50%',
+        '[width=200pt]': '200pt',
+        '[trim={0 0 0 0},clip]': None,            # no width= key
+    }
+    for opt, expected in cases.items():
+        body = f'\\includegraphics{opt}{{p.pdf}}\n\\caption{{C.}}\n\\label{{fig:x}}\n'
+        spec = parse_figure_block(body, placement=None)
+        assert spec is not None, opt
+        assert spec.width == expected, f'{opt} → {spec.width!r}, want {expected!r}'
+
+
+def test_parse_strips_label_embedded_in_caption():
+    """#98 #2: the ``\\caption{\\label{fig:x} Text}`` idiom must not leave
+    the ``\\label`` inside ``spec.caption`` — otherwise pandoc emits a
+    ``[]{#…}`` span and a stray leading space survives into the rendered
+    caption. The label is captured separately as ``spec.name``."""
+    body = (
+        '\\includegraphics{p.pdf}\n'
+        '\\caption{\\label{f:distributional_dp} Iterating $D_\\sigma$ here}\n'
+    )
+    spec = parse_figure_block(body, placement=None)
+    assert spec is not None
+    assert spec.name == 'f-distributional_dp'
+    assert spec.caption == 'Iterating $D_\\sigma$ here'   # no \label, no lead space
+
+
+def test_parse_includegraphics_path_on_next_line():
+    """#98 #4: ``\\includegraphics[opts]`` whose ``{path}`` sits on the next
+    line (dp1 ``f-finite_lq_1``, wrapped in ``\\scalebox`` with a ``[trim=…]``
+    option) must still be found — the old regex required ``[…]{path}``
+    adjacency and dropped the image entirely."""
+    body = (
+        '\\scalebox{0.64}{\\includegraphics[trim={0em 0em 0em 0em},clip]\n'
+        '    {../figures/finite_lq_1.pdf}} % l, b, r, t\n'
+        '\\caption{\\label{f:finite_lq_1} Simulation}\n'
+    )
+    spec = parse_figure_block(body, placement=None)
+    assert spec is not None
+    assert spec.image_src == '../figures/finite_lq_1.pdf'
+    assert spec.name == 'f-finite_lq_1'
+    assert spec.width is None                              # trim/clip, no width
+
+
+def test_emit_width_renders_width_option_after_name():
+    """The resolver emits ``:width:`` immediately after ``:name:`` (option
+    order matches the legacy ``convert_figures`` emitter)."""
+    spec = FigureSpec(name='fig-w', image_src='p.pdf', width='95%',
+                      caption='Cap.')
+    out = resolve_figure_markers(_wrap(encode_marker(spec)))
+    assert ':name: fig-w' in out
+    assert ':width: 95%' in out
+    assert out.index(':name:') < out.index(':width:')
 
 
 # ── 2. Marker encode/decode round-trip ──────────────────────────────────────
@@ -559,39 +639,59 @@ def test_e2e_citet_in_figure_caption_closes_issue_89():
 
 
 @pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
-def test_e2e_bare_footnotesize_subcaption_closes_issue_93():
-    """Issue #93: bare ``{\\footnotesize ...}`` between ``\\end{tikzpicture}``
-    and ``\\caption{}`` was dropped. Now it's captured as a sub-caption
-    and folds into the figure body ahead of the main caption."""
+def test_e2e_raw_tikzpicture_bails_node_labels_dropped_closes_issue_98_3():
+    """#98 #3 (supersedes the old #93 marker-path handling): a figure
+    wrapping a raw ``\\begin{tikzpicture}`` with ``{\\footnotesize}`` node
+    labels bails the marker path, flows through pandoc, and is resolved by
+    ``resolve_tikz_figures`` via ``TIKZ_FIGURE_MAP``. The node labels
+    (``$a_3$``) live in the pre-rendered SVG and must NOT leak into the
+    caption; the real caption survives. Mirrors dp2 ``f-coase_no``."""
+    import postprocess
+    from transforms.figures import convert_html_figures, resolve_tikz_figures
     src = (
         '\\begin{figure}\n'
-        '\\begin{tikzpicture}\\end{tikzpicture}\n'
-        '{\\footnotesize Verification: $0.05 = m$.}\n'
-        '\\caption{Main caption.}\n'
-        '\\label{fig:young}\n'
+        '\\begin{tikzpicture}\n'
+        '\\node {\\footnotesize $a_3$};\n'
+        '\\node {\\footnotesize $a_2$};\n'
+        '\\end{tikzpicture}\n'
+        '\\caption{\\label{f:coase_no} Notation}\n'
         '\\end{figure}\n'
     )
-    out = pre.process_text(src)
-    out = resolve_figure_markers(out)
-    assert 'Verification: $0.05 = m$' in out
-    assert 'Main caption.' in out
-    # Sub-cap appears before main caption.
-    assert out.index('Verification') < out.index('Main caption.')
+    markered = pre.process_text(src)
+    assert '<!--FIGURE' not in markered          # bailed — no marker emitted
+    r = subprocess.run(
+        ['pandoc', '-f', 'latex', '-t', 'markdown', '--wrap=none'],
+        input=markered, capture_output=True, text=True, check=True,
+    )
+    out = resolve_figure_markers(r.stdout)        # no-op (no marker)
+    out = convert_html_figures(out)
+    saved = dict(postprocess.TIKZ_FIGURE_MAP)
+    try:
+        postprocess.TIKZ_FIGURE_MAP.clear()
+        postprocess.TIKZ_FIGURE_MAP['f-coase_no'] = ('figures/coase_no.svg', None)
+        out = resolve_tikz_figures(out, 'ch_apps')
+    finally:
+        postprocess.TIKZ_FIGURE_MAP.clear()
+        postprocess.TIKZ_FIGURE_MAP.update(saved)
+    assert '```{figure} figures/coase_no.svg' in out
+    assert ':name: f-coase_no' in out
+    assert 'Notation' in out
+    # Tikz node labels must NOT leak into the caption.
+    assert '$a_3$' not in out
+    assert '$a_2$' not in out
 
 
 @pytest.mark.skipif(not PANDOC_AVAILABLE, reason='pandoc not on PATH')
-def test_e2e_paren_sub_caption_not_math_escaped():
-    """A sub-caption that STARTS with ``(a)`` would normally trigger
-    pandoc's ``(a)`` → ``\\(a\\)`` (inline math) misinterpretation.
-    The preprocessor prefixes each batch cell with ``~`` (LaTeX nbsp)
-    to avoid this — strip-equivalent in the markdown output."""
+def test_e2e_paren_leading_caption_not_math_escaped():
+    """A caption that STARTS with ``(a)`` would normally trigger pandoc's
+    ``(a)`` → ``\\(a\\)`` (inline math) misinterpretation. The preprocessor
+    prefixes each batch cell with ``~`` (LaTeX nbsp) to avoid this —
+    strip-equivalent in the markdown output. Exercised on a plain
+    ``\\includegraphics`` figure (the tikz shape now bails, #98 #3)."""
     src = (
         '\\begin{figure}\n'
-        '\\begin{minipage}{0.4\\textwidth}\n'
-        '\\begin{tikzpicture}\\end{tikzpicture}\\\\\n'
-        '{\\footnotesize (a) the unit ball inscribed in cube}\n'
-        '\\end{minipage}\n'
-        '\\caption{Main.}\n'
+        '\\includegraphics{panel.pdf}\n'
+        '\\caption{(a) the unit ball inscribed in cube}\n'
         '\\label{fig:vp}\n'
         '\\end{figure}\n'
     )
