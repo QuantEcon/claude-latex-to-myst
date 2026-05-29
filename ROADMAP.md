@@ -43,6 +43,24 @@ over-generalizing into a rewrite. Five phases, priority order; each is a
 focused unit with its own design doc, scope, and exit criteria. Later
 phases assume earlier ones.
 
+**A second, standing objective runs alongside the phases: get close to
+parity across all three real-world books** (`book-dp1`, `book-dp2`,
+`book-dp-deep-learning`). The real books are the complexity benchmark the
+synthetic tests can't match — every parity gap closed is a translation
+capability the tool gains, and each fix is captured as a `tests/golden_tex/`
+reproducer so the corpus grows with the work. Parity here is *aspirational*:
+the committed `mystmd/` on each book's `mystmd-conversion` branch is the
+human-worked-on target and carries irreducible hand-edits the deterministic
+tool won't reproduce, so the bar is "close / only documented drift," not
+byte-equality. Validation uses **two baselines** — a pinned per-book
+snapshot of current tool output proves each refactor is behavior-preserving
+(byte-identity), while the diff against the worked-on `mystmd/` measures the
+parity gap to drive down. The fixture-validation harness
+(`scripts/validate_fixture.sh`, introduced in the common-fixture-validation
+PR #101) runs both: `--against snapshot` for the safety check, the default
+for the parity gap. Because refactor-safety rides on the snapshot, reaching
+parity is *not* a precondition for starting the phases.
+
 ### Phase 1 — Validation gate + CI
 
 **Effort:** ~1–2 days. **Risk:** low. **Urgency:** ESCALATED — guards every

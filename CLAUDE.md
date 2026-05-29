@@ -167,6 +167,26 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   [phase 3](notes/design/phase-3-conversion-context.md) (overrides
   contribute to the context, never mutate module globals); design in
   [phase 5](notes/design/phase-5-book-overrides.md).
+- **Route every fix by repo tier.** Three repos can hold a change; pick
+  deliberately, because the tier decides *where* it's committed and whether
+  it's a code change at all.
+  - **Tier 1 — `claude-latex-to-myst` (the converter).** Genuine conversion
+    bugs and transforms that generalize across books are fixed here (the bulk
+    of the work), each with a golden case. Prefer this whenever the tool *can*
+    emit correct, supported MyST.
+  - **Tier 2 — a consuming book repo (`book-dp1`/`book-dp2`/…).** One-book
+    editorial polish, a hand-curated file, or a book-only `config.yaml`
+    rewrite goes to that book's **`mystmd-conversion` branch only** (never its
+    default branch), or an **issue** on the book repo. This is the
+    book-overrides graduation rule's "one book → book-side" tier; a gitignored
+    `fixtures/<book>/` copy is for testing, **not** a book-side fix.
+  - **Tier 3 — `QuantEcon/mystmd` (the publisher).** An **unsupported MyST
+    feature / rendering incompatibility** (the tool emits correct, spec-valid
+    MyST that mystmd can't publish) is an **issue only** — never a workaround
+    here that degrades output. Record the affected fixture as documented drift.
+
+  Decision test when torn between tiers 1 and 3: **malformed MyST ⇒ tier 1
+  (fix the converter); valid-but-unrendered ⇒ tier 3 (file upstream).**
 - **`uv` is the project manager.** Not pip, not conda, not raw venv. Per
   lesson [010](lessons/010-pep-668-system-python.md).
 - **No Perl in the pipeline.** Per lesson [009](lessons/009-bsd-sed-mapfile-portability.md).
@@ -179,9 +199,16 @@ Don't re-litigate these without checking. Each was resolved deliberately:
 - **Lessons catalogue: one .md per lesson with frontmatter.** New lessons
   via `/capture-lesson`. Lifecycle: `open` → `codified` once the fix is in
   the pipeline. Lessons are never deleted.
-- **Reports format.** New parity tests get a report in `reports/`
-  documenting what worked, what didn't, and what was learned. They
-  motivate any pipeline changes that follow.
+- **Reports format — and which reports live here.** A report that documents
+  *durable, tool-level* learnings — what a parity investigation revealed,
+  what worked/didn't, and which **pipeline change** it motivated — belongs
+  committed in `reports/`. A *per-run or per-book* artifact — the ongoing
+  drift ledger for one consumer book, a session handover, scratch parity
+  output — does **not**: it stays local or travels to the consumer repo
+  (e.g. the book's `mystmd-conversion` branch), per the user's standing
+  preference. Rule of thumb: if it motivates a commit *to this repo*, commit
+  the report here; if it tracks the state of *one book's conversion*, keep
+  it with that book. When unsure, write it and ask "commit, or keep local?"
 - **Fixture-based verification.** Parity tests run against local copies of
   sibling book repos under `fixtures/` (gitignored, populated by
   `scripts/setup_fixtures.sh`). Never run the pipeline directly inside
