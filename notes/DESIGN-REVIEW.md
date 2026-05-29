@@ -1,8 +1,23 @@
-# Design review notes — for later
+# Design review notes — originating analysis
 
-Personal notes for the deep design review the user wants to do later.
-Not a proposal — a structured set of questions and observations to start
-that conversation from.
+Personal notes from the deep design review. Not a proposal — a structured
+set of questions and observations that *started* the conversation.
+
+> **Status (2026-05-29):** this review has been actioned and is now
+> **superseded by [`design/`](design/)**. The implementation review turned
+> it into a **five-phase plan** (validation gate → marker shared base →
+> `ConversionContext` → surface reduction → book-side overrides) — see
+> [`design/README.md`](design/README.md) and the "Architecture evolution"
+> section of [`../ROADMAP.md`](../ROADMAP.md). This file is retained for
+> **provenance only**; where it differs from `design/`, **`design/` is
+> authoritative.** In particular:
+>
+> - The open questions in §4 are now answered by phases 1–5.
+> - §1's "keep pandoc?" ambivalence is resolved: **yes** — the custom-AST
+>   alternative is formally declined (phase 4 decision record).
+> - §3's "per-book regression baselines" idea is specified in phase 1 §2b;
+>   the "where do book-specific edge cases live?" question (not raised
+>   here) is answered by phase 5's graduation rule.
 
 ## Provoking questions the user raised
 

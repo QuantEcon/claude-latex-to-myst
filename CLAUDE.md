@@ -149,6 +149,24 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   config. Editorial decisions the tool can't infer from LaTeX (e.g.
   promoting `**Bold heading**` to `## H2` only in specific chapters)
   go in `config.postprocess.rewrites`, not in `postprocess.py`.
+- **Book-specific *programmatic* edge cases live book-side, governed by a
+  graduation rule.** Declarative fixes go in `config.yaml`
+  (`preprocess.rewrites`/`strip`/`split`, `postprocess.rewrites`,
+  `extra_environments`, `cross_ref_routing`). When an edge case needs
+  *code* and only one book hits it, it goes in that book's
+  `project_overrides.py` (the generalized successor to `tikz_overrides.py`
+  — a book-side file with a **closed** set of extension points: data maps,
+  extra rewrites, and one or two named post-hooks). **The rule:** one book
+  needs it → book-side override; a **second** book needs it → it graduates
+  into the generic pipeline with a lesson + a golden case. This makes the
+  over-/under-specialization tradeoff a *location* decision with a counting
+  rule, keeping `postprocess.py` generic by construction. It is **not** a
+  plugin framework (no registration, no arbitrary lifecycle/ordering) — a
+  closed override file with documented insertion points. The mechanism is
+  built on the `ConversionContext` from
+  [phase 3](notes/design/phase-3-conversion-context.md) (overrides
+  contribute to the context, never mutate module globals); design in
+  [phase 5](notes/design/phase-5-book-overrides.md).
 - **`uv` is the project manager.** Not pip, not conda, not raw venv. Per
   lesson [010](lessons/010-pep-668-system-python.md).
 - **No Perl in the pipeline.** Per lesson [009](lessons/009-bsd-sed-mapfile-portability.md).

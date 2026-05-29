@@ -33,6 +33,86 @@ Remaining work is dp1-side config (not tool changes):
 Handover briefing for the dp1-side agent lives in the `book-dp1`
 repo (kept book-side rather than here so it travels with the work).
 
+## Architecture evolution (long-term)
+
+Outcome of the deep implementation review
+([`notes/DESIGN-REVIEW.md`](notes/DESIGN-REVIEW.md) → design docs in
+[`notes/design/`](notes/design/)). Goal: support **more general
+conversion** without over-specializing on edge cases — and without
+over-generalizing into a rewrite. Five phases, priority order; each is a
+focused unit with its own design doc, scope, and exit criteria. Later
+phases assume earlier ones.
+
+### Phase 1 — Validation gate + CI
+
+**Effort:** ~1–2 days. **Risk:** low. **Urgency:** ESCALATED — guards every
+refactor below and would have caught #96 *and* the four #98 figure-marker
+regressions pre-merge. Recommend freezing further fallback→marker
+migrations (#94) until this lands.
+
+No CI exists today (`.github/workflows/` is absent) and no end-to-end gate
+is rooted in `.tex` — the existing golden corpus starts from pandoc
+output, so the preprocess/pandoc/marker boundary (where #95/#96 and most
+lessons live) is untested e2e. Add a `.tex`-rooted golden tier
+(`tests/golden_tex/`, curated — not the gitignored consumer clones),
+seed it from the pandoc-quirk lessons, and wire `pytest` + `validate.py`
+into a CI workflow with a pinned pandoc.
+Design: [`notes/design/phase-1-validation-gate.md`](notes/design/phase-1-validation-gate.md).
+
+### Phase 2 — Marker shared base + hybrid boundary
+
+**Effort:** ~1–2 days. **Risk:** low (pure refactor, gated by Phase 1).
+
+Factor the duplicated marker scaffolding (`_pandoc_batch_convert`, the
+`CELL_N` sentinel split, marker encode/decode, blank-line stream
+reassembly — currently near-identical across the figure/table
+preprocessors) into one shared base; each preprocessor keeps only its
+construct-specific parser + emitter. Plain functions, **not** a plugin
+framework. Also: write the pandoc↔marker boundary into CLAUDE.md so it
+stops moving by accretion.
+Design: [`notes/design/phase-2-marker-shared-base.md`](notes/design/phase-2-marker-shared-base.md).
+
+### Phase 3 — `ConversionContext` (state threading)
+
+**Effort:** ~3–5 days, incremental. **Risk:** medium. **Hard prereq:** Phase 1.
+
+The deepest generality win. Post-pandoc state lives in module-level
+mutable globals on `postprocess.py`, read by 7 transform modules via
+late-`import postprocess`. This makes the pipeline non-reentrant (can't
+convert two books in one process) and is the root cause of 🔴 lesson 038.
+Replace with a `ConversionContext` dataclass threaded as an argument;
+migrate one transform family per PR, golden gate green on each; then
+delete the globals and the `sys.modules` alias.
+Design: [`notes/design/phase-3-conversion-context.md`](notes/design/phase-3-conversion-context.md).
+
+### Phase 4 — Surface reduction + decision records
+
+**Effort:** subfigure ~2–3 days; fallback removal ~1 day. **Risk:** medium.
+**Depends on:** Phases 2–3 and GH #94.
+
+Each structural construct carries two code paths today — the marker
+resolver plus an old post-pandoc HTML fallback. Finish marker coverage
+(subfigure, #94; table-shape audit), then retire the HTML fallbacks so
+there's one path per construct. Record the "no custom AST" decision in
+CLAUDE.md, and re-tag the lesson catalogue along the quirk-vs-permanent
+axis so its growth becomes interpretable.
+Design: [`notes/design/phase-4-surface-reduction.md`](notes/design/phase-4-surface-reduction.md).
+
+### Phase 5 — Book-side overrides + graduation rule
+
+**Effort:** ~1–2 days. **Risk:** low–medium. **Hard prereq:** Phase 3.
+
+Gives book-specific *programmatic* edge cases a home that is neither a
+re-run-fragile hand-edit nor over-specialization in `postprocess.py`.
+Generalize the existing `tikz_overrides.py` seam into a **closed**
+`project_overrides.py` surface (data maps + `EXTRA_REWRITES` + one optional
+`POST_CONVERT` hook) — not a plugin framework. The conceptual payload is
+the **graduation rule:** one book needs it → book-side override; a second
+book needs it → graduate into the generic pipeline with a lesson + golden
+case. Gated on Phase 3 because overrides must *contribute to*
+`ConversionContext`, not mutate module globals.
+Design: [`notes/design/phase-5-book-overrides.md`](notes/design/phase-5-book-overrides.md).
+
 ## Open items
 
 ### GH issue [#1](https://github.com/QuantEcon/claude-latex-to-myst/issues/1) — em/en-dash conversion
