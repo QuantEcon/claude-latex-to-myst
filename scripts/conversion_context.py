@@ -119,6 +119,11 @@ class ConversionContext:
     frontmatter_style: str
     whitespace_style: str
     counters: FileCounters = field(default_factory=FileCounters)
+    # Optional book-side post-hook (Phase 5). ``callable(text, stem, ctx) ->
+    # text``, contributed by a ``project_overrides.py`` and invoked once at a
+    # documented point near the end of ``process_text``. ``None`` for books
+    # without one. Set by ``load_overrides``, never by config.
+    post_convert: object | None = None
 
     @classmethod
     def default(cls) -> 'ConversionContext':

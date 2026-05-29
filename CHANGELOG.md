@@ -15,6 +15,29 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Added — Phase 5: book-side project_overrides + graduation rule (architecture evolution 5/5)
+
+Behavior-preserving (snapshot byte-identical ×3) — gives book-specific
+*programmatic* edge cases a home that is neither a re-run-fragile hand-edit
+nor over-specialization in `postprocess.py`.
+
+- **`load_overrides` reads a closed `project_overrides.py` surface** into the
+  `ConversionContext`: `TIKZ_FIGURE_MAP` / `TIKZCD_INLINE_MAP` (as before),
+  `EXTRA_REWRITES` (`[(pattern, repl) | (pattern, repl, stems), …]`, compiled
+  and appended to `ctx.postprocess_rewrites`), and one optional
+  `POST_CONVERT(text, stem, ctx)` hook (held on `ctx.post_convert`, run once
+  at a single documented point at the end of `process_text`). Reads present
+  attributes, ignores the rest — **not** a plugin framework (no registration,
+  no ordering, one named hook).
+- **`project_overrides:` config key** (preferred); `tikz_overrides:` retained
+  as an alias for one release (same filename-agnostic loader).
+- Overrides **contribute** to the context; they never mutate module globals
+  (the Phase-3 invariant). `POST_CONVERT` must be fence-aware/conservative —
+  golden case `post_convert_fence_aware` + `tests/test_project_overrides.py`
+  prove it runs and leaves a fenced code block untouched.
+- Graduation rule (one book → override; second book → pipeline + lesson +
+  golden case) already documented in CLAUDE.md.
+
 ### Changed — Phase 4: surface reduction + subfigure markers + decision records (architecture evolution 4/5)
 
 The one phase that intentionally changes output (snapshot re-pinned after a

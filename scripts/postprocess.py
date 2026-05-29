@@ -241,9 +241,29 @@ def load_config(config_path: Path) -> dict:
 
 
 def load_overrides(overrides_path: Path, ctx: ConversionContext | None = None) -> None:
-    """Load TIKZ_FIGURE_MAP and TIKZCD_INLINE_MAP from a project .py file into
-    the current context (or ``ctx`` if given). Phase 5 widens this to the full
-    ``project_overrides.py`` surface."""
+    """Load a book-side ``project_overrides.py`` into the conversion context
+    (Phase 5). The override file is a **closed** surface — the loader reads
+    these attributes if present and ignores the rest; there is no
+    registration API, no hook ordering, no lifecycle (that is the
+    plugin-framework the project has declined):
+
+      - ``TIKZ_FIGURE_MAP``   — label → ``(path, caption?)`` (already supported)
+      - ``TIKZCD_INLINE_MAP`` — inline tikzcd → image (already supported)
+      - ``EXTRA_REWRITES``    — ``[(pattern, repl) | (pattern, repl, stems), …]``
+        extra postprocess rewrites, *appended* to ``ctx.postprocess_rewrites``
+        (book-only — the same shape as ``config.postprocess.rewrites`` but
+        living in code rather than YAML, for when the fix needs a real
+        pattern the YAML layer can't express cleanly)
+      - ``POST_CONVERT``      — ``callable(text, stem, ctx) -> text``, held on
+        ``ctx`` and run once near the end of ``process_text``. MUST be
+        fence-aware / conservative (it runs on already-converted MyST) — see
+        the graduation rule + conservatism note in CLAUDE.md.
+
+    ``tikz_overrides.py`` still loads under this same function (it just has
+    the two maps) — the filename is the consumer's choice; the loader is
+    filename-agnostic. The override *contributes* to the context; it never
+    mutates module globals (lesson 038 / Phase 3).
+    """
     ctx = ctx if ctx is not None else current_context()
     spec = importlib.util.spec_from_file_location("project_overrides", overrides_path)
     if spec is None or spec.loader is None:
@@ -252,6 +272,30 @@ def load_overrides(overrides_path: Path, ctx: ConversionContext | None = None) -
     spec.loader.exec_module(mod)
     ctx.tikz_figure_map = getattr(mod, 'TIKZ_FIGURE_MAP', {})
     ctx.tikzcd_inline_map = getattr(mod, 'TIKZCD_INLINE_MAP', {})
+
+    # EXTRA_REWRITES — compile and append to the context's rewrite list, in
+    # the same ``(compiled, repl, stems_or_None)`` shape config rewrites use.
+    extra_rewrites = getattr(mod, 'EXTRA_REWRITES', None)
+    if extra_rewrites:
+        for i, rule in enumerate(extra_rewrites):
+            if not (isinstance(rule, (tuple, list)) and len(rule) in (2, 3)):
+                raise SystemExit(
+                    f"{overrides_path}: EXTRA_REWRITES[{i}] must be "
+                    "(pattern, repl) or (pattern, repl, stems)"
+                )
+            pat, repl = rule[0], rule[1]
+            stems = frozenset(rule[2]) if len(rule) == 3 and rule[2] else None
+            ctx.postprocess_rewrites.append((re.compile(pat, re.MULTILINE), repl, stems))
+
+    # POST_CONVERT — the one optional named hook. Held on the context and
+    # invoked at a single documented point in process_text.
+    post_convert = getattr(mod, 'POST_CONVERT', None)
+    if post_convert is not None:
+        if not callable(post_convert):
+            raise SystemExit(
+                f"{overrides_path}: POST_CONVERT must be callable(text, stem, ctx)"
+            )
+        ctx.post_convert = post_convert
 
 
 # Top-level config schema. Keys map to ``(allowed_types, required?)``. A
@@ -276,6 +320,7 @@ _CONFIG_SCHEMA: dict = {
     'preprocess':             ((dict, type(None)),   False),
     'postprocess':            ((dict, type(None)),   False),
     'tikz_overrides':         ((str, type(None)),    False),
+    'project_overrides':      ((str, type(None)),    False),
     'validate':               ((dict, type(None)),   False),
 }
 
@@ -460,6 +505,14 @@ def process_text(text: str, stem: str, title: str | None = None,
     resolved_title = title if title is not None else stem
     text = add_frontmatter(text, resolved_title, style=style, ctx=ctx)
     text = apply_postprocess_rewrites(text, stem, ctx)
+
+    # Book-side POST_CONVERT hook (Phase 5) — the single documented insertion
+    # point: last, on fully-converted MyST. Contributed by a
+    # project_overrides.py via load_overrides; None for books without one.
+    # The hook must be fence-aware / conservative (CLAUDE.md) — it runs book
+    # code on final output, so a blunt regex could corrupt code/math.
+    if ctx.post_convert is not None:
+        text = ctx.post_convert(text, stem, ctx)
     return text
 
 
@@ -492,14 +545,16 @@ def main():
     ctx = apply_config(config, base_dir)
     output_dir = (base_dir / config.get('output_dir', '.')).resolve()
 
-    # Load TikZ overrides if configured
-    tikz_overrides = config.get('tikz_overrides')
-    if tikz_overrides:
-        overrides_path = (base_dir / tikz_overrides).resolve()
+    # Load book-side overrides if configured. ``project_overrides`` is the
+    # Phase-5 name (closed surface: TIKZ maps + EXTRA_REWRITES + POST_CONVERT);
+    # ``tikz_overrides`` is the retained alias (one release) — same loader.
+    overrides_rel = config.get('project_overrides') or config.get('tikz_overrides')
+    if overrides_rel:
+        overrides_path = (base_dir / overrides_rel).resolve()
         if overrides_path.exists():
             load_overrides(overrides_path, ctx)
         else:
-            print(f'  WARN: tikz_overrides file not found: {overrides_path}', file=sys.stderr)
+            print(f'  WARN: overrides file not found: {overrides_path}', file=sys.stderr)
 
     if args.inputs:
         for path in args.inputs:

@@ -125,9 +125,11 @@ def _run_pipeline(case_dir: Path) -> str:
     # bleed into the next when the suite runs all cases in one process.
     postprocess.TIKZ_FIGURE_MAP = {}
     postprocess.TIKZCD_INLINE_MAP = {}
-    tikz_overrides = config.get('tikz_overrides')
-    if tikz_overrides:
-        overrides_path = (case_dir / tikz_overrides).resolve()
+    # ``project_overrides`` (Phase 5) is the preferred key; ``tikz_overrides``
+    # is the retained alias — same loader.
+    overrides_rel = config.get('project_overrides') or config.get('tikz_overrides')
+    if overrides_rel:
+        overrides_path = (case_dir / overrides_rel).resolve()
         if overrides_path.exists():
             postprocess.load_overrides(overrides_path)
     return postprocess.process_text(md, stem=stem, title=title)
@@ -183,6 +185,7 @@ def test_golden_tex_seeded():
         'figure_raw_tikzpicture_with_override_bails',
         'figure_includegraphics_path_on_next_line',
         'subfigure_includegraphics',      # #94 (Phase 4)
+        'post_convert_fence_aware',        # Phase 5 book-side POST_CONVERT
         # Phase-1 seeding from the lesson catalogue (lesson id in comment)
         'table_float_hline',              # 019 / 025
         'cite_textual_colon_key',         # 031 / 035

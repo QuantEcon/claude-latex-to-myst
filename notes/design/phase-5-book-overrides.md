@@ -1,6 +1,23 @@
 # Phase 5 — Book-side overrides + the graduation rule
 
-**Status:** proposed · **Effort:** ~1–2 days · **Risk:** low–medium · **Depends on:** Phase 3 (`ConversionContext`)
+**Status:** LANDED (architecture-evolution branch, commit 5/5) · **Effort:** ~1–2 days · **Risk:** low–medium · **Depends on:** Phase 3 (`ConversionContext`)
+
+> **Landed.** `load_overrides` now reads the **closed** `project_overrides.py`
+> surface into the `ConversionContext`: `TIKZ_FIGURE_MAP` / `TIKZCD_INLINE_MAP`
+> (already supported), `EXTRA_REWRITES` (compiled and *appended* to
+> `ctx.postprocess_rewrites`), and one optional `POST_CONVERT(text, stem, ctx)`
+> hook (held on `ctx.post_convert`, invoked once at a single documented point
+> at the end of `process_text`). The `project_overrides:` config key is the
+> preferred name; `tikz_overrides:` is retained as an alias (same loader,
+> filename-agnostic). Everything *contributes* to the context — no module
+> globals (Phase 3). Behavior-preserving: snapshot byte-identical ×3 (no
+> fixture uses the new attributes yet). Proven on a real book: relocating a
+> dp1 preface `**heading** → ## H2` rewrite from `config.postprocess.rewrites`
+> into the override's `EXTRA_REWRITES` left dp1 regen **byte-identical**
+> (the override reproduces existing behavior from a cleaner home). Golden
+> case `post_convert_fence_aware` + `tests/test_project_overrides.py` prove
+> the hook runs and is fence-aware (doesn't corrupt a code block). The
+> graduation rule is already in CLAUDE.md (PR #100).
 
 ## Problem — the missing tier for book-specific edge cases
 
