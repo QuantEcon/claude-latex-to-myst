@@ -1164,3 +1164,45 @@ def test_multicols_count_strip_keeps_following_content():
 
 def test_multicols_empty_pretext_dropped():
     assert _strip_multicols(r"\begin{multicols}{2}[ ]") == r"\begin{multicols}"
+
+
+# ── PRF title markers (#112) ───────────────────────────────────────────────────
+
+import _apply_prf_title_markers as prft
+
+
+def _apply_prf(text: str) -> str:
+    return prft.apply_markers(text, prft._DEFAULT_PRF_ENVS)
+
+
+def test_prf_title_theorem_optional_arg_moved_to_marker():
+    src = "\\begin{theorem}[Neumann Series Lemma]\\label{t:nsl}\nBody.\n\\end{theorem}\n"
+    out = _apply_prf(src)
+    assert "[Neumann Series Lemma]" not in out
+    assert "\\begin{theorem}\\label{t:nsl}" in out
+    assert "<!--PRFTITLE-START-->Neumann Series Lemma<!--PRFTITLE-END-->" in out
+
+
+def test_prf_title_proof_optional_arg_with_ref():
+    src = "\\begin{proof}[Proof of Proposition~\\ref{p:js0be}]\nIt follows.\n\\end{proof}\n"
+    out = _apply_prf(src)
+    assert "\\begin{proof}\n" in out
+    assert "<!--PRFTITLE-START-->Proof of Proposition~\\ref{p:js0be}<!--PRFTITLE-END-->" in out
+
+
+def test_prf_title_no_optional_arg_is_noop():
+    src = "\\begin{theorem}\\label{t:plain}\nBody.\n\\end{theorem}\n"
+    assert _apply_prf(src) == src
+
+
+def test_prf_title_does_not_match_bracket_in_body():
+    """A ``[0,1]`` on a following line is body content, not the optional arg."""
+    src = "\\begin{remark}\n$[0,1]$ is the unit interval.\n\\end{remark}\n"
+    assert _apply_prf(src) == src
+
+
+def test_prf_title_balanced_brackets_in_title():
+    src = "\\begin{lemma}[Bound on $f[x]$ growth]\\label{l:b}\nBody.\n\\end{lemma}\n"
+    out = _apply_prf(src)
+    assert "<!--PRFTITLE-START-->Bound on $f[x]$ growth<!--PRFTITLE-END-->" in out
+    assert "[Bound on" not in out

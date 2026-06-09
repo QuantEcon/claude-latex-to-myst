@@ -15,6 +15,18 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — theorem/proof optional `[title]` (book-dp1 audit, #112)
+
+Pandoc **drops** the optional argument of a `\begin{theorem}[Title]` it can't
+resolve (no matching `\newtheorem`), and renders `\begin{proof}[Proof of …]`
+*inline* — which then duplicates sphinx-proof's auto heading. New pre-pandoc
+pass `_apply_prf_title_markers.py` moves the optional title into a
+`<!--PRFTITLE-START-->…<!--PRFTITLE-END-->` marker (the title text between the
+delimiters is still pandoc-converted, so `\ref`/math in a title survive);
+`transforms.envs.convert_environment_divs` lifts it onto the `{prf:*}`
+directive argument. Removing the `[...]` also stops the proof title rendering
+inline, so the heading is no longer doubled.
+
 ### Fixed — multicols count leak; tabular-cell refs confirmed (book-dp1 audit, #111 / #107 gap 2)
 
 - **`multicols` column count no longer leaks** (#111). `\begin{multicols}{2}`
