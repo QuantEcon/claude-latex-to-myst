@@ -15,6 +15,24 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — multicols count leak; tabular-cell refs confirmed (book-dp1 audit, #111 / #107 gap 2)
+
+- **`multicols` column count no longer leaks** (#111). `\begin{multicols}{2}`
+  had pandoc render the mandatory `{2}` argument as a stray `2` paragraph at
+  the top of the (column-less) MyST output. The count is stripped pre-pandoc
+  (`multicols` is already skipped post-pandoc); MyST has no multi-column
+  primitive so the count carries no downstream meaning.
+- **Cross-refs inside `tabular` cells convert correctly** (#107 gap 2) — both
+  the `\begin{table}` marker path and a bare `tabular` emit `{ref}` /
+  `{prf:ref}` roles for `\ref` / `\S\ref` in cells. Verified already-correct
+  against the current pipeline and locked with a regression golden.
+
+  *Not addressed (MyST/CommonMark limitations, tier-3 candidates):* custom
+  `\item[(a)]` enumerate labels (pandoc drops the optional label; MyST has no
+  custom ordered-list marker) and the `enumitem` `\setlist[…]{label=(\roman*)}`
+  roman style (CommonMark ordered lists can't carry roman markers). #111 stays
+  open for these.
+
 ### Fixed — legacy font declarations + `\texttt{{@}…}` (book-dp1 audit, #107 / #105)
 
 Two pre-pandoc normalisations in `_apply_rewrites.py`:

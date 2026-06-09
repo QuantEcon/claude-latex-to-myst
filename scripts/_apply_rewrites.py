@@ -44,6 +44,16 @@ _ITEMSEP_STRIP = re.compile(
     r'(?:\s*\\\\)?\s*'
 )
 
+# ``\begin{multicols}{N}`` — the mandatory column-count argument. multicols
+# is skipped post-pandoc (the wrapper is dropped, content kept), but pandoc
+# renders the ``{N}`` arg as a stray ``N`` paragraph at the top of the div,
+# which then leaks into the body (#111). MyST has no multi-column primitive,
+# so the count carries no meaning downstream — strip it (and the optional
+# pre-text arg of ``multicols*``) pre-pandoc.
+_MULTICOLS_COUNT_STRIP = re.compile(
+    r'(\\begin\{multicols\*?\})\s*\{[^}]*\}(?:\s*\[[^\]]*\])?'
+)
+
 _NATBIB_OPT = r'(?:\s*\[[^\]]*\]){0,2}'
 # Same optional-locator shape as ``_NATBIB_OPT`` but with at least one
 # ``[...]`` required (one or two) — used to gate the plain-``\cite``
@@ -211,6 +221,10 @@ def main():
     # pandoc splits into a second code span (#105).
     text = normalize_declaration_forms(text)
     text = flatten_texttt_brace_groups(text)
+
+    # 3c. Strip the multicols column-count argument so it doesn't leak as a
+    # stray number into the (column-less) MyST output (#111).
+    text = _MULTICOLS_COUNT_STRIP.sub(r'\1', text)
 
     # 4. Search-and-replace: { from: regex, to: replacement }
     for rule in pre.get('rewrites') or []:

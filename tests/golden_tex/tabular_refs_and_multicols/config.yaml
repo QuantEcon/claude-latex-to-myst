@@ -1,0 +1,8 @@
+# #107 gap2 (refs inside tabular cells convert to roles, not dropped) +
+# #111 (multicols column-count not leaked as a stray number).
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Tabular Refs And Multicols" }

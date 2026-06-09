@@ -1134,3 +1134,21 @@ def test_texttt_preserves_nested_math_command_argument():
 
 def test_texttt_plain_arg_unchanged():
     assert rew.flatten_texttt_brace_groups(r'\texttt{@plain}') == r'\texttt{@plain}'
+
+
+# ── multicols column-count strip (#111) ────────────────────────────────────────
+
+
+def test_multicols_count_argument_stripped():
+    assert rew._MULTICOLS_COUNT_STRIP.sub(r"\1", r"\begin{multicols}{2}") == r"\begin{multicols}"
+
+
+def test_multicols_star_count_and_pretext_stripped():
+    out = rew._MULTICOLS_COUNT_STRIP.sub(r"\1", r"\begin{multicols*}{3}[Intro]")
+    assert out == r"\begin{multicols*}"
+
+
+def test_multicols_count_strip_keeps_following_content():
+    src = "\\begin{multicols}{2}\n\\item a\n"
+    out = rew._MULTICOLS_COUNT_STRIP.sub(r"\1", src)
+    assert out == "\\begin{multicols}\n\\item a\n"
