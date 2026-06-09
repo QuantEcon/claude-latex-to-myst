@@ -48,6 +48,7 @@ EXPECTED_PIPELINE_ORDER: list[str] = [
     'convert_html_figures',
     'resolve_tikz_figures',
     'convert_section_labels',
+    'hoist_consecutive_heading_labels',
     'convert_citations',
     'convert_standalone_labels',
     'resolve_listings',

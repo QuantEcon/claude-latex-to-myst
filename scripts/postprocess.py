@@ -126,6 +126,7 @@ from transforms.algorithms import (  # noqa: E402  (re-exports for P3a)
 from transforms.frontmatter import (  # noqa: E402  (re-exports for P3a)
     convert_section_labels,
     convert_standalone_labels,
+    hoist_consecutive_heading_labels,
     apply_postprocess_rewrites,
     add_frontmatter,
 )
@@ -499,6 +500,7 @@ def process_text(text: str, stem: str, title: str | None = None,
     text = convert_html_figures(text, ctx)
     text = resolve_tikz_figures(text, stem, ctx)
     text = convert_section_labels(text)
+    text = hoist_consecutive_heading_labels(text)  # #108 secondary heading \labels
     text = convert_citations(text)
     text = convert_standalone_labels(text)
     # Listings and algorithms run LATE so source-code bodies don't get
