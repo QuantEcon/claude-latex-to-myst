@@ -23,11 +23,12 @@ import validate
 # ── Algorithm2e (gap #014) ───────────────────────────────────────────────────
 
 
-def _algo_marker(body: str, name: str = "algo-test", title: str = "T") -> str:
+def _algo_marker(body: str, name: str = "algo-test", title: str = "T",
+                 numbered: str = "1") -> str:
     """Build a pandoc-escaped ALGORITHM marker the way `_apply_algorithm_markers.py`
     would emit and pandoc would pass through."""
     b64 = base64.b64encode(body.encode("utf-8")).decode("ascii")
-    return f"\\<!--ALGORITHM name={name} title={title} body={b64}--\\>"
+    return f"\\<!--ALGORITHM name={name} numbered={numbered} title={title} body={b64}--\\>"
 
 
 def test_resolve_algorithms_simple_body():
@@ -46,10 +47,11 @@ def test_resolve_algorithms_simple_body():
     # Statements emit as bullets
     assert "- input $X_0$" in out
     assert "- $t \\leftarrow 0$" in out
-    # While header + indented inner bullets
-    assert "- while $t < T$:" in out
+    # While header (algorithm2e `do … end`), indented inner bullets, closer
+    assert "- while $t < T$ do" in out
     assert "  - observe $X_t$" in out
     assert "  - choose $A_t$" in out
+    assert "- end" in out
 
 
 def test_resolve_algorithms_kwin_kwout_return():
@@ -90,7 +92,7 @@ def test_resolve_algorithms_strips_textnormal():
     aren't math, so the wrapper has no markdown equivalent."""
     body = "\\While{\\textnormal{true}}\n{\n    do stuff \\;\n}\n"
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    assert "- while true:" in out
+    assert "- while true do" in out
     assert "\\textnormal" not in out
 
 
@@ -126,10 +128,47 @@ def test_resolve_algorithms_handles_unescaped_marker():
     The regex must tolerate both forms."""
     body = "$x \\leftarrow 0$ \\;"
     b64 = base64.b64encode(body.encode()).decode()
-    unescaped = f"<!--ALGORITHM name=algo-x title=Foo body={b64}-->"
+    unescaped = f"<!--ALGORITHM name=algo-x numbered=1 title=Foo body={b64}-->"
     out = postprocess.resolve_algorithms(unescaped)
     assert "```{prf:algorithm} Foo" in out
     assert ":label: algo-x" in out
+
+
+def test_resolve_algorithms_uncaptioned_is_nonumber_no_label():
+    """An uncaptioned algorithm2e float → :nonumber:, no :label: (#109)."""
+    out = postprocess.resolve_algorithms(
+        _algo_marker("step one \\;", name="NOLABEL", title="", numbered="0")
+    )
+    assert ":nonumber:" in out
+    assert ":label:" not in out
+    assert "NOLABEL" not in out
+
+
+def test_resolve_algorithms_inline_eqref_and_texttt():
+    """Inline \\eqref / \\texttt inside an algorithm body convert instead of
+    leaking verbatim (#106)."""
+    body = "compute via \\eqref{eq:gp_mean} into \\texttt{policy} \\;"
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    assert "{eq}`eq-gp_mean`" in out
+    assert "`policy`" in out
+    assert "\\eqref" not in out and "\\texttt" not in out
+
+
+def test_resolve_algorithms_tcp_comment_not_leaked():
+    """algorithm2e \\tcp{...} → (-- ...) rather than leaking (#109)."""
+    body = "observe $X_t$ \\tcp{per step}\\;"
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    assert "(-- per step)" in out
+    assert "\\tcp" not in out
+
+
+def test_resolve_algorithms_softwrapped_step_stays_one_bullet():
+    """A single \\;-terminated step that soft-wrapped across source lines is
+    one bullet, not two (#109)."""
+    body = "the controller receives a reward $R_t$ that\ndepends on the action \\;"
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    bullets = [ln for ln in out.split("\n") if ln.lstrip().startswith("- ")]
+    assert bullets == ["- the controller receives a reward $R_t$ that depends on the action"]
 
 
 # ── Exercise markers (#69) ───────────────────────────────────────────────────
@@ -3719,8 +3758,9 @@ def test_algpseudo_for_endfor_nests():
     )
     out = postprocess._algpseudo_convert_body(body)
     assert _bullets(out) == [
-        "- for $i = 1$ to $n$:",
+        "- for $i = 1$ to $n$ do",
         "  - work($i$)",
+        "- end",
     ]
 
 
@@ -3734,9 +3774,11 @@ def test_algpseudo_nested_for():
     )
     out = postprocess._algpseudo_convert_body(body)
     assert _bullets(out) == [
-        "- for $i$:",
-        "  - for $j$:",
+        "- for $i$ do",
+        "  - for $j$ do",
         "    - cell($i$, $j$)",
+        "  - end",
+        "- end",
     ]
 
 
@@ -3748,8 +3790,9 @@ def test_algpseudo_while_endwhile():
     )
     out = postprocess._algpseudo_convert_body(body)
     assert _bullets(out) == [
-        r"- while $v > \epsilon$:",
+        r"- while $v > \epsilon$ do",
         "  - step",
+        "- end",
     ]
 
 
@@ -3880,9 +3923,11 @@ def test_algpseudo_textbf_with_multiple_nested_braced_macros():
     line = _bullets(out)[0]
     # Bold opens and closes exactly once around the bracketed note.
     assert line.count("**") == 2
-    # Inner macros / math survive unbroken.
-    assert r"\texttt{@tf.function}" in line
-    assert r"\texttt{@jax.jit}" in line
+    # ``\texttt`` now converts to a code span (#106) rather than leaking
+    # verbatim; the nested-brace balancing of the surrounding \textbf holds.
+    assert "`@tf.function`" in line
+    assert "`@jax.jit`" in line
+    assert r"\texttt" not in line
     assert "$5$" in line
 
 
@@ -3920,8 +3965,9 @@ def test_algo_convert_body_dispatches_to_algpseudo_on_algorithmic_wrapper():
     assert "\\STATE" not in out
     assert "\\FOR" not in out
     assert "- Step one" in out
-    assert "- for $i$:" in out
+    assert "- for $i$ do" in out
     assert "  - inner" in out
+    assert "- end" in out
 
 
 # ── resolve_algorithmics end-to-end (issue #20) ──────────────────────────────
@@ -3961,10 +4007,12 @@ def test_resolve_algorithmics_full_reporter_example():
     bullets = _bullets(out)
     assert bullets == [
         "- **Input:** Initial state $x_0$",
-        r"- for episode $e = 1, \ldots, E$:",
+        r"- for episode $e = 1, \ldots, E$ do",
         "  - **Simulate path:** ...",
-        r"  - for gradient step $t = 1, \ldots, T$:",
+        r"  - for gradient step $t = 1, \ldots, T$ do",
         "    - Compute loss",
+        "  - end",
+        "- end",
         "- **Output:** Trained network",
     ]
 

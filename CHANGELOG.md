@@ -15,6 +15,31 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — algorithm2e rendering + inline-macro leaks (book-dp1 audit, #109 / #106)
+
+- **Uncaptioned algorithm2e floats render unnumbered** (#109). algorithm2e
+  numbers only captioned floats; the converter auto-labelled every block, so
+  the two uncaptioned blocks in dp1 ch_intro took numbers and pushed the one
+  real algorithm from 1.1 to 1.3. The marker now carries a `numbered` flag and
+  `resolve_algorithms` emits `:nonumber:` (no label) for uncaptioned blocks.
+- **Loops emit `do … end`** (#109). `\While{C}{B}` / `\For{…}{…}` (both the
+  algorithm2e braced form and the algpseudocode `\WHILE…\ENDWHILE` form) now
+  render `while C do … end` instead of `while C:` with no terminator.
+- **Soft-wrapped steps stay one bullet** (#109). A single `\;`-terminated step
+  split across source lines was emitted as two bullets; the line-join now keeps
+  it one, while `\KwIn`/`\KwOut`/`\Return` (no `\;`) stay separate.
+- **`\tcp{…}` comments converted** (#109) to `(-- …)` instead of leaking; stray
+  `%` line-comments dropped.
+- **Inline `\eqref` / `\texttt` no longer leak** inside algorithm bodies (#106).
+  The body is base64'd pre-pandoc so it never reached the prose cross-ref/code
+  passes — both dialects now convert `\eqref{eq:x}` → `` {eq}`eq-x` `` and
+  `\texttt{x}` → `` `x` `` in-place.
+
+  *Known limitation:* algorithm lines render as a bullet list, not the PDF's
+  continuous line numbers (#109 item 3) — MyST nested ordered lists restart
+  numbering per level, so cross-level line numbering isn't expressible; left as
+  a rendering gap.
+
 ### Fixed — starred display equations stay unnumbered (book-dp1 audit, #113)
 
 Starred LaTeX envs (`equation*` / `align*` / `gather*` / `multline*`) are

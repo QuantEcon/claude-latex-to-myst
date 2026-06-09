@@ -33,15 +33,16 @@ def _apply_natbib(text: str) -> str:
 
 def _extract_marker(out: str) -> dict:
     m = re.search(
-        r'<!--ALGORITHM name=(\S+) title=(.*?) body=([A-Za-z0-9+/=]+)-->',
+        r'<!--ALGORITHM name=(\S+) numbered=([01]) title=(.*?) body=([A-Za-z0-9+/=]+)-->',
         out,
         re.DOTALL,
     )
     assert m, f"no marker in output: {out!r}"
     return {
         "name": m.group(1),
-        "title": m.group(2),
-        "body": base64.b64decode(m.group(3)).decode("utf-8"),
+        "numbered": m.group(2),
+        "title": m.group(3),
+        "body": base64.b64decode(m.group(4)).decode("utf-8"),
     }
 
 
@@ -167,15 +168,16 @@ def test_algorithm_marker_caption_without_label():
     assert m["title"] == "Just a title"
 
 
-def test_algorithm_marker_no_caption_auto_labels():
+def test_algorithm_marker_no_caption_unnumbered_no_label():
+    """algorithm2e numbers only captioned floats — an uncaptioned block is
+    unnumbered, so it gets no auto-label and numbered=0 (#109)."""
     tex = (
         "\\begin{algorithm}\nbody1 \\;\n\\end{algorithm}\n"
         "\\begin{algorithm}\nbody2 \\;\n\\end{algorithm}\n"
     )
     out = alg.process_text(tex, auto_prefix="ch")
-    # Two markers, each with an auto-generated name
-    markers = re.findall(r'name=(\S+)', out)
-    assert markers == ["algo-ch-auto-1", "algo-ch-auto-2"]
+    assert re.findall(r'name=(\S+)', out) == ["NOLABEL", "NOLABEL"]
+    assert re.findall(r'numbered=(\d)', out) == ["0", "0"]
 
 
 def test_algorithm_marker_optional_arg_ignored():

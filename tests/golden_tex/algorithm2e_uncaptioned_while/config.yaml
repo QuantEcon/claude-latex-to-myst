@@ -1,0 +1,9 @@
+# #109/#106: an uncaptioned algorithm2e \While block — must render unnumbered
+# (:nonumber:), with `while … do … end`, a soft-wrapped step kept on one line,
+# \eqref/\texttt converted, and \tcp comments not leaked.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Uncaptioned While" }

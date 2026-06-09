@@ -192,6 +192,15 @@ def _algpseudo_inline(text: str) -> str:
     t = _unwrap_text_macro(t, 'textit',      '*{}*')
     t = _unwrap_text_macro(t, 'textnormal',  '{}')
     t = _unwrap_text_macro(t, 'emph',        '*{}*')
+    # Inline macros that would otherwise leak verbatim (#106): ``\texttt`` →
+    # code span, ``\eqref`` → ``{eq}`` role (the algorithm body never reaches
+    # the prose-side cross-ref / code passes).
+    t = _unwrap_text_macro(t, 'texttt',      '`{}`')
+    t = re.sub(
+        r'\\eqref\{([^}]+)\}',
+        lambda m: '{eq}`' + convert_label_colons(m.group(1)) + '`',
+        t,
+    )
     # Strip leftover algpseudocode formatting that doesn't apply here.
     t = re.sub(r'\\vspace\{[^}]*\}', '', t)
     # Collapse whitespace — algpseudocode tolerates arbitrary linebreaks
@@ -275,25 +284,27 @@ def _algpseudo_convert_body(body: str) -> str:
                 emit(f'*{arg}*')
         elif kw == 'FOR':
             stack.append('FOR')
-            emit_header(f'for {arg}:' if arg else 'for:')
+            emit_header(f'for {arg} do' if arg else 'for do')
             if text:
                 emit(text)
         elif kw == 'FORALL':
             stack.append('FOR')  # closed by same \ENDFOR
-            emit_header(f'for all {arg}:' if arg else 'for all:')
+            emit_header(f'for all {arg} do' if arg else 'for all do')
             if text:
                 emit(text)
         elif kw == 'ENDFOR':
             close_block({'FOR'})
+            emit('end')   # algorithm2e-style loop terminator (#109)
             if text:
                 emit(text)
         elif kw == 'WHILE':
             stack.append('WHILE')
-            emit_header(f'while {arg}:' if arg else 'while:')
+            emit_header(f'while {arg} do' if arg else 'while do')
             if text:
                 emit(text)
         elif kw == 'ENDWHILE':
             close_block({'WHILE'})
+            emit('end')   # algorithm2e-style loop terminator (#109)
             if text:
                 emit(text)
         elif kw == 'REPEAT':
@@ -400,6 +411,17 @@ def _algo_convert_body(body: str) -> str:
     s = re.sub(r'\\SetAlgoLined', '', s)
     s = re.sub(r'\\vspace\{[^}]*\}', '', s)
     s = re.sub(r'\\index\{[^}]*\}', '', s)
+    # algorithm2e inline comments: ``\tcp{c}`` / ``\tcp*{c}`` (and the
+    # ``\tcc`` block form) → ``(-- c)`` so the note survives instead of
+    # leaking as literal ``\tcp{...}`` (#109). ``*`` form first (the
+    # ``\tcp{`` needle wouldn't match ``\tcp*{``).
+    s = _unwrap_text_macro(s, 'tcp*', '(-- {})')
+    s = _unwrap_text_macro(s, 'tcp',  '(-- {})')
+    s = _unwrap_text_macro(s, 'tcc*', '(-- {})')
+    s = _unwrap_text_macro(s, 'tcc',  '(-- {})')
+    # Drop ``%`` line comments the algorithm2e body may carry (mirrors the
+    # algpseudocode tokenizer) so they don't leak as ``% ...`` bullets (#109).
+    s = re.sub(r'(?<!\\)%.*$', '', s, flags=re.MULTILINE)
     # Balanced-brace unwrap — naive [^}]* stops at the first } and
     # mangles nested math like \textbf{$\mathcal{Q}$ X} (GH #21).
     s = _unwrap_text_macro(s, 'navy',   '**{}**')
@@ -408,18 +430,31 @@ def _algo_convert_body(body: str) -> str:
     # math mode; in an algorithm condition like ``\While{\textnormal{true}}``
     # the wrapper has no markdown equivalent — unwrap it. (FOLLOWUP #014, Gap B)
     s = _unwrap_text_macro(s, 'textnormal', '{}')
+    # Inline macros that otherwise leak verbatim inside an algorithm body
+    # (the body is base64'd pre-pandoc, so the prose-side cross-ref / code
+    # passes never see it — #106). ``\texttt{x}`` → code span;
+    # ``\eqref{eq:x}`` → ``{eq}`eq-x``` (``{eq}`` is unambiguous, no routing
+    # table needed).
+    s = _unwrap_text_macro(s, 'texttt', '`{}`')
+    s = re.sub(
+        r'\\eqref\{([^}]+)\}',
+        lambda m: '{eq}`' + convert_label_colons(m.group(1)) + '`',
+        s,
+    )
 
     # Repeatedly expand control blocks (innermost first via simple loop).
     def expand_one(text: str) -> tuple[str, bool]:
-        # Two-arg control blocks.
-        for cmd, header_fmt in (
-            ('While',   'while {}:'),
-            ('For',     'for {}:'),
-            ('ForEach', 'for each {}:'),
-            ('If',      'if {}:'),
-            ('uIf',     'if {}:'),
-            ('ElseIf',  'else if {}:'),
-            ('lIf',     'if {}: {}'),
+        # Two-arg control blocks. ``closer`` is the algorithm2e block
+        # terminator (#109): loops render ``while C do … end`` /
+        # ``for … do … end``; conditionals keep the ``if C:`` colon form.
+        for cmd, header_fmt, closer in (
+            ('While',   'while {} do',     'end'),
+            ('For',     'for {} do',       'end'),
+            ('ForEach', 'for each {} do',  'end'),
+            ('If',      'if {}:',          None),
+            ('uIf',     'if {}:',          None),
+            ('ElseIf',  'else if {}:',     None),
+            ('lIf',     'if {}: {}',       None),
         ):
             pat = re.compile(r'\\' + cmd + r'\s*\{')
             m = pat.search(text)
@@ -452,6 +487,8 @@ def _algo_convert_body(body: str) -> str:
                     f'\\NEWLINE\\{header_fmt.format(cond)}\\NEWLINE\\'
                     f'{indented}\\NEWLINE\\'
                 )
+                if closer:
+                    replacement += f'{closer}\\NEWLINE\\'
             return text[: m.start()] + replacement + text[l + 1 :], True
 
         # \Repeat{body}: one-arg control block.
@@ -485,7 +522,11 @@ def _algo_convert_body(body: str) -> str:
             if j < 0:
                 continue
             arg = text[i + 1 : j].strip()
-            replacement = fmt.format(arg)
+            # Bracket with ``\NEWLINE\`` so the command is its own line: these
+            # algorithm2e macros (\KwIn, \KwOut, \Return, …) don't carry a
+            # ``\;`` terminator, so without an explicit boundary the soft-wrap
+            # join would fuse them into the neighbouring statement (#109).
+            replacement = f'\\NEWLINE\\{fmt.format(arg)}\\NEWLINE\\'
             return text[: m.start()] + replacement + text[j + 1 :], True
 
         # Unbraced one-arg fallback — covers ``\Return $\theta$`` and
@@ -500,7 +541,8 @@ def _algo_convert_body(body: str) -> str:
             if not m:
                 continue
             arg = m.group(1).strip()
-            return text[: m.start()] + fmt.format(arg) + text[m.end() :], True
+            replacement = f'\\NEWLINE\\{fmt.format(arg)}\\NEWLINE\\'
+            return text[: m.start()] + replacement + text[m.end() :], True
 
         return text, False
 
@@ -514,17 +556,29 @@ def _algo_convert_body(body: str) -> str:
     parts = re.split(r'\\NEWLINE\\', s)
     out_lines: list[str] = []
     for p in parts:
-        for line in p.split('\n'):
-            stripped = line.lstrip(' ')
-            indent = len(line) - len(stripped)
-            content = re.sub(r'\s+', ' ', stripped).strip()
-            if not content:
-                continue
-            pad = ' ' * indent
-            if content.startswith('- '):
-                out_lines.append(f'{pad}{content}')
-            else:
-                out_lines.append(f'{pad}- {content}')
+        block_lines = p.split('\n')
+        # A part is either an already-formatted recursion block (its lines
+        # start with ``- `` / ``  - ``) or a single plain statement. A plain
+        # statement that soft-wrapped across source lines (no ``\;`` between
+        # them) must stay ONE bullet — splitting on ``\n`` here is what cut
+        # "…that\ndepends…" into two steps (#109). Only iterate per-line when
+        # the part actually carries bullet markers.
+        if any(ln.lstrip().startswith('- ') for ln in block_lines):
+            for line in block_lines:
+                stripped = line.lstrip(' ')
+                indent = len(line) - len(stripped)
+                content = re.sub(r'\s+', ' ', stripped).strip()
+                if not content:
+                    continue
+                pad = ' ' * indent
+                if content.startswith('- '):
+                    out_lines.append(f'{pad}{content}')
+                else:
+                    out_lines.append(f'{pad}- {content}')
+        else:
+            content = re.sub(r'\s+', ' ', p).strip()
+            if content:
+                out_lines.append(f'- {content}')
 
     return '\n'.join(out_lines).strip()
 
@@ -537,15 +591,19 @@ def resolve_algorithms(text: str) -> str:
     """Replace ALGORITHM markers with ``{prf:algorithm}`` directives.
 
     Marker format (emitted by _apply_algorithm_markers.py):
-        <!--ALGORITHM name=NAME title=TITLE TEXT body=BASE64-->
+        <!--ALGORITHM name=NAME numbered=0|1 title=TITLE body=BASE64-->
 
     The body is base64-encoded so pandoc passes it through verbatim
     (otherwise pandoc would strip ``\\;`` and reformat ``\\While`` etc.).
     Pandoc may escape ``<`` to ``\\<``; the regex tolerates both forms.
+
+    ``numbered=0`` (an uncaptioned algorithm2e float) emits ``:nonumber:`` so
+    it doesn't take a number or shift the captioned algorithms' counter (#109).
     """
     pattern = re.compile(
         r'\\?<!--ALGORITHM\s+'
         r'name=(?P<name>\S+)\s+'
+        r'numbered=(?P<numbered>[01])\s+'
         r'title=(?P<title>.*?)\s+'
         r'body=(?P<body>[A-Za-z0-9+/=]+)--\\?>',
         re.DOTALL,
@@ -553,6 +611,7 @@ def resolve_algorithms(text: str) -> str:
 
     def repl(m: re.Match) -> str:
         name = m.group('name').strip()
+        numbered = m.group('numbered') == '1'
         title = (m.group('title') or '').strip()
         body_b64 = m.group('body').strip()
         try:
@@ -569,7 +628,10 @@ def resolve_algorithms(text: str) -> str:
             out.append(f'{fence}{{prf:algorithm}} {title}')
         else:
             out.append(f'{fence}{{prf:algorithm}}')
-        out.append(f':label: {name}')
+        if not numbered:
+            out.append(':nonumber:')
+        if name and name != 'NOLABEL':
+            out.append(f':label: {name}')
         out.append('')
         out.append(converted)
         out.append(fence)
