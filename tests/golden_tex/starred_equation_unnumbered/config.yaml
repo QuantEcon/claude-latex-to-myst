@@ -1,0 +1,9 @@
+# #113: starred (unnumbered) display envs must not be numbered. The converter
+# emits a forced-unnumbered {math} directive so book-wide numbering
+# (numbering: book: true) leaves them unnumbered — matching LaTeX.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Starred Equation" }
