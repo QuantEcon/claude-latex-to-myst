@@ -1,0 +1,10 @@
+# #104: an extensionless \includegraphics{fig/foo} (valid LaTeX — graphicx
+# probes extensions) must resolve to the copied raster figures/foo.png, using
+# the figure_ext_map the context builds by scanning the source figures dir.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+figures_dir: "fig"
+
+chapters:
+  - { stem: input, title: "Extensionless Include" }

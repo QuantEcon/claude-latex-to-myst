@@ -15,6 +15,16 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — extensionless `\includegraphics` resolves to the copied raster (#104)
+
+`\includegraphics{fig/foo}` with **no extension** (valid LaTeX — graphicx
+probes extensions) emitted an unresolvable `{figure} fig/foo` even though the
+copy step wrote `figures/foo.png`. `ConversionContext.from_config` now scans
+the source `figures_dir` into a stem→filename map (`figure_ext_map`, prefers
+web-renderable formats, pdf last); the new `_helpers.complete_image_path`
+completes an extensionless include to `figures/foo.png`. Paths that already
+carry an extension, or have no matching source file, are untouched.
+
 ### Fixed — cross-reference parity (book-dp1 audit, #108 / #110)
 
 - **Multiple consecutive `\label{}` on a heading no longer orphans the

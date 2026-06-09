@@ -2,7 +2,31 @@
 
 from __future__ import annotations
 
+import os
 import re
+
+
+def complete_image_path(path: str, figure_ext_map: dict | None = None) -> str:
+    """Normalise a figure source path to the ``figures/`` output tree, adding
+    a resolved extension for an extensionless include (#104).
+
+    ``\\includegraphics{fig/foo}`` with no extension is valid LaTeX (graphicx
+    probes extensions), but the emitted ``{figure}`` then points at a path
+    MyST can't resolve even though the copy step wrote ``figures/foo.png``.
+    When ``figure_ext_map`` (stem → actual filename) has the basename, rewrite
+    to ``figures/foo.png``. Falls back to the prior behaviour — prepend
+    ``figures/`` only when the path has no directory component — so a path
+    that already carries an extension or a non-default root is untouched.
+    """
+    base = path.rsplit('/', 1)[-1]
+    root, ext = os.path.splitext(base)
+    if not ext and figure_ext_map:
+        resolved = figure_ext_map.get(root)
+        if resolved:
+            return 'figures/' + resolved
+    if '/' not in path:
+        return 'figures/' + path
+    return path
 
 
 def convert_label_colons(label: str) -> str:
