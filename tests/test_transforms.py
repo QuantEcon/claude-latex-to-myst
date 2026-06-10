@@ -4116,3 +4116,23 @@ def test_prf_title_with_ref_goes_to_body_not_argument():
     assert first_line == '```{prf:proof}'          # no argument
     assert '**Proof of Proposition' in out          # bold lead-in in body
     assert 'The result follows.' in out
+
+
+def test_convert_pandoc_spans_smallcaps_uppercased():
+    """#124: mystmd renders pandoc's `[x]{.smallcaps}` literally — convert
+    to uppercase (the book-dp1#351 editorial choice)."""
+    out = postprocess.convert_pandoc_spans(
+        'the wage offer sequence is [iid]{.smallcaps} and nonnegative')
+    assert out == 'the wage offer sequence is IID and nonnegative'
+
+
+def test_convert_pandoc_spans_sans_serif_unwrapped():
+    out = postprocess.convert_pandoc_spans('uses [sans]{.sans-serif} text')
+    assert out == 'uses sans text'
+
+
+def test_convert_pandoc_spans_leaves_other_spans():
+    """Only the two classes the pipeline produces are converted; anything
+    else is left for explicit handling when a book actually hits it."""
+    text = 'keep [x]{.underline} as is'
+    assert postprocess.convert_pandoc_spans(text) == text

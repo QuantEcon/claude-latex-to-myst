@@ -61,6 +61,7 @@ EXPECTED_PIPELINE_ORDER: list[str] = [
     'fix_spacing_superscript',
     'join_split_inline_math',
     'ensure_blank_after_display_math',
+    'convert_pandoc_spans',
     'cleanup_typography',
     'strip_blank_lines_in_math',
     'strip_footnote_refs',
