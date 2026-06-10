@@ -15,6 +15,21 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Added — LaTeX `--`/`---` ligatures convert to Unicode en/em dashes (#1)
+
+`convert_latex_dashes` (`transforms/typography.py`, late in
+`process_text`) converts prose `--`→`–` and `---`→`—`, matching the PDF
+(mystmd has no typographer pass). Fence-stack scan per lesson 040:
+code fences, `{math}`/code directives, indented code blocks, structural
+dash lines (frontmatter, table rules), and directive options are
+skipped; inline code, `$…$` math, HTML comments, autolinks, link
+targets, and bare URLs are protected per line. The cheap alternative —
+`pandoc -t markdown-smart` — corrupts every HTML-comment marker (the
+smart writer's dash re-encoding is what restores the `<!--` `-->`
+delimiters the LaTeX reader ligatures); recorded as lesson 047.
+Audited against book-dp2: 167 conversions, all prose; code spans,
+table rules, and CLI flags untouched.
+
 ### Added — `TIKZ_FIGURE_MAP` `'per-subfigure'` opt-out for non-composite outer labels (#75)
 
 The #49 composite fast path collapses a subfigure float to a single

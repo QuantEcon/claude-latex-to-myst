@@ -53,12 +53,13 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 044 | [Migrating a construct fallback→marker re-implements a parser that starts incomplete — lock it with a .tex-rooted differential gate, not counts](lessons/044-marker-migration-needs-differential-tex-gate.md) | preprocess | 🔴 | codified |
 | 045 | [Pandoc's HTML figcaption flattens caption math for tikzpicture figures — extract the caption from source instead](lessons/045-tikzpicture-figcaption-math-flattened-by-pandoc-html.md) | post-processing | 🔴 | codified |
 | 046 | [Structural parity is not render parity — only a real `myst build` catches emission bugs the text can't show](lessons/046-structural-parity-is-not-render-parity.md) | validation | 🔴 | codified |
+| 047 | [pandoc's smart writer is load-bearing for HTML-comment markers — `-t markdown-smart` corrupts every `<!--MARKER-->`; dash conversion must be post-pandoc](lessons/047-markdown-smart-writer-breaks-html-comment-markers.md) | pandoc | 🔴 | codified |
 
 ## By category
 
 - **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045
 - **regex-safety:** 002, 017, 024, 031, 035, 036
-- **pandoc:** 027
+- **pandoc:** 027, 047
 - **preprocess:** 028, 029, 030, 039, 044
 - **katex:** 003, 006, 042
 - **myst:** 013, 040, 041
@@ -81,7 +82,8 @@ coverage.**
   property of our own transforms/architecture, or tooling. Not pandoc's
   fault; won't disappear by marker-izing anything: 001, 002, 003, 004, 005,
   006, 008, 009, 010, 011, 012, 013, 018, 024, 025, 038 (superseded), 039,
-  040, 041, 042, 044, 046.
+  040, 041, 042, 044, 046, 047 (a property of the marker round-trip,
+  not of any one construct's emission).
 
 ## Open (gaps to close on the next book)
 

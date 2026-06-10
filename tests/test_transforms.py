@@ -4283,3 +4283,137 @@ def test_complete_image_path_dir_qualified_with_extension_relocated():
     assert complete_image_path("figures/dual.png", m) == "figures/dual.png"
     # unknown stem with extension: untouched (no map evidence the file exists)
     assert complete_image_path("fig/unknown.png", m) == "fig/unknown.png"
+
+
+# ── LaTeX dash ligatures → Unicode (#1) ──────────────────────────────────────
+
+
+def test_dashes_prose_em_and_en():
+    src = "The Knaster--Tarski theorem --- a classic --- covers (i)--(iii).\n"
+    out = postprocess.convert_latex_dashes(src)
+    assert out == "The Knaster–Tarski theorem — a classic — covers (i)–(iii).\n"
+
+
+def test_dashes_four_plus_hyphen_run_untouched():
+    src = "a ---- separator ----- here\n"
+    assert postprocess.convert_latex_dashes(src) == src
+
+
+def test_dashes_code_fence_skipped():
+    src = (
+        "prose -- here\n"
+        "```python\n"
+        "x = a -- b  # --flag\n"
+        "```\n"
+        "after --- fence\n"
+    )
+    out = postprocess.convert_latex_dashes(src)
+    assert "prose – here" in out
+    assert "x = a -- b  # --flag" in out
+    assert "after — fence" in out
+
+
+def test_dashes_inline_code_and_math_protected():
+    src = "Run `cmd --flag` where $a--b$ holds -- truly.\n"
+    out = postprocess.convert_latex_dashes(src)
+    assert "`cmd --flag`" in out
+    assert "$a--b$" in out
+    assert "holds – truly" in out
+
+
+def test_dashes_display_math_block_skipped():
+    src = (
+        "Consider\n"
+        "$$\n"
+        "x -- y\n"
+        "$$\n"
+        "and -- prose.\n"
+    )
+    out = postprocess.convert_latex_dashes(src)
+    assert "x -- y" in out
+    assert "and – prose." in out
+
+
+def test_dashes_math_directive_skipped_other_directives_processed():
+    src = (
+        "```{math}\n"
+        ":enumerated: false\n"
+        "\n"
+        "a -- b\n"
+        "```\n"
+        "```{note}\n"
+        "A note -- with a dash.\n"
+        "```\n"
+    )
+    out = postprocess.convert_latex_dashes(src)
+    assert "a -- b" in out
+    assert "A note – with a dash." in out
+
+
+def test_dashes_frontmatter_and_table_rules_skipped():
+    src = (
+        "---\n"
+        'title: "T"\n'
+        "---\n"
+        "\n"
+        "| a | b |\n"
+        "|---|---|\n"
+        "| 1 -- 2 | 3 |\n"
+    )
+    out = postprocess.convert_latex_dashes(src)
+    assert out.startswith('---\ntitle: "T"\n---\n')
+    assert "|---|---|" in out
+    # Table CELL content is prose and converts.
+    assert "| 1 – 2 | 3 |" in out
+
+
+def test_dashes_directive_option_line_skipped():
+    src = "```{figure} img.png\n:name: fig--x\n\nCaption -- text.\n```\n"
+    out = postprocess.convert_latex_dashes(src)
+    assert ":name: fig--x" in out
+    assert "Caption – text." in out
+
+
+def test_dashes_html_comment_protected():
+    src = "before -- text <!--ALGORITHM name=x body=QUJD--> after --- end\n"
+    out = postprocess.convert_latex_dashes(src)
+    assert "<!--ALGORITHM name=x body=QUJD-->" in out
+    assert "before – text" in out
+    assert "after — end" in out
+
+
+def test_dashes_multiline_html_comment_skipped():
+    src = "<!--\nraw -- comment\n--> tail\nprose -- here\n"
+    out = postprocess.convert_latex_dashes(src)
+    assert "raw -- comment" in out
+    assert "prose – here" in out
+
+
+def test_dashes_urls_and_link_targets_protected():
+    src = (
+        "See <https://example.com/foo--bar> and "
+        "[text](https://x.org/a--b) and https://y.io/c--d in prose -- ok.\n"
+    )
+    out = postprocess.convert_latex_dashes(src)
+    assert "foo--bar" in out
+    assert "a--b" in out
+    assert "c--d" in out
+    assert "prose – ok" in out
+
+
+def test_dashes_indented_code_block_skipped_nested_list_converted():
+    """Pandoc writes plain ``verbatim`` as 4-space-indented code — no
+    fence for the stack to see. Indented code is skipped; a nested list
+    item at the same depth is still prose and converts."""
+    src = (
+        "prose -- here\n"
+        "\n"
+        "    command --flag --- raw\n"
+        "\n"
+        "1. outer\n"
+        "    1. nested -- item\n"
+    )
+    out = postprocess.convert_latex_dashes(src)
+    assert "command --flag --- raw" in out
+    assert "prose – here" in out
+    assert "nested – item" in out
