@@ -2,6 +2,6 @@
 title: "Declaration Forms"
 ---
 
-The [iid]{.smallcaps} assumption and [sans]{.sans-serif} text.
+The IID assumption and sans text.
 
 A decorator `@tf.function` (TensorFlow) or `@jax.jit` (JAX).

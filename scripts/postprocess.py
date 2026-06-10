@@ -73,6 +73,7 @@ from transforms._helpers import convert_label_colons  # re-export (P3a)
 
 from transforms.typography import (  # noqa: E402  (re-exports for P3a)
     strip_pandoc_html_separators,
+    convert_pandoc_spans,
     convert_epigraphs,
     cleanup_typography,
     compress_directive_whitespace,
@@ -520,6 +521,7 @@ def process_text(text: str, stem: str, title: str | None = None,
     text = fix_spacing_superscript(text)           # \,^ → \,{}^ for KaTeX — runs AFTER decoders so table-cell math is visible (closes #45, #85)
     text = join_split_inline_math(text)
     text = ensure_blank_after_display_math(text)   # adds blank lines
+    text = convert_pandoc_spans(text)              # [x]{.smallcaps} → X (#124)
     text = cleanup_typography(text)                # caps blank-line runs; strips \qedhere
     text = strip_blank_lines_in_math(text)         # MUST run AFTER \qedhere removal (issue #11)
     text = strip_footnote_refs(text)               # operates on cleaned text
