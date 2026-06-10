@@ -113,17 +113,31 @@ def convert_environment_divs(text: str, ctx=None) -> str:
             # title text between them is pandoc-converted, so a ``\ref`` /
             # math in the title is already in pandoc-link form here — the
             # later ``convert_cross_references`` pass turns it into a role.
-            title_arg = None
-            body_text = '\n'.join(body_lines)
-            tm = re.search(
+            #
+            # The search is truncated at the first nested ``:::`` fence line:
+            # THIS env's marker always lands at the start of its body (it was
+            # injected on the first line after ``\begin{env}``), while a marker
+            # past a nested fence belongs to an inner titled env — searching
+            # the whole body would steal the inner env's title (caught in the
+            # PR #115 detailed review). Any marker left in the body afterwards
+            # (an inner env this single-level pass won't convert) is scrubbed
+            # to its bold title text so the marker never leaks verbatim.
+            prftitle_re = re.compile(
                 r'\\?<!--PRFTITLE-START--\\?>(.*?)\\?<!--PRFTITLE-END--\\?>',
-                body_text,
                 re.DOTALL,
             )
+            title_arg = None
+            body_text = '\n'.join(body_lines)
+            nested_cut = re.search(r'^\s*:{3,}', body_text, re.MULTILINE)
+            region_end = nested_cut.start() if nested_cut else len(body_text)
+            tm = prftitle_re.search(body_text, 0, region_end)
             if tm:
                 title_arg = tm.group(1).strip()
                 body_text = body_text[:tm.start()] + body_text[tm.end():]
-                body_lines = body_text.split('\n')
+            body_text = prftitle_re.sub(
+                lambda m: f'**{m.group(1).strip()}**', body_text
+            )
+            body_lines = body_text.split('\n')
 
             # Extract label(s) from the body. Pandoc emits one or more
             # ``[]{#label label="label"}`` anchors anywhere on a line.

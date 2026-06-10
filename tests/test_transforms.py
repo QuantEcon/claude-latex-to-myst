@@ -2713,6 +2713,33 @@ def test_prf_no_title_unchanged():
     assert '```{prf:theorem}\n:label: t-plain' in out
 
 
+def test_prf_title_not_stolen_from_nested_env():
+    """An UNTITLED outer env containing a titled inner env must not lift the
+    inner's PRFTITLE onto itself (caught in the #115 detailed review): the
+    search stops at the first nested ``:::`` fence, and the inner marker —
+    which this single-level pass won't convert — degrades to bold title text
+    rather than leaking verbatim."""
+    body = (
+        ':::: theorem\n'
+        '[]{#t:outer label="t:outer"} Outer body before.\n'
+        '\n'
+        '::: remark\n'
+        '\\<!--PRFTITLE-START--\\>Inner Note Title\\<!--PRFTITLE-END--\\> '
+        'Inner remark body.\n'
+        ':::\n'
+        '\n'
+        'Outer body after.\n'
+        '::::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    # Outer directive has NO title argument.
+    assert '```{prf:theorem}\n:label: t-outer' in out
+    assert '{prf:theorem} Inner Note Title' not in out
+    # Inner marker scrubbed to bold text, never leaked.
+    assert '**Inner Note Title**' in out
+    assert 'PRFTITLE' not in out
+
+
 def test_multi_label_three_anchors_emits_two_divs():
     """Three labels → first promoted, two sibling {div}s."""
     body = (
