@@ -16,6 +16,7 @@ import base64
 import re
 
 from ._helpers import convert_label_colons, outer_fence
+from .math import _emit_unnumbered_math
 
 
 def _algo_find_balanced(s: str, start: int) -> int:
@@ -91,6 +92,81 @@ def _unwrap_text_macro(text: str, macro: str, wrap: str) -> str:
         inner = text[brace_open + 1 : brace_close]
         out.append(wrap.format(inner))
         i = brace_close + 1
+
+
+# Display-math environments that may sit inside an algorithm2e statement.
+# mystmd's amsmath support is block-level only (the environment must start
+# the line), so any of these left mid-line after whitespace-flattening
+# renders as literal prose (#130).
+_ALGO_DISPLAY_MATH_RE = re.compile(
+    r'\\begin\{(equation\*?|align\*?|gather\*?)\}(.*?)\\end\{\1\}',
+    re.DOTALL,
+)
+
+_MATHBLOCK_TOKEN_RE = re.compile(r'\\MATHBLOCK(\d+)\\')
+
+
+def _amsmath_to_display(env: str, content: str) -> str:
+    """Render an amsmath environment body as a display block, using the
+    same env translation ``convert_equations`` (math.py) applies:
+    multi-row envs keep their alignment via aligned/gathered; a *starred*
+    env emits a ``{math}`` directive with ``:enumerated: false`` (a bare
+    ``$$`` would be assigned a number under book-wide numbering, #113);
+    an unstarred env keeps the numbered ``$$ … $$ (label)`` suffix form."""
+    label = ''
+    m = re.search(r'\\label\{([^}]+)\}', content)
+    if m:
+        label = convert_label_colons(m.group(1))
+        content = content.replace(m.group(0), '')
+    content = re.sub(r'\s+', ' ', content).strip()
+    base = env.rstrip('*')
+    if base == 'align':
+        content = f'\\begin{{aligned}} {content} \\end{{aligned}}'
+    elif base == 'gather':
+        content = f'\\begin{{gathered}} {content} \\end{{gathered}}'
+    if env.endswith('*'):
+        return _emit_unnumbered_math(content, label or None)
+    block = f'$$\n{content}\n$$'
+    if label:
+        block += f' ({label})'
+    return block
+
+
+def _expand_math_tokens(line: str, math_blocks: list[str]) -> list[str]:
+    """Block-lift a stashed display-math placeholder out of a bullet line.
+
+    ``line`` is an emitted bullet (``pad- content``); the placeholder is
+    replaced by a blank-line-separated ``$$`` block indented two spaces
+    past the bullet marker (list-item continuation), so mystmd parses it
+    as math rather than literal mid-line prose (#130). Text after the
+    placeholder becomes a continuation paragraph; a bullet whose entire
+    content was the equation attaches the block to the preceding bullet.
+    """
+    m = _MATHBLOCK_TOKEN_RE.search(line)
+    if not m:
+        return [line]
+    stripped = line.lstrip(' ')
+    pad = ' ' * (len(line) - len(stripped))
+    # Continuation indent: two spaces past a bullet marker, but flush with
+    # the line itself when recursing on a continuation paragraph (no ``- ``)
+    # — otherwise a second environment in the same statement would drift
+    # two extra spaces per recursion.
+    cont = pad + ('  ' if stripped.startswith('- ') else '')
+    pre = line[: m.start()].rstrip()
+    post = line[m.end() :].strip()
+    block = math_blocks[int(m.group(1))]
+    out: list[str] = []
+    if pre.strip() not in ('', '-'):
+        out.append(pre)
+    out.append('')
+    # A ``{math}`` block carries an internal blank line — keep it truly
+    # empty rather than indenting it into trailing whitespace.
+    out.extend((cont + bl) if bl else '' for bl in block.split('\n'))
+    out.append('')
+    if post:
+        # Recurse for the (rare) second environment in one statement.
+        out.extend(_expand_math_tokens(cont + post, math_blocks))
+    return out
 
 
 def _algpseudo_tokenize(body: str) -> list[dict]:
@@ -406,6 +482,21 @@ def _algo_convert_body(body: str) -> str:
     # produced by recursive expansion below should survive into the output.
     s = '\n'.join(line.lstrip(' \t') for line in s.split('\n'))
 
+    # A display equation inside an algorithm2e line (e.g. "…satisfying
+    # \begin{equation*}…\end{equation*}" in a \While body) must not be
+    # whitespace-flattened into mid-line position — mystmd would render it
+    # as literal prose (#130). Stash each environment behind a placeholder
+    # token now (which also shields any ``\;`` inside the math — a thin
+    # space there, not a statement terminator — from the split below) and
+    # block-lift it under its bullet at emission time.
+    math_blocks: list[str] = []
+
+    def _stash_math(m: re.Match) -> str:
+        math_blocks.append(_amsmath_to_display(m.group(1), m.group(2)))
+        return f'\\MATHBLOCK{len(math_blocks) - 1}\\'
+
+    s = _ALGO_DISPLAY_MATH_RE.sub(_stash_math, s)
+
     # Drop noise commands.
     s = re.sub(r'\\DontPrintSemicolon', '', s)
     s = re.sub(r'\\SetAlgoLined', '', s)
@@ -579,6 +670,14 @@ def _algo_convert_body(body: str) -> str:
             content = re.sub(r'\s+', ' ', p).strip()
             if content:
                 out_lines.append(f'- {content}')
+
+    if math_blocks:
+        expanded: list[str] = []
+        for ln in out_lines:
+            expanded.extend(_expand_math_tokens(ln, math_blocks))
+        # Token expansion brackets each block with blank lines; adjacent
+        # blocks (or a block at list end) can double them up.
+        return re.sub(r'\n{3,}', '\n\n', '\n'.join(expanded)).strip()
 
     return '\n'.join(out_lines).strip()
 

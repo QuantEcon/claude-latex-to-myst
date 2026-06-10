@@ -1,0 +1,10 @@
+# #130: a display equation inside an algorithm2e line must be block-lifted
+# under its bullet as an indented $$ block — mystmd's amsmath support is
+# block-level only, so a mid-line \begin{equation*} renders as literal
+# prose. Shape from dp2's algo:hpowb (ch_transforms.tex).
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Inline Equation" }
