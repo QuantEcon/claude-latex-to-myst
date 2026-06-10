@@ -4136,3 +4136,18 @@ def test_convert_pandoc_spans_leaves_other_spans():
     else is left for explicit handling when a book actually hits it."""
     text = 'keep [x]{.underline} as is'
     assert postprocess.convert_pandoc_spans(text) == text
+
+
+def test_starred_equation_with_tikzcd_stays_bare():
+    """A starred env wrapping a tikzcd diagram must keep the bare ``$$``
+    form: the consumer-side TIKZCD_INLINE_MAP matches ``$$ … tikzcd … $$``
+    and replaces it with an image — the ``{math}`` form broke the match,
+    leaking tikzcd to KaTeX and losing the mapped figure (dp1 ch_fps
+    build test)."""
+    text = ("$$\\begin{equation*}\n"
+            "\\begin{tikzcd}[row sep=huge]\nA \\arrow{r} & B\n\\end{tikzcd}\n"
+            "\\end{equation*}$$\n")
+    out = postprocess.convert_equations(text)
+    assert '```{math}' not in out
+    assert out.strip().startswith('$$')
+    assert '\\begin{tikzcd}' in out
