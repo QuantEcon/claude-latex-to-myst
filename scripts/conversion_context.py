@@ -296,15 +296,18 @@ class ConversionContext:
             listing_source_base = (base_dir / src_base).resolve()
 
             # Scan the source figures dir so an extensionless include can be
-            # completed to the file the copy step writes (#104). Prefer
-            # web-renderable formats when several share a stem (pdf last —
-            # mystmd can't render it).
+            # completed to the file the copy step writes (#104). The extension
+            # set MUST match convert.sh Stage 4's copy loop — resolving to a
+            # format the copy step doesn't carry (e.g. gif) would point at a
+            # file absent from the output figures/ dir. Prefer web-renderable
+            # formats when several share a stem (pdf last — mystmd can't
+            # render it).
             figdir_rel = config.get('figures_dir')
             if figdir_rel:
                 src_dir = config.get('source_dir', '.')
                 figdir = (base_dir / src_dir / figdir_rel)
                 if figdir.is_dir():
-                    for ext in ('png', 'jpg', 'jpeg', 'svg', 'gif', 'pdf'):
+                    for ext in ('png', 'jpg', 'jpeg', 'svg', 'pdf'):
                         for f in sorted(figdir.glob(f'*.{ext}')):
                             figure_ext_map.setdefault(f.stem, f.name)
 

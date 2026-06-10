@@ -13,10 +13,16 @@ def complete_image_path(path: str, figure_ext_map: dict | None = None) -> str:
     ``\\includegraphics{fig/foo}`` with no extension is valid LaTeX (graphicx
     probes extensions), but the emitted ``{figure}`` then points at a path
     MyST can't resolve even though the copy step wrote ``figures/foo.png``.
-    When ``figure_ext_map`` (stem → actual filename) has the basename, rewrite
-    to ``figures/foo.png``. Falls back to the prior behaviour — prepend
-    ``figures/`` only when the path has no directory component — so a path
-    that already carries an extension or a non-default root is untouched.
+
+    Behaviour:
+    - **Extensionless basename with a ``figure_ext_map`` hit** → rewrite to
+      ``figures/<resolved-filename>`` (e.g. ``fig/foo`` → ``figures/foo.png``),
+      *regardless of any directory component* on the source path. This is the
+      #104 fix.
+    - **Otherwise** → the prior behaviour: prepend ``figures/`` only when the
+      path has no directory component. So a path that already carries an
+      extension, or an extensionless one with no matching source file, is
+      returned unchanged.
     """
     base = path.rsplit('/', 1)[-1]
     root, ext = os.path.splitext(base)
