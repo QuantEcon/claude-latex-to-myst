@@ -207,7 +207,10 @@ def _blockify_math_directives(text: str) -> str:
         return text
     out: list[str] = []
     in_math = False
-    for line in text.split('\n'):
+    lines = text.split('\n')
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         if not in_math:
             idx = line.find('```{math}')
             if idx != -1:
@@ -226,12 +229,20 @@ def _blockify_math_directives(text: str) -> str:
                 fence_end = len(line) - len(stripped) + 3
                 tail = line[fence_end:].lstrip()
                 out.append(line[:fence_end])
+                in_math = False
                 if tail:
                     out.append('')
-                    out.append(tail)
-                in_math = False
+                    # The tail may itself contain the NEXT directive's opening
+                    # fence — pandoc's --wrap=none plus LaTeX %-gluing can put
+                    # "``` prose ```{math}" on one source line (two starred
+                    # displays with prose between, found in the dp1 parity
+                    # run). Re-scan it instead of appending blindly, else that
+                    # opener leaks mid-line as broken MyST.
+                    lines[i] = tail
+                    continue
             else:
                 out.append(line)
+        i += 1
     return '\n'.join(out)
 
 

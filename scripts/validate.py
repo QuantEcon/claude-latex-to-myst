@@ -105,8 +105,12 @@ def count_myst(text: str) -> dict:
     # GH #16.
     bare_fence = len(re.findall(r'^\$\$\s*$', text, flags=re.MULTILINE))
     labeled_close = len(re.findall(r'^\$\$\s+\(eq-', text, flags=re.MULTILINE))
+    # Starred (unnumbered) LaTeX display envs emit a ``{math}`` directive
+    # with ``:enumerated: false`` instead of a bare ``$$`` block (#113) —
+    # count those as equations too, else every starred env reads as a drop.
+    math_directives = len(re.findall(r'^`{3,}\{math\}', text, flags=re.MULTILINE))
     return {
-        'equations':       (bare_fence + labeled_close) // 2,
+        'equations':       (bare_fence + labeled_close) // 2 + math_directives,
         'labeled_eqs':     labeled_close,
         'theorems':        len(re.findall(r'\{prf:(theorem|lemma|corollary|proposition|definition)\}', text)),
         'figures':         len(re.findall(r'\{figure\}', text)),
