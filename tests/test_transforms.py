@@ -4151,3 +4151,19 @@ def test_starred_equation_with_tikzcd_stays_bare():
     assert '```{math}' not in out
     assert out.strip().startswith('$$')
     assert '\\begin{tikzcd}' in out
+
+
+def test_complete_image_path_dir_qualified_with_extension_relocated():
+    """Copilot review on #103: convert.sh flattens assets into
+    output/figures/<basename>, so a directory-qualified source path always
+    dangles. When the stem is in the scanned map, relocate keeping the
+    author-chosen extension; unknown stems stay untouched."""
+    from transforms._helpers import complete_image_path
+    m = {"restud_fig11a": "restud_fig11a.png", "dual": "dual.png"}
+    # relocate, keeping the author's extension (even when the map prefers png)
+    assert complete_image_path("fig/restud_fig11a.pdf", m) == "figures/restud_fig11a.pdf"
+    assert complete_image_path("../figures/dual.pdf", m) == "figures/dual.pdf"
+    # already-canonical path: idempotent
+    assert complete_image_path("figures/dual.png", m) == "figures/dual.png"
+    # unknown stem with extension: untouched (no map evidence the file exists)
+    assert complete_image_path("fig/unknown.png", m) == "fig/unknown.png"

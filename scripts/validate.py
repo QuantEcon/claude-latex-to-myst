@@ -326,7 +326,9 @@ def check_resolution(text: str, filename: str,
     # equations inside vanish from the built AST. This is exactly the
     # blast pattern of an inline role emitted into a directive argument.
     for i, line in enumerate(text.split('\n'), 1):
-        m = re.match(r'^`{3,}\{[^}]+\}([^\n]*)$', line)
+        # CommonMark allows a fence indented up to 3 spaces (e.g. a
+        # directive nested in a list item) — match that too (Copilot, #103).
+        m = re.match(r'^ {0,3}`{3,}\{[^}]+\}([^\n]*)$', line)
         if m and '`' in m.group(1):
             diagnostics.append(
                 f'{filename}:{i}: backtick in backtick-fence info string '
