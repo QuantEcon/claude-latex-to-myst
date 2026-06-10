@@ -66,6 +66,7 @@ _MARKER_SCRIPTS = [
     '_apply_algorithmic_markers.py',
     '_apply_listing_markers.py',
     '_apply_description_markers.py',
+    '_apply_custom_label_enumerates.py',
     '_apply_enumerate_markers.py',
     '_apply_table_markers.py',
     '_apply_figure_markers.py',

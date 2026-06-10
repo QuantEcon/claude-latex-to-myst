@@ -170,6 +170,13 @@ for ch in "${CHAPTER_STEMS[@]}"; do
   # sources that contain no description envs (GH #19).
   python3 "$SCRIPT_DIR/_apply_description_markers.py" "$dst"
 
+  # Flatten enumerates whose every \item carries an explicit [label]
+  # into labelled paragraphs (GH #111). Pandoc drops custom \item[(a)]
+  # labels silently, renumbering the list 1..N — dp1's norm properties
+  # render "1.-8." against the PDF's "(a)-(d)". No-op for sources
+  # without the shape.
+  python3 "$SCRIPT_DIR/_apply_custom_label_enumerates.py" "$dst"
+
   # Replace \begin{enumerate} blocks whose every \item carries
   # \label{ex:...} with EXERCISE marker pairs. Pandoc's enumerate
   # parser discards interior \label{} calls, so every exercise label
