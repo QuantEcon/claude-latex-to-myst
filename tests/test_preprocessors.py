@@ -1201,6 +1201,15 @@ def test_prf_title_does_not_match_bracket_in_body():
     assert _apply_prf(src) == src
 
 
+def test_prf_title_skips_commented_out_begin():
+    """A commented-out ``% \\begin{theorem}[T]`` must be left alone — injecting
+    an uncommented marker would leak it into pandoc output (same leak-prevention
+    guard as the algorithm / listing preprocessors)."""
+    src = "% \\begin{theorem}[Hidden]\\label{t:x}\n% body\n% \\end{theorem}\n"
+    assert _apply_prf(src) == src
+    assert "PRFTITLE" not in _apply_prf(src)
+
+
 def test_prf_title_balanced_brackets_in_title():
     src = "\\begin{lemma}[Bound on $f[x]$ growth]\\label{l:b}\nBody.\n\\end{lemma}\n"
     out = _apply_prf(src)

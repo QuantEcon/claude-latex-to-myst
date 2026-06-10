@@ -75,6 +75,22 @@ def _find_optional_arg_end(s: str, start: int) -> int:
     return -1
 
 
+def _starts_in_comment(text: str, pos: int) -> bool:
+    """True iff ``text[pos]`` is inside a LaTeX line-comment (an unescaped
+    ``%`` earlier on the same line). Mirrors the guard in
+    ``_apply_algorithm_markers`` / ``_apply_listing_markers``."""
+    line_start = text.rfind('\n', 0, pos) + 1
+    i = line_start
+    while i < pos:
+        if text[i] == '\\':
+            i += 2
+            continue
+        if text[i] == '%':
+            return True
+        i += 1
+    return False
+
+
 def _prf_envs_from_config(config_path: Path) -> tuple[str, ...]:
     try:
         from _config import load
@@ -99,6 +115,11 @@ def apply_markers(text: str, envs: tuple[str, ...]) -> str:
     out = []
     pos = 0
     for m in begin_re.finditer(text):
+        # Skip a ``\begin{env}[…]`` on a commented-out line — injecting an
+        # uncommented marker would "uncomment" it and leak into pandoc output
+        # (the guard every other marker preprocessor has).
+        if _starts_in_comment(text, m.start()):
+            continue
         bracket = m.end()  # index of the '['
         close = _find_optional_arg_end(text, bracket)
         if close < 0:
@@ -130,8 +151,10 @@ def main() -> None:
     else:
         sys.exit('usage: _apply_prf_title_markers.py [CONFIG] TEX_FILE')
 
-    text = tex_path.read_text()
-    tex_path.write_text(apply_markers(text, envs))
+    text = tex_path.read_text(encoding='utf-8')
+    new_text = apply_markers(text, envs)
+    if new_text != text:
+        tex_path.write_text(new_text, encoding='utf-8')
 
 
 if __name__ == '__main__':
