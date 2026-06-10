@@ -1139,18 +1139,28 @@ def test_texttt_plain_arg_unchanged():
 # ── multicols column-count strip (#111) ────────────────────────────────────────
 
 
+def _strip_multicols(text: str) -> str:
+    return rew._MULTICOLS_ARGS.sub(rew._strip_multicols_args, text)
+
+
 def test_multicols_count_argument_stripped():
-    assert rew._MULTICOLS_COUNT_STRIP.sub(r"\1", r"\begin{multicols}{2}") == r"\begin{multicols}"
+    assert _strip_multicols(r"\begin{multicols}{2}") == r"\begin{multicols}"
 
 
-def test_multicols_star_count_stripped_pretext_preserved():
-    """Only the ``{N}`` count is removed; the optional ``[pre-text]`` is real
-    spanning content and must survive (Copilot review)."""
-    out = rew._MULTICOLS_COUNT_STRIP.sub(r"\1", r"\begin{multicols*}{3}[Intro text]")
-    assert out == r"\begin{multicols*}[Intro text]"
+def test_multicols_star_pretext_hoisted_above_env():
+    """The optional ``[pre-text]`` is real spanning content. It can't be left
+    in the optional-arg slot — pandoc silently drops an optional arg on the
+    count-less env (verified; worse than the pre-fix garbled leak). Hoist it
+    out as a paragraph above the env, matching multicols' own semantics
+    (full-width text printed before the columns)."""
+    out = _strip_multicols(r"\begin{multicols*}{3}[Intro text]")
+    assert out == "Intro text\n\n\\begin{multicols*}"
 
 
 def test_multicols_count_strip_keeps_following_content():
     src = "\\begin{multicols}{2}\n\\item a\n"
-    out = rew._MULTICOLS_COUNT_STRIP.sub(r"\1", src)
-    assert out == "\\begin{multicols}\n\\item a\n"
+    assert _strip_multicols(src) == "\\begin{multicols}\n\\item a\n"
+
+
+def test_multicols_empty_pretext_dropped():
+    assert _strip_multicols(r"\begin{multicols}{2}[ ]") == r"\begin{multicols}"

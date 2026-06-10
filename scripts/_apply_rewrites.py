@@ -44,16 +44,29 @@ _ITEMSEP_STRIP = re.compile(
     r'(?:\s*\\\\)?\s*'
 )
 
-# ``\begin{multicols}{N}`` — the mandatory column-count argument. multicols
-# is skipped post-pandoc (the wrapper is dropped, content kept), but pandoc
-# renders the ``{N}`` arg as a stray ``N`` paragraph at the top of the div,
-# which then leaks into the body (#111). MyST has no multi-column primitive,
-# so the count carries no meaning downstream — strip ONLY the ``{N}`` count.
-# The optional ``[pre-text]`` that may follow is real spanning content, not
-# the count, so it is left in place (Copilot review).
-_MULTICOLS_COUNT_STRIP = re.compile(
-    r'(\\begin\{multicols\*?\})\s*\{[^}]*\}'
+# ``\begin{multicols}{N}[pre-text]`` — the mandatory column-count argument
+# and the optional spanning pre-text. multicols is skipped post-pandoc (the
+# wrapper is dropped, content kept), but pandoc renders the ``{N}`` arg as a
+# stray ``N`` paragraph at the top of the div, which then leaks into the body
+# (#111). MyST has no multi-column primitive, so the count carries no meaning
+# downstream — strip the ``{N}``.
+#
+# The optional ``[pre-text]`` is real content (multicols prints it full-width
+# before the columns begin), but it CANNOT simply be left in place: pandoc
+# silently drops an optional arg on the count-less env (verified — worse than
+# the pre-fix garbled leak, per the lesson-028 "silent drops are the worst
+# failure mode" rule). Hoist it OUT as a paragraph before the env instead,
+# which matches multicols' own semantics (spanning text above the columns).
+_MULTICOLS_ARGS = re.compile(
+    r'(\\begin\{multicols\*?\})\s*\{[^}]*\}(?:\s*\[([^\]]*)\])?'
 )
+
+
+def _strip_multicols_args(m: re.Match) -> str:
+    env, pretext = m.group(1), m.group(2)
+    if pretext and pretext.strip():
+        return f'{pretext.strip()}\n\n{env}'
+    return env
 
 _NATBIB_OPT = r'(?:\s*\[[^\]]*\]){0,2}'
 # Same optional-locator shape as ``_NATBIB_OPT`` but with at least one
@@ -224,8 +237,10 @@ def main():
     text = flatten_texttt_brace_groups(text)
 
     # 3c. Strip the multicols column-count argument so it doesn't leak as a
-    # stray number into the (column-less) MyST output (#111).
-    text = _MULTICOLS_COUNT_STRIP.sub(r'\1', text)
+    # stray number into the (column-less) MyST output, hoisting any optional
+    # [pre-text] out as a paragraph before the env so pandoc doesn't silently
+    # drop it (#111).
+    text = _MULTICOLS_ARGS.sub(_strip_multicols_args, text)
 
     # 4. Search-and-replace: { from: regex, to: replacement }
     for rule in pre.get('rewrites') or []:
