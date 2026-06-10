@@ -488,10 +488,18 @@ def process_text(text: str, stem: str, title: str | None = None,
     # ``convert_html_figures`` (Phase 2 — issue #94).
     text = resolve_figure_markers(text, ctx)
     text = convert_simple_tables(text)
+    # convert_equations MUST run before convert_environment_divs /
+    # resolve_exercise_markers (#113 review): starred display envs now emit
+    # 3-backtick ```{math} directives, and the env/exercise emitters size
+    # their enclosing fence via outer_fence() over the body *at emission
+    # time*. With equations converted first, a theorem containing a starred
+    # display gets a 4-backtick fence; converted after, the inner ```{math}
+    # closer would terminate the theorem early (the issue-#79 ordering
+    # limitation outer_fence documents).
+    text = convert_equations(text)
     text = convert_environment_divs(text, ctx)
     text = convert_description_lists(text)         # decode DESCITEM markers (lesson 022)
     text = resolve_exercise_markers(text)          # decode EXERCISE markers (closes #69)
-    text = convert_equations(text)
     text = decode_natbib_markers(text)              # before cross-refs (lesson 020)
     text = convert_cross_references(text, ctx)
     text = strip_doubled_noun_refs(text, ctx)      # needs MyST refs in place

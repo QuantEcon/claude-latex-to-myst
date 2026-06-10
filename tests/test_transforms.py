@@ -3185,6 +3185,31 @@ def test_convert_equations_starred_midline_blockified():
     assert "where things happen." in out
 
 
+def test_starred_equation_inside_theorem_fence_sized():
+    """A starred display inside a theorem env: the enclosing directive's fence
+    must outrank the nested ```{math} fence, else the math closer terminates
+    the theorem early (#113 review — the issue-#79 ordering class). Requires
+    convert_equations to run BEFORE convert_environment_divs in the pipeline,
+    so this test goes through process_text."""
+    pandoc_out = (
+        '::: theorem\n'
+        '[]{#t:embed label="t:embed"} The bound holds:\n'
+        '\n'
+        '$$\\begin{equation*}\n'
+        '\\|u\\| \\leq C\n'
+        '\\end{equation*}$$\n'
+        '\n'
+        'for all $u$.\n'
+        ':::\n'
+    )
+    out = postprocess.process_text(pandoc_out, stem='t', title='T')
+    assert '````{prf:theorem}' in out        # 4-tick outer fence
+    assert '```{math}' in out                # 3-tick nested math
+    assert ':enumerated: false' in out
+    # The theorem's closer is the LAST fence — body content stays inside.
+    assert out.rstrip().endswith('````')
+
+
 def test_convert_equations_label_after_body_in_equation_env():
     """GH #26 — the standard ``\\begin{equation} body \\label{eq:foo}
     \\end{equation}`` convention. The label must be extracted in the
