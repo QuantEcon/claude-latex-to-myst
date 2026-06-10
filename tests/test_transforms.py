@@ -655,6 +655,35 @@ def test_strip_doubled_section_symbol_preserves_external_refs():
     assert out == text
 
 
+def test_strip_doubled_noun_refs_figure_numref():
+    """`Figure~\\ref{f:x}` → `Figure {numref}`f-x`` renders 'Figure Figure
+    N' because numref auto-renders 'Figure N'; strip the prose noun (#110)."""
+    text = "See Figure {numref}`f-state_action_reward` for details."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "See {numref}`f-state_action_reward` for details."
+
+
+def test_strip_doubled_noun_refs_figures_plural_fig_prefix():
+    text = "Figures {numref}`fig-a` and {numref}`fig-b` show this."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "{numref}`fig-a` and {numref}`fig-b` show this."
+
+
+def test_strip_doubled_noun_refs_appendix_section_symbol():
+    """`Appendix~\\S\\ref{c:areal}` → `Appendix §{prf:ref}`c-areal``; both the
+    prose 'Appendix' and the stray § are redundant once the role auto-renders
+    'Appendix A' (#110)."""
+    text = "As shown in Appendix §{prf:ref}`c-areal` we have results."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "As shown in {prf:ref}`c-areal` we have results."
+
+
+def test_strip_doubled_noun_refs_figure_with_nbsp_and_section_symbol():
+    text = "Figure\xa0§{numref}`f-x` is key."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "{numref}`f-x` is key."
+
+
 # ── Frontmatter style flag ───────────────────────────────────────────────────
 
 
@@ -2637,6 +2666,89 @@ def test_multi_label_three_anchors_emits_two_divs():
     assert ':name: l-b' in out
     assert ':name: l-c' in out
     assert out.count('```{div}') == 2
+
+
+def test_hoist_heading_labels_two_labels_split_form():
+    """`\\subsection{T}\\label{ss:a}\\n\\label{sss:b}` — pandoc folds the
+    first label into the heading id and emits the second as a leading
+    mid-line span on the next paragraph; hoist it above the heading (#108)."""
+    body = (
+        '(ss-gfsmdp)=\n'
+        '## The MDP Model\n'
+        '\n'
+        '[]{#sss:fsmdp label="sss:fsmdp"} We study a controller.\n'
+    )
+    out = postprocess.hoist_consecutive_heading_labels(body)
+    assert out == (
+        '(ss-gfsmdp)=\n'
+        '(sss-fsmdp)=\n'
+        '## The MDP Model\n'
+        '\n'
+        'We study a controller.\n'
+    )
+
+
+def test_hoist_heading_labels_three_labels_one_line():
+    """Three consecutive `\\label`s — two spans land on the next paragraph."""
+    body = (
+        '(ss-a)=\n'
+        '## Three Labels\n'
+        '\n'
+        '[]{#ss:b label="ss:b"}[]{#ss:c label="ss:c"} First paragraph.\n'
+    )
+    out = postprocess.hoist_consecutive_heading_labels(body)
+    assert out == (
+        '(ss-a)=\n'
+        '(ss-b)=\n'
+        '(ss-c)=\n'
+        '## Three Labels\n'
+        '\n'
+        'First paragraph.\n'
+    )
+
+
+def test_hoist_heading_labels_no_orphan_is_noop():
+    """A heading whose following paragraph has no leading anchor is untouched."""
+    body = (
+        '(ss-a)=\n'
+        '## Solo Label\n'
+        '\n'
+        'Just prose, no orphan anchor.\n'
+    )
+    out = postprocess.hoist_consecutive_heading_labels(body)
+    assert out == body
+
+
+def test_hoist_heading_labels_leaves_non_heading_orphan():
+    """A leading anchor on a paragraph NOT preceded by a heading is left for
+    the existing strip path (e.g. footnote-body orphan)."""
+    body = '[^1]: []{#fn:hcon label="fn:hcon"}Footnote body.\n'
+    out = postprocess.hoist_consecutive_heading_labels(body)
+    assert out == body
+
+
+def test_hoist_heading_labels_leaves_chapter_h1_explicit_label():
+    """A ``# Chapter`` H1 with an explicit following ``[]{#c:...}`` label must
+    NOT be hoisted — that label is consumed later by ``add_frontmatter``'s
+    "prefer explicit chapter label" path (lesson 017). Stacking the label
+    above the H1 would stop ``add_frontmatter`` from matching/absorbing the
+    heading. Only section-level (H2+) headings are hoist targets, so the H1
+    case is left untouched (both the own-line and mid-line label shapes)."""
+    own_line = (
+        '(c-intro-auto)=\n'
+        '# The Introduction\n'
+        '\n'
+        '[]{#c:climate label="c:climate"}\n'
+        'This chapter studies climate.\n'
+    )
+    mid_line = (
+        '(c-intro-auto)=\n'
+        '# The Introduction\n'
+        '\n'
+        '[]{#c:climate label="c:climate"} This chapter studies climate.\n'
+    )
+    assert postprocess.hoist_consecutive_heading_labels(own_line) == own_line
+    assert postprocess.hoist_consecutive_heading_labels(mid_line) == mid_line
 
 
 def test_standalone_labels_strips_midline_footnote_orphan():

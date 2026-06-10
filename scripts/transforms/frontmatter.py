@@ -50,6 +50,100 @@ def convert_section_labels(text: str) -> str:
     return text
 
 
+def hoist_consecutive_heading_labels(text: str) -> str:
+    """Stack a heading's *secondary* ``\\label{}``s above the heading.
+
+    LaTeX allows several consecutive labels on one sectioning command::
+
+        \\subsection{The MDP Model}\\label{ss:gfsmdp}\\label{sss:fsmdp}
+
+    Pandoc folds only the **first** label into the heading id and emits the
+    rest as leading ``[]{#…}`` spans on the *following* paragraph::
+
+        (ss-gfsmdp)=
+        ## The MDP Model
+
+        []{#sss:fsmdp label="sss:fsmdp"} We study a controller …
+
+    Left alone, ``convert_standalone_labels`` strips that mid-line orphan, so
+    a ``{ref}`sss-fsmdp``` resolves to the paragraph node (no section number)
+    and mystmd renders the generic node name "Paragraph" (issue #108). This
+    transform pulls the leading anchor spans off the first post-heading
+    paragraph and stacks them — in author order, after the heading's own
+    ``(primary)=`` line — so every label resolves to the heading's number::
+
+        (ss-gfsmdp)=
+        (sss-fsmdp)=
+        ## The MDP Model
+
+        We study a controller …
+
+    Runs **after** ``convert_section_labels`` (heading id already a
+    ``(primary)=`` anchor) and **before** ``convert_standalone_labels`` (so
+    the orphan span is still present, not yet stripped). Only leading spans on
+    the *first* non-blank line after the heading are hoisted, so a genuine
+    own-line anchor further down (or a footnote orphan mid-paragraph) is left
+    for the existing strip path.
+    """
+    anchor_re = re.compile(r'^\(([^)]+)\)=\s*$')
+    heading_re = re.compile(r'^#{1,6}\s+\S')
+    # Only hoist for section-level headings (``##``+). An H1 (``# ``) is the
+    # chapter heading ``add_frontmatter`` absorbs, and it relies on exactly one
+    # ``(label)=`` line before ``# Title`` plus a *following* explicit anchor
+    # (the lesson-017 "prefer explicit chapter label" path). Stacking a second
+    # anchor above the H1 would break that match — so leave H1 alone. Every
+    # #108 case is a subsection/subsubsection (H2+), so this loses nothing.
+    section_heading_re = re.compile(r'^#{2,6}\s+\S')
+    # A run of one or more leading ``[]{#label}`` spans, then the rest.
+    lead_re = re.compile(
+        r'^((?:\[\]\{#[^\s}]+(?:\s+label="[^"]*")?\}[ \t]*)+)(.*)$'
+    )
+    span_re = re.compile(r'\[\]\{#([^\s}]+)(?:\s+label="[^"]*")?\}')
+
+    lines = text.split('\n')
+    out: list[str] = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        # A contiguous block of ``(x)=`` anchors immediately above a heading.
+        if anchor_re.match(lines[i]):
+            k = i
+            while k < n and anchor_re.match(lines[k]):
+                k += 1
+            if k < n and section_heading_re.match(lines[k]):
+                anchor_block = lines[i:k]
+                heading = lines[k]
+                # First non-blank line after the heading.
+                p = k + 1
+                while p < n and lines[p].strip() == '':
+                    p += 1
+                secondary: list[str] = []
+                if p < n and not heading_re.match(lines[p]):
+                    lm = lead_re.match(lines[p])
+                    if lm:
+                        secondary = [
+                            f'({convert_label_colons(s)})='
+                            for s in span_re.findall(lm.group(1))
+                        ]
+                        remainder = lm.group(2).lstrip()
+                        if remainder:
+                            lines[p] = remainder
+                        else:
+                            # Anchors were the whole line — drop it so we
+                            # don't leave a stray blank inside the paragraph.
+                            del lines[p]
+                            n -= 1
+                if secondary:
+                    out.extend(anchor_block)
+                    out.extend(secondary)
+                    out.append(heading)
+                    i = k + 1
+                    continue
+        out.append(lines[i])
+        i += 1
+    return '\n'.join(out)
+
+
 def convert_standalone_labels(text: str) -> str:
     """Convert standalone []{#label ...} to MyST target syntax.
 

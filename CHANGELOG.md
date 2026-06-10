@@ -15,6 +15,23 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — cross-reference parity (book-dp1 audit, #108 / #110)
+
+- **Multiple consecutive `\label{}` on a heading no longer orphans the
+  secondary labels** (#108). `\subsection{T}\label{ss:a}\label{sss:b}` had
+  pandoc fold only the first label into the heading id and emit the rest as a
+  leading span on the next paragraph, which the strip path dropped — a
+  `{ref}` to the orphan resolved to a paragraph node and rendered
+  "Paragraph". New `hoist_consecutive_heading_labels` transform stacks every
+  label as a `(name)=` anchor above the heading so all resolve to the section
+  number.
+- **Doubled noun stripped for `{numref}`-routed figure refs and `\S\ref`
+  appendix refs** (#110). `Figure~\ref{f:x}` rendered "Figure Figure N" (the
+  prose noun plus the `{numref}` auto-noun); `Appendix~\S\ref{c:areal}`
+  rendered "Appendix §Appendix A". `strip_doubled_noun_refs` now covers
+  Figure/Figures (`f-`/`fig-`) and Appendix/Appendices (`c-`), and swallows
+  an optional intervening `§`.
+
 ### Changed — Phase 6: Deep-Learning parity pass — tikz figure-caption math (architecture evolution 6/6)
 
 Exercises the new architecture on the book furthest from parity, to prove it

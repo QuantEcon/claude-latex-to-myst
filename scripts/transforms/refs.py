@@ -34,6 +34,8 @@ from ._helpers import convert_label_colons
 _DOUBLED_NOUN_REFS = [
     ('Algorithm',    'algo-'),
     ('Algorithms',   'algo-'),
+    ('Appendix',     'c-'),
+    ('Appendices',   'c-'),
     ('Assumption',   'a-'),
     ('Assumptions',  'a-'),
     ('Chapter',      'c-'),
@@ -44,6 +46,12 @@ _DOUBLED_NOUN_REFS = [
     ('Examples',     'eg-'),
     ('Exercise',     'ex-'),
     ('Exercises',    'ex-'),
+    # Figures route to ``{numref}`` (renders "Figure N"), so the prose
+    # "Figure" before the ref double-counts — "Figure Figure 1.1" (#110).
+    ('Figure',       'f-'),
+    ('Figures',      'f-'),
+    ('Figure',       'fig-'),
+    ('Figures',      'fig-'),
     ('Lemma',        'l-'),
     ('Lemmas',       'l-'),
     # Code-block listings: authors typically write "Listing X" in
@@ -223,8 +231,14 @@ def strip_doubled_noun_refs(text: str, ctx=None) -> str:
     for noun, prefix in extras + _DOUBLED_NOUN_REFS:
         # Negative lookbehind on a word char so we don't strip inside a longer
         # word (e.g. avoid touching a hypothetical "Subtheorem").
+        #
+        # An optional ``§`` between the noun and the ref is also swallowed:
+        # authors write ``Appendix~\S\ref{c:areal}`` (pandoc → "Appendix
+        # §{role}`c-areal`"), but the role already auto-renders "Appendix A",
+        # so both the prose noun and the stray section symbol are redundant
+        # (#110).
         text = re.sub(
-            rf'(?<!\w){re.escape(noun)}[ \xa0]+'
+            rf'(?<!\w){re.escape(noun)}[ \xa0]+(?:§[ \xa0]*)?'
             rf'(\{{(?:prf:ref|numref)\}}`{re.escape(prefix)}[^`]+`)',
             r'\1',
             text,
