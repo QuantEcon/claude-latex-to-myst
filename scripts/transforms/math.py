@@ -297,7 +297,13 @@ def convert_equations(text: str) -> str:
         # block so book-wide numbering doesn't number it (#113). A plain
         # ``equation`` (numbered in LaTeX) keeps the bare ``$$`` form, which
         # mystmd numbers — matching LaTeX whether or not it carries a label.
-        if star:
+        #
+        # BAIL for a body carrying ``\begin{tikzcd}``: the consumer-side
+        # ``TIKZCD_INLINE_MAP`` (resolve_tikz_figures) matches the bare
+        # ``$$ … tikzcd … $$`` shape and replaces the block with an image —
+        # the ``{math}`` form broke that match, leaking tikzcd to KaTeX and
+        # losing the mapped figure (found in the dp1 ch_fps build test).
+        if star and '\\begin{tikzcd}' not in body:
             return _emit_unnumbered_math(body, label)
         if label:
             return f'$$\n{body}\n$$ ({label})'
@@ -452,8 +458,9 @@ def convert_equations(text: str) -> str:
         aligned = f'\\begin{{aligned}}\n{content}\n\\end{{aligned}}'
         # ``align*`` is unnumbered in LaTeX; emit a forced-unnumbered block
         # (#113). A plain ``align`` (numbered in LaTeX) keeps the bare ``$$``
-        # form so book-wide numbering numbers it.
-        if star:
+        # form so book-wide numbering numbers it. tikzcd bodies bail to the
+        # bare form so TIKZCD_INLINE_MAP keeps matching (dp1 ch_fps).
+        if star and '\\begin{tikzcd}' not in content:
             block = _emit_unnumbered_math(aligned)
         else:
             block = f'$$\n{aligned}\n$$'
@@ -485,7 +492,8 @@ def convert_equations(text: str) -> str:
         # forced-unnumbered {math} directive REGARDLESS of label presence (a
         # stray \label in a starred env still must not consume a number). The
         # first label becomes :label:, any extras stack as anchors above.
-        if star:
+        # tikzcd bodies bail to the bare form (TIKZCD_INLINE_MAP match).
+        if star and '\\begin{tikzcd}' not in content:
             primary = convert_label_colons(labels[0]) if labels else None
             block = _emit_unnumbered_math(content, primary)
             extra = labels[1:]
