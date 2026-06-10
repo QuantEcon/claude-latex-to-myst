@@ -15,6 +15,20 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — legacy font declarations + `\texttt{{@}…}` (book-dp1 audit, #107 / #105)
+
+Two pre-pandoc normalisations in `_apply_rewrites.py`:
+- **Legacy declaration font forms** `{\sc …}` / `{\sf …}` (and `{\bf}` / `{\it}`
+  / `{\tt}`) → `\textsc{…}` etc. (#107 gap 1). Pandoc handles the command form
+  natively but silently drops the formatting from the declaration form, so
+  `{\sc iid}` emerged as lowercase `iid`. Balanced-brace rewrite preserves
+  nested markup.
+- **`\texttt{{@}foo}` → `\texttt{@foo}`** (#105). The `{@}` brace group (an
+  author idiom to stop `@` reading as a citation key) made pandoc emit two
+  adjacent code spans (`` `@``foo` ``). Flattens non-command grouping braces
+  inside a `\texttt` argument; a real command argument (`\textbf{keep}`) is
+  left intact.
+
 ### Fixed — extensionless `\includegraphics` resolves to the copied raster (#104)
 
 `\includegraphics{fig/foo}` with **no extension** (valid LaTeX — graphicx

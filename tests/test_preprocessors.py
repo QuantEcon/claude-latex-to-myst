@@ -1085,3 +1085,52 @@ def test_enum_parse_ignores_nested_item_boundaries():
     assert items[0][0] == "ex:a" and items[1][0] == "ex:b"
     assert items[0][1].count("\\item nested") == 2
     assert "\\begin{itemize}" in items[0][1]
+
+
+# ── Declaration font forms + texttt brace flattening (#107 gap1, #105) ─────────
+
+
+def test_declaration_form_sc_to_textsc():
+    assert rew.normalize_declaration_forms(r'{\sc iid}') == r'\textsc{iid}'
+
+
+def test_declaration_form_all_five():
+    src = r'{\sc a} {\sf b} {\bf c} {\it d} {\tt e}'
+    out = rew.normalize_declaration_forms(src)
+    assert out == r'\textsc{a} \textsf{b} \textbf{c} \textit{d} \texttt{e}'
+
+
+def test_declaration_form_nested_braces_balanced():
+    assert rew.normalize_declaration_forms(r'{\sc a \textbf{b} c}') == r'\textsc{a \textbf{b} c}'
+
+
+def test_declaration_form_leaves_real_commands():
+    """``{\\section}`` is a brace-wrapped command, not a declaration."""
+    src = r'before {\section} after'
+    assert rew.normalize_declaration_forms(src) == src
+
+
+def test_texttt_flattens_at_brace_group():
+    assert rew.flatten_texttt_brace_groups(r'\texttt{{@}tf.function}') == r'\texttt{@tf.function}'
+
+
+def test_texttt_preserves_command_argument():
+    """A real command arg inside texttt (``\\textbf{keep}``) must NOT flatten."""
+    assert rew.flatten_texttt_brace_groups(r'\texttt{\textbf{keep}}') == r'\texttt{\textbf{keep}}'
+
+
+def test_texttt_preserves_command_argument_with_whitespace():
+    """Valid LaTeX puts whitespace between a command and its argument
+    (``\\textbf {keep}``); that brace group is still a command argument and
+    must NOT be flattened (Copilot review)."""
+    assert (rew.flatten_texttt_brace_groups(r'\texttt{\textbf {keep}}')
+            == r'\texttt{\textbf {keep}}')
+
+
+def test_texttt_preserves_nested_math_command_argument():
+    src = r'\texttt{\textbf{$\mathcal{Q}$ x}}'
+    assert rew.flatten_texttt_brace_groups(src) == src
+
+
+def test_texttt_plain_arg_unchanged():
+    assert rew.flatten_texttt_brace_groups(r'\texttt{@plain}') == r'\texttt{@plain}'
