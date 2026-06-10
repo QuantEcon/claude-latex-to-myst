@@ -660,3 +660,16 @@ def test_build_smoke_normalize():
     assert any('-HASH.png' in l for l in out)
     # determinism: same input → same output
     assert bs.normalize(log) == out
+
+
+def test_build_smoke_multiset_diff_detects_count_increase():
+    """Copilot #129: identical warnings recur (DL baseline has 15 duplicate
+    'missing heading depth' lines) — a count INCREASE must register as new,
+    which a set-difference would miss."""
+    from collections import Counter
+    import build_smoke as bs
+    baseline = ['w missing heading depth N', 'w missing heading depth N']
+    current = baseline + ['w missing heading depth N']   # 2 -> 3 occurrences
+    new = Counter(current) - Counter(baseline)
+    assert sum(new.values()) == 1
+    assert list(new) == ['w missing heading depth N']

@@ -215,9 +215,11 @@ validate_one() {
   fi
 
   echo ""
-  # Verdict: snapshot mode is gated on byte-identity (C) alone — identical
-  # output implies identical validate.py, so B is informational there.
-  # Baseline (parity) mode reports B + the parity gap; B is the status signal.
+  # Verdict: snapshot mode is gated on byte-identity (C) — identical output
+  # implies identical validate.py, so B is informational there — plus the
+  # opt-in build smoke (D) when --build is given. Baseline (parity) mode
+  # reports B (+ D when --build) and the parity gap; B/D are the status
+  # signals.
   if [[ "$AGAINST" == snapshot ]]; then
     [[ "$cfail" -eq 0 && "$dfail" -eq 0 ]] && echo "  RESULT: $book behavior-preserved" || echo "  RESULT: $book REGRESSED vs snapshot"
     return $(( cfail || dfail ))

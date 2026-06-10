@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import re
+from collections import Counter
 import shutil
 import subprocess
 import sys
@@ -70,9 +71,9 @@ def normalize(log_text: str) -> list[str]:
     return sorted(out)
 
 
-def run_build(fixture: Path) -> str:
+def run_build(fixture: Path) -> tuple[int, str]:
     """Overlay ``regen/*.md`` onto a temp copy of ``mystmd/`` and run
-    ``myst build --html``; return the combined build output."""
+    ``myst build --html``; return ``(returncode, combined output)``."""
     mystmd = fixture / 'mystmd'
     regen = fixture / 'regen'
     with tempfile.TemporaryDirectory() as td:
@@ -85,7 +86,7 @@ def run_build(fixture: Path) -> str:
             ['myst', 'build', '--html'],
             cwd=proj, capture_output=True, text=True,
         )
-        return res.stdout + res.stderr
+        return res.returncode, res.stdout + res.stderr
 
 
 def main() -> None:
@@ -104,7 +105,16 @@ def main() -> None:
               '(run setup_fixtures.sh + convert.sh first)')
         return
 
-    lines = normalize(run_build(args.fixture))
+    rc, log = run_build(args.fixture)
+    lines = normalize(log)
+    if rc != 0:
+        # A crashed build can emit zero warning lines — without this marker a
+        # failure would false-PASS against an empty baseline (Copilot, #129).
+        lines = sorted(lines + ['myst build exited non-zero'])
+        print('build_smoke: NOTE — myst build exited non-zero; log tail:',
+              file=sys.stderr)
+        for raw in log.splitlines()[-5:]:
+            print(f'    {raw}', file=sys.stderr)
 
     if args.write:
         args.write.parent.mkdir(parents=True, exist_ok=True)
@@ -120,18 +130,23 @@ def main() -> None:
         sys.exit(f'build_smoke: FAIL — baseline {args.check} missing; '
                  'run with --write after a reviewed build')
 
-    new = sorted(set(lines) - set(baseline))
-    gone = sorted(set(baseline) - set(lines))
+    # Multiset diff (Counter), not set diff: identical warnings recur (the
+    # deep-learning baseline holds 15 "missing heading depth" lines), so a
+    # count INCREASE is a regression a set-difference would miss (Copilot,
+    # #129).
+    cur, base = Counter(lines), Counter(baseline)
+    new, gone = cur - base, base - cur
     if new:
-        print(f'build_smoke: FAIL — {len(new)} NEW build warning/error line(s):')
-        for l in new:
-            print(f'  + {l}')
+        total = sum(new.values())
+        print(f'build_smoke: FAIL — {total} NEW build warning/error line(s):')
+        for l, n in sorted(new.items()):
+            print(f'  + {l}' + (f'   (x{n})' if n > 1 else ''))
         if gone:
-            print(f'  (and {len(gone)} baseline line(s) no longer present)')
+            print(f'  (and {sum(gone.values())} baseline line(s) no longer present)')
         sys.exit(1)
     if gone:
-        print(f'build_smoke: PASS — build improved ({len(gone)} baseline line(s) '
-              f'gone); consider re-baselining with --write')
+        print(f'build_smoke: PASS — build improved ({sum(gone.values())} baseline '
+              f'line(s) gone); consider re-baselining with --write')
     else:
         print(f'build_smoke: PASS — build warnings match baseline '
               f'({len(lines)} line(s))')
