@@ -2794,43 +2794,61 @@ def test_multi_label_three_anchors_emits_two_divs():
     assert out.count('```{div}') == 2
 
 
-def test_hoist_heading_labels_two_labels_split_form():
-    """`\\subsection{T}\\label{ss:a}\\n\\label{sss:b}` — pandoc folds the
-    first label into the heading id and emits the second as a leading
-    mid-line span on the next paragraph; hoist it above the heading (#108)."""
-    body = (
-        '(ss-gfsmdp)=\n'
-        '## The MDP Model\n'
-        '\n'
-        '[]{#sss:fsmdp label="sss:fsmdp"} We study a controller.\n'
-    )
-    out = postprocess.hoist_consecutive_heading_labels(body)
-    assert out == (
-        '(ss-gfsmdp)=\n'
-        '(sss-fsmdp)=\n'
-        '## The MDP Model\n'
-        '\n'
-        'We study a controller.\n'
-    )
+def test_hoist_heading_labels_consumes_aliased_span():
+    """`\\subsection{T}\\label{ss:a}\\label{sss:b}` — the secondary label's
+    orphan span is CONSUMED (not stacked: mystmd keeps only one anchor per
+    heading — "label X replaced with Y"); refs to it are alias-rewritten to
+    the primary by convert_cross_references (#108, reworked after the dp1
+    myst-build test)."""
+    from conversion_context import ConversionContext, set_current_context
+    ctx = ConversionContext.default()
+    ctx.heading_label_aliases = {'sss-fsmdp': 'ss-gfsmdp'}
+    set_current_context(ctx)
+    try:
+        body = (
+            '(ss-gfsmdp)=\n'
+            '## The MDP Model\n'
+            '\n'
+            '[]{#sss:fsmdp label="sss:fsmdp"} We study a controller.\n'
+        )
+        out = postprocess.hoist_consecutive_heading_labels(body)
+        assert out == (
+            '(ss-gfsmdp)=\n'
+            '## The MDP Model\n'
+            '\n'
+            'We study a controller.\n'
+        )
+        # And the ref rewrite makes the alias resolve to the heading.
+        ref = ('See [\\[sss:fsmdp\\]](#sss:fsmdp)'
+               '{reference-type="ref" reference="sss:fsmdp"}.')
+        assert '{ref}`ss-gfsmdp`' in postprocess.convert_cross_references(ref, ctx)
+    finally:
+        set_current_context(ConversionContext.default())
 
 
-def test_hoist_heading_labels_three_labels_one_line():
-    """Three consecutive `\\label`s — two spans land on the next paragraph."""
-    body = (
-        '(ss-a)=\n'
-        '## Three Labels\n'
-        '\n'
-        '[]{#ss:b label="ss:b"}[]{#ss:c label="ss:c"} First paragraph.\n'
-    )
-    out = postprocess.hoist_consecutive_heading_labels(body)
-    assert out == (
-        '(ss-a)=\n'
-        '(ss-b)=\n'
-        '(ss-c)=\n'
-        '## Three Labels\n'
-        '\n'
-        'First paragraph.\n'
-    )
+def test_hoist_heading_labels_own_line_aliased_span_dropped():
+    """An aliased span alone on its own line is dropped entirely (no stray
+    blank); a NON-aliased span on the same line shape is left alone."""
+    from conversion_context import ConversionContext, set_current_context
+    ctx = ConversionContext.default()
+    ctx.heading_label_aliases = {'ss-b': 'ss-a', 'ss-c': 'ss-a'}
+    set_current_context(ctx)
+    try:
+        body = (
+            '(ss-a)=\n'
+            '## Three Labels\n'
+            '\n'
+            '[]{#ss:b label="ss:b"}[]{#ss:c label="ss:c"} First paragraph.\n'
+            '\n'
+            '[]{#other:x label="other:x"} Not a heading label.\n'
+        )
+        out = postprocess.hoist_consecutive_heading_labels(body)
+        assert '[]{#ss:b' not in out and '[]{#ss:c' not in out
+        assert 'First paragraph.' in out
+        assert '[]{#other:x label="other:x"} Not a heading label.' in out
+        assert '(ss-b)=' not in out      # never stacked as an anchor
+    finally:
+        set_current_context(ConversionContext.default())
 
 
 def test_hoist_heading_labels_no_orphan_is_noop():
@@ -4060,3 +4078,41 @@ def test_blockify_rescans_tail_for_next_opener():
     assert at_start == 2          # no mid-line fence leaked
     assert 'Apply the triangle inequality to obtain' in out
     assert 'Taking the supremum completes the proof.' in out
+
+
+def test_scan_heading_label_aliases():
+    """Source scan finds multi-label headings in both #108 shapes (trailing
+    on the heading line; label on following lines) and maps secondary →
+    primary in hyphen form."""
+    import tempfile, pathlib
+    from conversion_context import scan_heading_label_aliases
+    tex = (
+        "\\subsection{The MDP Model}\\label{ss:gfsmdp}\n"
+        "\\label{sss:fsmdp}\n"
+        "Body text.\n"
+        "\\subsubsection{Defining ADPs}\\label{sss:opset}\\label{sss:chopt}\n"
+        "More text with an inline \\label{eq:not-a-heading} elsewhere.\n"
+        "\\section{Single}\\label{s:solo}\n"
+    )
+    with tempfile.TemporaryDirectory() as td:
+        pathlib.Path(td, 'ch.tex').write_text(tex)
+        aliases = scan_heading_label_aliases(pathlib.Path(td))
+    assert aliases == {'sss-fsmdp': 'ss-gfsmdp', 'sss-chopt': 'sss-opset'}
+
+
+def test_prf_title_with_ref_goes_to_body_not_argument():
+    """A title carrying a cross-ref must NOT become the directive argument —
+    a role in a prf directive argument poisons page-wide xref resolution in
+    mystmd (dp1 build test). It becomes a bold lead-in body line instead."""
+    body = (
+        '::: proof\n'
+        '*Proof.* \\<!--PRFTITLE-START--\\>Proof of Proposition '
+        '[\\[p:js0be\\]](#p:js0be){reference-type="ref" reference="p:js0be"}'
+        '\\<!--PRFTITLE-END--\\> The result follows.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    first_line = out.split('\n')[0]
+    assert first_line == '```{prf:proof}'          # no argument
+    assert '**Proof of Proposition' in out          # bold lead-in in body
+    assert 'The result follows.' in out

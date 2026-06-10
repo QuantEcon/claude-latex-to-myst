@@ -50,97 +50,60 @@ def convert_section_labels(text: str) -> str:
     return text
 
 
-def hoist_consecutive_heading_labels(text: str) -> str:
-    """Stack a heading's *secondary* ``\\label{}``s above the heading.
+def hoist_consecutive_heading_labels(text: str, ctx=None) -> str:
+    """Consume a heading's *secondary* ``\\label{}`` orphan spans (#108).
 
     LaTeX allows several consecutive labels on one sectioning command::
 
         \\subsection{The MDP Model}\\label{ss:gfsmdp}\\label{sss:fsmdp}
 
     Pandoc folds only the **first** label into the heading id and emits the
-    rest as leading ``[]{#…}`` spans on the *following* paragraph::
+    rest as leading ``[]{#…}`` spans on the *following* paragraph. Neither
+    naive treatment works in a real mystmd build:
 
-        (ss-gfsmdp)=
-        ## The MDP Model
+    - leaving the span (pre-#114): it resolves to the paragraph node and a
+      ``{ref}`` renders the generic node name "Paragraph";
+    - stacking it as a second ``(name)=`` anchor above the heading (the
+      first #114 attempt): mystmd keeps only ONE anchor per heading —
+      "label X replaced with Y" — and refs to the dropped one dangle
+      (verified against myst v1.9.1 in the dp1 build test).
 
-        []{#sss:fsmdp label="sss:fsmdp"} We study a controller …
-
-    Left alone, ``convert_standalone_labels`` strips that mid-line orphan, so
-    a ``{ref}`sss-fsmdp``` resolves to the paragraph node (no section number)
-    and mystmd renders the generic node name "Paragraph" (issue #108). This
-    transform pulls the leading anchor spans off the first post-heading
-    paragraph and stacks them — in author order, after the heading's own
-    ``(primary)=`` line — so every label resolves to the heading's number::
-
-        (ss-gfsmdp)=
-        (sss-fsmdp)=
-        ## The MDP Model
-
-        We study a controller …
-
-    Runs **after** ``convert_section_labels`` (heading id already a
-    ``(primary)=`` anchor) and **before** ``convert_standalone_labels`` (so
-    the orphan span is still present, not yet stripped). Only leading spans on
-    the *first* non-blank line after the heading are hoisted, so a genuine
-    own-line anchor further down (or a footnote orphan mid-paragraph) is left
-    for the existing strip path.
+    The working design is **alias-rewriting**: ``ctx.heading_label_aliases``
+    (scanned from the sources at config time) maps each secondary label to
+    its primary, ``convert_cross_references`` rewrites every ref to the
+    primary (so it renders the true section number), and this transform's
+    only job is to *consume* the now-targetless orphan spans so they don't
+    leak. Only spans whose label is in the alias map are touched — anything
+    else (footnote orphans, genuine own-line anchors) is left for the
+    existing paths.
     """
-    anchor_re = re.compile(r'^\(([^)]+)\)=\s*$')
-    heading_re = re.compile(r'^#{1,6}\s+\S')
-    # Only hoist for section-level headings (``##``+). An H1 (``# ``) is the
-    # chapter heading ``add_frontmatter`` absorbs, and it relies on exactly one
-    # ``(label)=`` line before ``# Title`` plus a *following* explicit anchor
-    # (the lesson-017 "prefer explicit chapter label" path). Stacking a second
-    # anchor above the H1 would break that match — so leave H1 alone. Every
-    # #108 case is a subsection/subsubsection (H2+), so this loses nothing.
-    section_heading_re = re.compile(r'^#{2,6}\s+\S')
-    # A run of one or more leading ``[]{#label}`` spans, then the rest.
-    lead_re = re.compile(
-        r'^((?:\[\]\{#[^\s}]+(?:\s+label="[^"]*")?\}[ \t]*)+)(.*)$'
-    )
-    span_re = re.compile(r'\[\]\{#([^\s}]+)(?:\s+label="[^"]*")?\}')
+    ctx = ctx if ctx is not None else current_context()
+    aliases = ctx.heading_label_aliases
+    if not aliases or '[]{#' not in text:
+        return text
 
-    lines = text.split('\n')
+    lead_re = re.compile(
+        r'^(?:\[\]\{#[^\s}]+(?:\s+label="[^"]*")?\}[ \t]*)+'
+    )
+    span_re = re.compile(r'(\[\]\{#([^\s}]+)(?:\s+label="[^"]*")?\}[ \t]*)')
+
     out: list[str] = []
-    i = 0
-    n = len(lines)
-    while i < n:
-        # A contiguous block of ``(x)=`` anchors immediately above a heading.
-        if anchor_re.match(lines[i]):
-            k = i
-            while k < n and anchor_re.match(lines[k]):
-                k += 1
-            if k < n and section_heading_re.match(lines[k]):
-                anchor_block = lines[i:k]
-                heading = lines[k]
-                # First non-blank line after the heading.
-                p = k + 1
-                while p < n and lines[p].strip() == '':
-                    p += 1
-                secondary: list[str] = []
-                if p < n and not heading_re.match(lines[p]):
-                    lm = lead_re.match(lines[p])
-                    if lm:
-                        secondary = [
-                            f'({convert_label_colons(s)})='
-                            for s in span_re.findall(lm.group(1))
-                        ]
-                        remainder = lm.group(2).lstrip()
-                        if remainder:
-                            lines[p] = remainder
-                        else:
-                            # Anchors were the whole line — drop it so we
-                            # don't leave a stray blank inside the paragraph.
-                            del lines[p]
-                            n -= 1
-                if secondary:
-                    out.extend(anchor_block)
-                    out.extend(secondary)
-                    out.append(heading)
-                    i = k + 1
-                    continue
-        out.append(lines[i])
-        i += 1
+    for line in text.split('\n'):
+        if not lead_re.match(line):
+            out.append(line)
+            continue
+        rebuilt = line
+        changed = False
+        for whole, label in span_re.findall(line):
+            if convert_label_colons(label) in aliases:
+                rebuilt = rebuilt.replace(whole, '', 1)
+                changed = True
+        if not changed:
+            out.append(line)
+        elif rebuilt.strip():
+            out.append(rebuilt.lstrip())
+        # else: the line was nothing but consumed spans — drop it entirely
+        # (no stray blank inside the paragraph).
     return '\n'.join(out)
 
 

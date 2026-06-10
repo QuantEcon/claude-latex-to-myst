@@ -43,6 +43,60 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+def scan_heading_label_aliases(src_dir: Path) -> dict:
+    """Scan every ``*.tex`` in ``src_dir`` for sectioning commands carrying
+    multiple consecutive ``\\label{}``s and return ``{secondary: primary}``
+    in hyphen (MyST) form (#108).
+
+    Pandoc folds only the FIRST label into the heading id; mystmd accepts only
+    ONE ``(name)=`` anchor per heading (stacking warns "label X replaced with
+    Y" and drops the rest — verified against myst v1.9.1 in the dp1 build
+    test). So secondary labels can't be targets at all: they alias the
+    primary, and refs to them are rewritten by ``convert_cross_references``.
+
+    Matches both #108 shapes — labels trailing the heading line and labels on
+    immediately-following lines — by accepting whitespace / ``%`` comments
+    between consecutive ``\\label{}``s. Purely syntactic and conservative:
+    anything not matching the consecutive-labels shape contributes nothing.
+    """
+    import re
+
+    section_re = re.compile(
+        r'\\(?:chapter|section|subsection|subsubsection|paragraph)\*?\s*'
+        r'(?:\[[^\]]*\])?\{'
+    )
+    label_re = re.compile(r'\s*(?:%[^\n]*\n\s*)*\\label\{([^}]+)\}')
+    aliases: dict[str, str] = {}
+    for tex in sorted(src_dir.glob('*.tex')):
+        try:
+            text = tex.read_text(encoding='utf-8')
+        except OSError:
+            continue
+        for m in section_re.finditer(text):
+            # Balance the title's brace group.
+            depth, i = 1, m.end()
+            while i < len(text) and depth:
+                c = text[i]
+                if c == '\\':
+                    i += 2
+                    continue
+                if c == '{':
+                    depth += 1
+                elif c == '}':
+                    depth -= 1
+                i += 1
+            labels = []
+            while True:
+                lm = label_re.match(text, i)
+                if not lm:
+                    break
+                labels.append(lm.group(1).replace(':', '-'))
+                i = lm.end()
+            for secondary in labels[1:]:
+                aliases[secondary] = labels[0]
+    return aliases
+
+
 # Default mapping from pandoc-emitted ``::: envname`` divs to MyST directive
 # names. A book extends this via ``config.extra_environments`` (merged in
 # ``from_config``); never edit per-book entries here. This is an immutable
@@ -124,6 +178,14 @@ class ConversionContext:
     # complete an extensionless ``\includegraphics{fig/foo}`` (valid LaTeX —
     # graphicx probes extensions) to the raster the copy step actually wrote.
     figure_ext_map: dict = field(default_factory=dict)
+    # Map of secondary heading label → primary heading label (hyphen form),
+    # built by scanning the source ``.tex`` for sectioning commands carrying
+    # multiple consecutive ``\label{}``s (#108). mystmd keeps only ONE
+    # ``(name)=`` anchor per heading ("label X replaced with Y"), so the fix
+    # is alias-rewriting: only the primary anchor is emitted, and every ref
+    # to a secondary label is rewritten to the primary — refs then render the
+    # true section number. Global across the book (refs cross chapters).
+    heading_label_aliases: dict = field(default_factory=dict)
     # Optional book-side post-hook (Phase 5). ``callable(text, stem, ctx) ->
     # text``, contributed by a ``project_overrides.py`` and invoked once at a
     # documented point near the end of ``process_text``. ``None`` for books
@@ -291,9 +353,16 @@ class ConversionContext:
 
         listing_source_base: Path | None = None
         figure_ext_map: dict[str, str] = {}
+        heading_label_aliases: dict[str, str] = {}
         if base_dir is not None:
             src_base = config.get('source_code_base') or config.get('source_dir', '.')
             listing_source_base = (base_dir / src_base).resolve()
+
+            # Multi-label headings → secondary→primary alias map (#108);
+            # ``convert_cross_references`` rewrites refs to secondaries.
+            src_tex_dir = (base_dir / config.get('source_dir', '.'))
+            if src_tex_dir.is_dir():
+                heading_label_aliases = scan_heading_label_aliases(src_tex_dir)
 
             # Scan the source figures dir so an extensionless include can be
             # completed to the file the copy step writes (#104). The extension
@@ -326,6 +395,7 @@ class ConversionContext:
             whitespace_style=ws,
             counters=FileCounters(),
             figure_ext_map=figure_ext_map,
+            heading_label_aliases=heading_label_aliases,
         )
 
 

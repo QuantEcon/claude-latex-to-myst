@@ -170,9 +170,18 @@ def convert_cross_references(text: str, ctx=None) -> str:
     def make_ref(target):
         """Generate the appropriate MyST ref role for a single target.
         Routing is delegated to ``routing_role`` (module-level) so the
-        same prefix→role table services both body and caption refs."""
+        same prefix→role table services both body and caption refs.
+
+        A ref to a *secondary* heading label is rewritten to the primary
+        (#108): mystmd keeps only one ``(name)=`` anchor per heading
+        ("label X replaced with Y"), so the secondary has no target of its
+        own — the alias map (scanned from the sources at config time)
+        redirects the ref so it renders the real section number."""
         target_converted = convert_label_colons(target)
-        return '{' + routing_role(target, ctx) + '}`' + target_converted + '`'
+        target_converted = ctx.heading_label_aliases.get(
+            target_converted, target_converted
+        )
+        return '{' + routing_role(target_converted, ctx) + '}`' + target_converted + '`'
 
     def replace_ref(m):
         display = m.group(1)  # not used — MyST generates its own display

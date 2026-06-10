@@ -16,7 +16,9 @@ A lemma without an optional title.
 ```
 
 
-```{prf:proof} Proof of {prf:ref}`p-js0be`
+```{prf:proof}
+
+**Proof of {prf:ref}`p-js0be`.**
 
 The result follows directly. ◻
 ```
