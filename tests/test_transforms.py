@@ -173,9 +173,11 @@ def test_resolve_algorithms_softwrapped_step_stays_one_bullet():
 
 def test_resolve_algorithms_inline_equation_block_lifted():
     """A display equation inside an algorithm2e line is block-lifted under
-    its bullet as an indented ``$$`` block, not whitespace-flattened into
-    mid-line position (mystmd's amsmath support is block-level only, #130).
-    Shape from dp2's algo:hpowb."""
+    its bullet, not whitespace-flattened into mid-line position (mystmd's
+    amsmath support is block-level only, #130). A *starred* env emits a
+    ``{math}`` directive with ``:enumerated: false`` — a bare ``$$`` would
+    take a number under book-wide numbering (#113). Shape from dp2's
+    algo:hpowb."""
     body = (
         "\\While{$\\epsilon > 0$}\n"
         "{\n"
@@ -192,22 +194,25 @@ def test_resolve_algorithms_inline_equation_block_lifted():
     )
     out = postprocess.resolve_algorithms(_algo_marker(body))
     assert "\\begin{equation*}" not in out
-    # Blank-line-separated $$ block at list-item continuation indent.
+    # Blank-line-separated {math} block at list-item continuation indent.
     assert (
         "  - $\\sigma_{k+1} \\leftarrow$ a policy satisfying\n"
         "\n"
-        "    $$\n"
+        "    ```{math}\n"
+        "    :enumerated: false\n"
+        "\n"
         "    \\sigma_{k+1}(w) \\in \\argmax_{w' \\in \\Gamma(w)}"
         " \\left\\{ r(w, w') \\right\\}\n"
-        "    $$\n"
+        "    ```\n"
         "\n"
         "  - $k \\leftarrow k + 1$" in out
     )
 
 
 def test_resolve_algorithms_inline_align_star_uses_aligned():
-    """``align*`` inside an algorithm line lifts as a ``$$`` block with the
-    rows wrapped in ``aligned`` (the convert_equations translation)."""
+    """``align*`` inside an algorithm line lifts as an unnumbered ``{math}``
+    block with the rows wrapped in ``aligned`` (the convert_equations
+    translation)."""
     body = (
         "update via\n"
         "\\begin{align*}\n"
@@ -218,7 +223,25 @@ def test_resolve_algorithms_inline_align_star_uses_aligned():
     )
     out = postprocess.resolve_algorithms(_algo_marker(body))
     assert "\\begin{align*}" not in out
+    assert ":enumerated: false" in out
     assert "\\begin{aligned} x &= 1 \\\\ y &= 2 \\end{aligned}" in out
+
+
+def test_resolve_algorithms_two_inline_envs_same_indent():
+    """Two display environments in one statement lift to the SAME
+    continuation indent — the recursion on the post-text must not add
+    two extra spaces per environment (Copilot review, PR #133)."""
+    body = (
+        "\\While{$t < T$}\n"
+        "{\n"
+        "    pick $x$ with \\begin{equation*} x = 1 \\end{equation*}"
+        " then $y$ with \\begin{equation*} y = 2 \\end{equation*} \\;\n"
+        "}\n"
+    )
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    fences = [ln for ln in out.split("\n") if ln.lstrip().startswith("```{math}")]
+    assert len(fences) == 2
+    assert fences[0] == fences[1] == "    ```{math}"
 
 
 def test_resolve_algorithms_inline_equation_with_label():

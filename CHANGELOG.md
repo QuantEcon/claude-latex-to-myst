@@ -22,9 +22,10 @@ an algorithm2e statement was whitespace-flattened mid-line into the bullet,
 where mystmd renders it as literal prose (amsmath support is block-level
 only). `_algo_convert_body` now stashes display environments behind
 placeholder tokens — which also shields math-mode `\;` thin spaces from
-the statement split — and block-lifts each as an indented `$$` block under
-its bullet. Retires dp2's `ALGO_HPOWB_INLINE_PATTERN` workaround in
-`local-cleanup.py`.
+the statement split — and block-lifts each as an indented display block
+under its bullet (starred envs as `{math}` with `:enumerated: false` per
+#113, unstarred as `$$ … $$ (label)`). Lets book-dp2 retire its
+`ALGO_HPOWB_INLINE_PATTERN` workaround (book-side, `local-cleanup.py`).
 
 ### Fixed — "Table Table N" doubled-noun refs (#131)
 

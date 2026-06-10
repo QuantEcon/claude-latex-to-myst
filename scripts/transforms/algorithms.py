@@ -16,6 +16,7 @@ import base64
 import re
 
 from ._helpers import convert_label_colons, outer_fence
+from .math import _emit_unnumbered_math
 
 
 def _algo_find_balanced(s: str, start: int) -> int:
@@ -106,10 +107,12 @@ _MATHBLOCK_TOKEN_RE = re.compile(r'\\MATHBLOCK(\d+)\\')
 
 
 def _amsmath_to_display(env: str, content: str) -> str:
-    """Render an amsmath environment body as a ``$$`` display block,
-    using the same env translation ``convert_equations`` (math.py)
-    applies: multi-row envs keep their alignment via aligned/gathered.
-    An embedded ``\\label`` becomes the ``$$ … $$ (label)`` suffix form."""
+    """Render an amsmath environment body as a display block, using the
+    same env translation ``convert_equations`` (math.py) applies:
+    multi-row envs keep their alignment via aligned/gathered; a *starred*
+    env emits a ``{math}`` directive with ``:enumerated: false`` (a bare
+    ``$$`` would be assigned a number under book-wide numbering, #113);
+    an unstarred env keeps the numbered ``$$ … $$ (label)`` suffix form."""
     label = ''
     m = re.search(r'\\label\{([^}]+)\}', content)
     if m:
@@ -121,6 +124,8 @@ def _amsmath_to_display(env: str, content: str) -> str:
         content = f'\\begin{{aligned}} {content} \\end{{aligned}}'
     elif base == 'gather':
         content = f'\\begin{{gathered}} {content} \\end{{gathered}}'
+    if env.endswith('*'):
+        return _emit_unnumbered_math(content, label or None)
     block = f'$$\n{content}\n$$'
     if label:
         block += f' ({label})'
@@ -142,7 +147,11 @@ def _expand_math_tokens(line: str, math_blocks: list[str]) -> list[str]:
         return [line]
     stripped = line.lstrip(' ')
     pad = ' ' * (len(line) - len(stripped))
-    cont = pad + '  '
+    # Continuation indent: two spaces past a bullet marker, but flush with
+    # the line itself when recursing on a continuation paragraph (no ``- ``)
+    # — otherwise a second environment in the same statement would drift
+    # two extra spaces per recursion.
+    cont = pad + ('  ' if stripped.startswith('- ') else '')
     pre = line[: m.start()].rstrip()
     post = line[m.end() :].strip()
     block = math_blocks[int(m.group(1))]
@@ -150,7 +159,9 @@ def _expand_math_tokens(line: str, math_blocks: list[str]) -> list[str]:
     if pre.strip() not in ('', '-'):
         out.append(pre)
     out.append('')
-    out.extend(cont + bl for bl in block.split('\n'))
+    # A ``{math}`` block carries an internal blank line — keep it truly
+    # empty rather than indenting it into trailing whitespace.
+    out.extend((cont + bl) if bl else '' for bl in block.split('\n'))
     out.append('')
     if post:
         # Recurse for the (rare) second environment in one statement.
