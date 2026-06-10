@@ -52,6 +52,23 @@ def convert_label_colons(label: str) -> str:
     return label.replace(':', '-')
 
 
+def tikz_map_entry(entry) -> tuple[str, str | None, bool]:
+    """Normalise a ``TIKZ_FIGURE_MAP`` value to
+    ``(path, caption_override, per_subfigure)``.
+
+    Entries are 2-tuples ``(path, caption_override)`` by default — the
+    path is treated as a true composite when keyed by a subfigure float's
+    *outer* label (the #49 fast path). A book whose outer-label entry is
+    NOT a composite (the SVG is just one of the panels) appends a third
+    element ``'per-subfigure'`` (#75): the composite fast path skips the
+    entry and falls back to per-subfigure splitting, where the entry
+    resolves only the individual panel that ends up carrying the label.
+    """
+    path, caption = entry[0], entry[1]
+    per_subfigure = len(entry) > 2 and entry[2] == 'per-subfigure'
+    return path, caption, per_subfigure
+
+
 # A line that opens (or closes) a backtick fence: optional indent then a
 # run of three or more backticks. Tildes and colon fences are deliberately
 # ignored — they can't terminate a backtick fence (lesson 040).

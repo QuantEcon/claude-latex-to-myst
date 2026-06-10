@@ -543,6 +543,61 @@ def test_emit_tikz_map_lookup_for_input_tikz_form():
         postprocess.TIKZ_FIGURE_MAP.update(saved)
 
 
+def test_emit_subfigure_per_subfigure_optout_expands_panels():
+    """#75: a subfigure float whose outer label has a map entry tagged
+    ``'per-subfigure'`` must NOT collapse to the single mapped image —
+    the entry is not a composite. Panel expansion proceeds normally."""
+    import postprocess
+    saved = dict(postprocess.TIKZ_FIGURE_MAP)
+    try:
+        postprocess.TIKZ_FIGURE_MAP['fig-panels'] = (
+            'figures/panel_a.svg', None, 'per-subfigure',
+        )
+        spec = FigureSpec(
+            name='fig-panels',
+            caption='Outer caption.',
+            subfigures=[
+                {'name': None, 'image_src': 'a.pdf', 'caption': 'Panel A.'},
+                {'name': None, 'image_src': 'b.pdf', 'caption': 'Panel B.'},
+            ],
+        )
+        out = resolve_figure_markers(_wrap(encode_marker(spec)))
+        # Two panel figures, not one collapsed composite.
+        assert out.count('```{figure}') == 2
+        assert 'Panel A.' in out
+        assert 'Panel B.' in out
+        assert 'figures/panel_a.svg' not in out
+    finally:
+        postprocess.TIKZ_FIGURE_MAP.clear()
+        postprocess.TIKZ_FIGURE_MAP.update(saved)
+
+
+def test_emit_subfigure_composite_override_still_wins_by_default():
+    """Regression guard for the #94/#98 semantics: an outer-label map
+    entry WITHOUT the ``'per-subfigure'`` tag still collapses the float
+    to the single composite image."""
+    import postprocess
+    saved = dict(postprocess.TIKZ_FIGURE_MAP)
+    try:
+        postprocess.TIKZ_FIGURE_MAP['fig-comp'] = (
+            'figures/composite.svg', None,
+        )
+        spec = FigureSpec(
+            name='fig-comp',
+            caption='Outer caption.',
+            subfigures=[
+                {'name': None, 'image_src': 'a.pdf', 'caption': 'Panel A.'},
+                {'name': None, 'image_src': 'b.pdf', 'caption': 'Panel B.'},
+            ],
+        )
+        out = resolve_figure_markers(_wrap(encode_marker(spec)))
+        assert out.count('```{figure}') == 1
+        assert '```{figure} figures/composite.svg' in out
+    finally:
+        postprocess.TIKZ_FIGURE_MAP.clear()
+        postprocess.TIKZ_FIGURE_MAP.update(saved)
+
+
 def test_emit_falls_back_to_admonition_when_no_map_entry():
     """A figure with no image source and a label NOT in the map should
     still emit a labelled admonition so the caption survives. Mirrors

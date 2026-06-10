@@ -28,7 +28,7 @@ import html
 import re
 
 from conversion_context import current_context
-from ._helpers import convert_label_colons
+from ._helpers import convert_label_colons, tikz_map_entry
 from .refs import routing_role, strip_doubled_noun_refs, strip_doubled_section_symbol
 
 
@@ -283,12 +283,21 @@ def convert_html_figures(text: str, ctx=None) -> str:
         # Emit a single admonition placeholder for the outer label;
         # ``resolve_tikz_figures`` substitutes the composite from
         # ``ctx.tikz_figure_map``. The outer caption is preserved.
+        # An entry tagged ``'per-subfigure'`` (#75) is NOT a true
+        # composite — its SVG is one of the panels — so it must skip
+        # this fast path: collapsing would silently drop every other
+        # panel. Per-subfigure splitting below then routes each panel
+        # admonition through the map individually.
         if outer_label and outer_label in ctx.tikz_figure_map:
-            outer_cap_raw = m.group('outer_cap')
-            outer_caption = extract_caption(
-                f'<figcaption>{outer_cap_raw}</figcaption>'
+            _, _, per_subfigure = tikz_map_entry(
+                ctx.tikz_figure_map[outer_label]
             )
-            return make_admonition(outer_label, outer_caption)
+            if not per_subfigure:
+                outer_cap_raw = m.group('outer_cap')
+                outer_caption = extract_caption(
+                    f'<figcaption>{outer_cap_raw}</figcaption>'
+                )
+                return make_admonition(outer_label, outer_caption)
 
         inner_blob = m.group('inner')
         inner_matches = list(
@@ -399,7 +408,9 @@ def resolve_tikz_figures(text: str, stem: str, ctx=None) -> str:
                 i += 1  # skip closing ```
 
             if label and label in tikz_figure_map:
-                path, caption_override = tikz_figure_map[label]
+                path, caption_override, _ = tikz_map_entry(
+                    tikz_figure_map[label]
+                )
                 caption = caption_override or ' '.join(caption_lines)
                 result.append(f'```{{figure}} {path}')
                 result.append(f':name: {label}')
