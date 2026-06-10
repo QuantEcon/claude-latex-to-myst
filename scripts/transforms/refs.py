@@ -45,13 +45,13 @@ _DOUBLED_NOUN_REFS = [
     ('Example',      'eg-'),
     ('Examples',     'eg-'),
     ('Exercise',     'ex-'),
+    ('Exercises',    'ex-'),
     # Figures route to ``{numref}`` (renders "Figure N"), so the prose
     # "Figure" before the ref double-counts — "Figure Figure 1.1" (#110).
     ('Figure',       'f-'),
     ('Figures',      'f-'),
     ('Figure',       'fig-'),
     ('Figures',      'fig-'),
-    ('Exercises',    'ex-'),
     ('Lemma',        'l-'),
     ('Lemmas',       'l-'),
     # Code-block listings: authors typically write "Listing X" in
