@@ -234,6 +234,25 @@ def test_outer_fence_helper_sizes_to_deepest_inner_fence():
     assert outer_fence("a\n~~~\nx\n~~~\nb") == "```"
 
 
+def test_complete_image_path_extensionless_include():
+    """#104: an extensionless include resolves via the figure_ext_map; paths
+    with an extension or no map hit keep the prior behaviour."""
+    from transforms._helpers import complete_image_path
+    m = {"restud_fig11a": "restud_fig11a.png", "du": "du.svg"}
+    # Extensionless + dir prefix → remap to figures/ + resolved file.
+    assert complete_image_path("fig/restud_fig11a", m) == "figures/restud_fig11a.png"
+    assert complete_image_path("restud_fig11a", m) == "figures/restud_fig11a.png"
+    assert complete_image_path("fig/du", m) == "figures/du.svg"
+    # No map hit → unchanged (genuinely missing file; no regression).
+    assert complete_image_path("fig/unknown", m) == "fig/unknown"
+    # Already has an extension → prior behaviour (dir-prefixed stays, bare
+    # gets figures/).
+    assert complete_image_path("fig/foo.png", m) == "fig/foo.png"
+    assert complete_image_path("foo.png", m) == "figures/foo.png"
+    # No map at all → prior behaviour only.
+    assert complete_image_path("bar", None) == "figures/bar"
+
+
 # ── Minted listings (gap #015) ───────────────────────────────────────────────
 
 

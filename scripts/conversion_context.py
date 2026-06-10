@@ -119,6 +119,11 @@ class ConversionContext:
     frontmatter_style: str
     whitespace_style: str
     counters: FileCounters = field(default_factory=FileCounters)
+    # Map of figure-file stem → actual filename (with extension), built by
+    # scanning the source ``figures_dir`` (#104). Lets the figure transforms
+    # complete an extensionless ``\includegraphics{fig/foo}`` (valid LaTeX —
+    # graphicx probes extensions) to the raster the copy step actually wrote.
+    figure_ext_map: dict = field(default_factory=dict)
     # Optional book-side post-hook (Phase 5). ``callable(text, stem, ctx) ->
     # text``, contributed by a ``project_overrides.py`` and invoked once at a
     # documented point near the end of ``process_text``. ``None`` for books
@@ -285,9 +290,26 @@ class ConversionContext:
             postprocess_rewrites.append((compiled, rule['to'], stems_set))
 
         listing_source_base: Path | None = None
+        figure_ext_map: dict[str, str] = {}
         if base_dir is not None:
             src_base = config.get('source_code_base') or config.get('source_dir', '.')
             listing_source_base = (base_dir / src_base).resolve()
+
+            # Scan the source figures dir so an extensionless include can be
+            # completed to the file the copy step writes (#104). The extension
+            # set MUST match convert.sh Stage 4's copy loop — resolving to a
+            # format the copy step doesn't carry (e.g. gif) would point at a
+            # file absent from the output figures/ dir. Prefer web-renderable
+            # formats when several share a stem (pdf last — mystmd can't
+            # render it).
+            figdir_rel = config.get('figures_dir')
+            if figdir_rel:
+                src_dir = config.get('source_dir', '.')
+                figdir = (base_dir / src_dir / figdir_rel)
+                if figdir.is_dir():
+                    for ext in ('png', 'jpg', 'jpeg', 'svg', 'pdf'):
+                        for f in sorted(figdir.glob(f'*.{ext}')):
+                            figure_ext_map.setdefault(f.stem, f.name)
 
         return cls(
             env_map=env_map,
@@ -303,6 +325,7 @@ class ConversionContext:
             frontmatter_style=style,
             whitespace_style=ws,
             counters=FileCounters(),
+            figure_ext_map=figure_ext_map,
         )
 
 

@@ -27,7 +27,7 @@ import re
 from dataclasses import asdict, dataclass, field
 
 from conversion_context import current_context
-from ._helpers import convert_label_colons
+from ._helpers import complete_image_path, convert_label_colons
 from ._markers import decode_payload, encode_payload
 
 
@@ -400,6 +400,12 @@ def _lookup_tikz_map(name: str | None, ctx=None) -> tuple[str, str | None] | Non
     return ctx.tikz_figure_map.get(name)
 
 
+def _figure_ext_map(ctx=None) -> dict:
+    """The current context's figure stem→filename map (#104)."""
+    ctx = ctx if ctx is not None else current_context()
+    return ctx.figure_ext_map
+
+
 def _emit_figure(spec: FigureSpec, ctx=None) -> str:
     """Emit a MyST ``{figure}`` directive from a FigureSpec (Phase 1).
 
@@ -478,8 +484,8 @@ def _emit_figure(spec: FigureSpec, ctx=None) -> str:
                 else:
                     name = f'{spec.name}-{chr(ord("a") + i)}'
             path = sub.get('image_src') or ''
-            if path and '/' not in path:
-                path = 'figures/' + path
+            if path:
+                path = complete_image_path(path, _figure_ext_map(ctx))
             cap = (sub.get('caption') or '').strip()
             parts.append(_emit_figure_directive(path, name, cap))
         out = '\n'.join(parts)
@@ -498,9 +504,7 @@ def _emit_figure(spec: FigureSpec, ctx=None) -> str:
     # This is source-side path completion; only applies to author-
     # written paths, NOT to map entries.
     if spec.image_src:
-        path = spec.image_src
-        if '/' not in path:
-            path = 'figures/' + path
+        path = complete_image_path(spec.image_src, _figure_ext_map(ctx))
         return _emit_figure_directive(path, spec.name, body, spec.width)
 
     # Priority 2: TIKZ_FIGURE_MAP lookup by label. Covers both inline
