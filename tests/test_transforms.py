@@ -2672,6 +2672,74 @@ def test_multi_label_proposition_two_separate_anchors_on_one_line():
     assert '[]{#p:' not in out
 
 
+def test_prf_optional_title_lifted_to_directive_argument():
+    """The PRFTITLE marker (from _apply_prf_title_markers) → directive arg,
+    label preserved (#112)."""
+    body = (
+        '::: theorem\n'
+        '[]{#t:nsl label="t:nsl"} \\<!--PRFTITLE-START--\\>Neumann Series '
+        'Lemma\\<!--PRFTITLE-END--\\> The series converges.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert '```{prf:theorem} Neumann Series Lemma' in out
+    assert ':label: t-nsl' in out
+    assert 'PRFTITLE' not in out
+    assert 'The series converges.' in out
+
+
+def test_prf_proof_optional_title_strips_inline_proof_marker():
+    """Proof `[Proof of …]` → directive arg; the inline `*Proof.*` pandoc
+    emits is stripped so the heading isn't doubled (#112)."""
+    body = (
+        '::: proof\n'
+        '*Proof.* \\<!--PRFTITLE-START--\\>Proof of Proposition X'
+        '\\<!--PRFTITLE-END--\\> The result follows.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert '```{prf:proof} Proof of Proposition X' in out
+    assert '*Proof.*' not in out
+    assert 'PRFTITLE' not in out
+
+
+def test_prf_no_title_unchanged():
+    body = (
+        '::: theorem\n'
+        '[]{#t:plain label="t:plain"} A plain theorem.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert '```{prf:theorem}\n:label: t-plain' in out
+
+
+def test_prf_title_not_stolen_from_nested_env():
+    """An UNTITLED outer env containing a titled inner env must not lift the
+    inner's PRFTITLE onto itself (caught in the #115 detailed review): the
+    search stops at the first nested ``:::`` fence, and the inner marker —
+    which this single-level pass won't convert — degrades to bold title text
+    rather than leaking verbatim."""
+    body = (
+        ':::: theorem\n'
+        '[]{#t:outer label="t:outer"} Outer body before.\n'
+        '\n'
+        '::: remark\n'
+        '\\<!--PRFTITLE-START--\\>Inner Note Title\\<!--PRFTITLE-END--\\> '
+        'Inner remark body.\n'
+        ':::\n'
+        '\n'
+        'Outer body after.\n'
+        '::::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    # Outer directive has NO title argument.
+    assert '```{prf:theorem}\n:label: t-outer' in out
+    assert '{prf:theorem} Inner Note Title' not in out
+    # Inner marker scrubbed to bold text, never leaked.
+    assert '**Inner Note Title**' in out
+    assert 'PRFTITLE' not in out
+
+
 def test_multi_label_three_anchors_emits_two_divs():
     """Three labels → first promoted, two sibling {div}s."""
     body = (

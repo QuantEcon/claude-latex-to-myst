@@ -107,6 +107,38 @@ def convert_environment_divs(text: str, ctx=None) -> str:
                 body_lines.append(lines[i])
                 i += 1
 
+            # Extract the optional ``[title]`` preserved pre-pandoc by
+            # ``_apply_prf_title_markers.py`` (issue #112). The marker
+            # delimiters survive pandoc (escaped as ``\<!--…--\>``) while the
+            # title text between them is pandoc-converted, so a ``\ref`` /
+            # math in the title is already in pandoc-link form here — the
+            # later ``convert_cross_references`` pass turns it into a role.
+            #
+            # The search is truncated at the first nested ``:::`` fence line:
+            # THIS env's marker always lands at the start of its body (it was
+            # injected on the first line after ``\begin{env}``), while a marker
+            # past a nested fence belongs to an inner titled env — searching
+            # the whole body would steal the inner env's title (caught in the
+            # PR #115 detailed review). Any marker left in the body afterwards
+            # (an inner env this single-level pass won't convert) is scrubbed
+            # to its bold title text so the marker never leaks verbatim.
+            prftitle_re = re.compile(
+                r'\\?<!--PRFTITLE-START--\\?>(.*?)\\?<!--PRFTITLE-END--\\?>',
+                re.DOTALL,
+            )
+            title_arg = None
+            body_text = '\n'.join(body_lines)
+            nested_cut = re.search(r'^\s*:{3,}', body_text, re.MULTILINE)
+            region_end = nested_cut.start() if nested_cut else len(body_text)
+            tm = prftitle_re.search(body_text, 0, region_end)
+            if tm:
+                title_arg = tm.group(1).strip()
+                body_text = body_text[:tm.start()] + body_text[tm.end():]
+            body_text = prftitle_re.sub(
+                lambda m: f'**{m.group(1).strip()}**', body_text
+            )
+            body_lines = body_text.split('\n')
+
             # Extract label(s) from the body. Pandoc emits one or more
             # ``[]{#label label="label"}`` anchors anywhere on a line.
             # Multi-label LaTeX (e.g. ``\begin{Exercise}\label{a}\label{b}``)
@@ -160,6 +192,12 @@ def convert_environment_divs(text: str, ctx=None) -> str:
             # pass, so they are present in clean_body here.
             fence = outer_fence('\n'.join(clean_body))
             header = f'{fence}{{{myst_env}}}'
+            # Carry the preserved optional ``[title]`` as the directive
+            # argument (``{prf:theorem} Neumann Series Lemma``). For a proof,
+            # the explicit ``[Proof of …]`` becomes the heading and the inline
+            # ``*Proof.*`` is stripped below, so the heading isn't doubled.
+            if title_arg:
+                header = f'{header} {title_arg}'
 
             if myst_env == 'exercise':
                 # Track exercise label for pairing with solution
