@@ -16,7 +16,9 @@ Every contraction on a complete metric space has a unique fixed point.
 ```
 
 
-```{prf:proof} Proof of {prf:ref}`p-js0be`
+```{prf:proof}
+
+**Proof of {prf:ref}`p-js0be`.**
 
 The result follows directly.
 ```

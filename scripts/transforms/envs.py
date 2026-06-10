@@ -184,6 +184,23 @@ def convert_environment_divs(text: str, ctx=None) -> str:
             while clean_body and clean_body[-1].strip() == '':
                 clean_body.pop()
 
+            # A title carrying a cross-reference CANNOT go in the directive
+            # argument: a role inside a prf directive argument poisons
+            # mystmd's reference resolution for the whole page ("target was
+            # not found" for unrelated same-page labels — verified against
+            # myst v1.9.1 with a 12-line repro in the dp1 build test; the
+            # plain-text control builds clean). At this point the title still
+            # holds PANDOC ref syntax (``](#…){reference-type=…``) — detect
+            # that and emit the title as a bold lead-in body line instead,
+            # where the later cross-ref pass converts it and mystmd resolves
+            # it fine. Plain titles (the common theorem-name case) keep the
+            # argument form.
+            title_in_body = bool(title_arg) and (
+                '](#' in title_arg or '{reference-type=' in title_arg
+            )
+            if title_in_body:
+                clean_body[:0] = [f'**{title_arg.rstrip(".")}.**', '']
+
             # Build the MyST directive. Size the fence to outrank any
             # code fence already in the body (issue #79 / lesson 040): a
             # ```python block inside an exercise/solution/proof would
@@ -192,11 +209,11 @@ def convert_environment_divs(text: str, ctx=None) -> str:
             # pass, so they are present in clean_body here.
             fence = outer_fence('\n'.join(clean_body))
             header = f'{fence}{{{myst_env}}}'
-            # Carry the preserved optional ``[title]`` as the directive
-            # argument (``{prf:theorem} Neumann Series Lemma``). For a proof,
-            # the explicit ``[Proof of …]`` becomes the heading and the inline
+            # Carry a plain preserved ``[title]`` as the directive argument
+            # (``{prf:theorem} Neumann Series Lemma``). For a proof, the
+            # explicit ``[Proof of …]`` becomes the heading and the inline
             # ``*Proof.*`` is stripped below, so the heading isn't doubled.
-            if title_arg:
+            if title_arg and not title_in_body:
                 header = f'{header} {title_arg}'
 
             if myst_env == 'exercise':
