@@ -19,17 +19,24 @@ def complete_image_path(path: str, figure_ext_map: dict | None = None) -> str:
       ``figures/<resolved-filename>`` (e.g. ``fig/foo`` → ``figures/foo.png``),
       *regardless of any directory component* on the source path. This is the
       #104 fix.
+    - **Directory-qualified basename WITH an extension whose stem is in the
+      map** → relocate to ``figures/<basename>``, keeping the author-chosen
+      extension (``fig/foo.pdf`` → ``figures/foo.pdf``). convert.sh flattens
+      copied assets into ``output/figures/<basename>``, so a source directory
+      prefix always dangles in the output tree (Copilot review on PR #103 —
+      the pre-existing ``Cannot find image "fig/…"`` class in the dp1/DL
+      build profiles).
     - **Otherwise** → the prior behaviour: prepend ``figures/`` only when the
-      path has no directory component. So a path that already carries an
-      extension, or an extensionless one with no matching source file, is
+      path has no directory component. An extension-carrying path with an
+      unknown stem, or an extensionless one with no matching source file, is
       returned unchanged.
     """
     base = path.rsplit('/', 1)[-1]
     root, ext = os.path.splitext(base)
-    if not ext and figure_ext_map:
-        resolved = figure_ext_map.get(root)
-        if resolved:
-            return 'figures/' + resolved
+    if figure_ext_map and root in figure_ext_map:
+        if not ext:
+            return 'figures/' + figure_ext_map[root]
+        return 'figures/' + base
     if '/' not in path:
         return 'figures/' + path
     return path

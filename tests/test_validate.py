@@ -633,3 +633,11 @@ def test_backtick_in_fence_info_string_flagged():
     clean = "```{prf:proof} Proof of the main result\nBody.\n```\n"
     assert not any('info string' in d
                    for d in v.check_resolution(clean, 'f.md', bib_keys=None))
+
+
+def test_backtick_in_indented_fence_info_string_flagged():
+    """CommonMark allows fences indented up to 3 spaces (e.g. a directive
+    nested in a list item) — the info-string check must catch those too."""
+    md = "- item\n\n  ```{prf:proof} Proof of {prf:ref}`p-x`\n  Body.\n  ```\n"
+    diags = v.check_resolution(md, 'f.md', bib_keys=None)
+    assert any('backtick in backtick-fence info string' in d for d in diags)
