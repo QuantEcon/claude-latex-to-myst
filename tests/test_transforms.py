@@ -23,11 +23,12 @@ import validate
 # ── Algorithm2e (gap #014) ───────────────────────────────────────────────────
 
 
-def _algo_marker(body: str, name: str = "algo-test", title: str = "T") -> str:
+def _algo_marker(body: str, name: str = "algo-test", title: str = "T",
+                 numbered: str = "1") -> str:
     """Build a pandoc-escaped ALGORITHM marker the way `_apply_algorithm_markers.py`
     would emit and pandoc would pass through."""
     b64 = base64.b64encode(body.encode("utf-8")).decode("ascii")
-    return f"\\<!--ALGORITHM name={name} title={title} body={b64}--\\>"
+    return f"\\<!--ALGORITHM name={name} numbered={numbered} title={title} body={b64}--\\>"
 
 
 def test_resolve_algorithms_simple_body():
@@ -46,10 +47,11 @@ def test_resolve_algorithms_simple_body():
     # Statements emit as bullets
     assert "- input $X_0$" in out
     assert "- $t \\leftarrow 0$" in out
-    # While header + indented inner bullets
-    assert "- while $t < T$:" in out
+    # While header (algorithm2e `do … end`), indented inner bullets, closer
+    assert "- while $t < T$ do" in out
     assert "  - observe $X_t$" in out
     assert "  - choose $A_t$" in out
+    assert "- end" in out
 
 
 def test_resolve_algorithms_kwin_kwout_return():
@@ -90,7 +92,7 @@ def test_resolve_algorithms_strips_textnormal():
     aren't math, so the wrapper has no markdown equivalent."""
     body = "\\While{\\textnormal{true}}\n{\n    do stuff \\;\n}\n"
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    assert "- while true:" in out
+    assert "- while true do" in out
     assert "\\textnormal" not in out
 
 
@@ -126,10 +128,47 @@ def test_resolve_algorithms_handles_unescaped_marker():
     The regex must tolerate both forms."""
     body = "$x \\leftarrow 0$ \\;"
     b64 = base64.b64encode(body.encode()).decode()
-    unescaped = f"<!--ALGORITHM name=algo-x title=Foo body={b64}-->"
+    unescaped = f"<!--ALGORITHM name=algo-x numbered=1 title=Foo body={b64}-->"
     out = postprocess.resolve_algorithms(unescaped)
     assert "```{prf:algorithm} Foo" in out
     assert ":label: algo-x" in out
+
+
+def test_resolve_algorithms_uncaptioned_is_nonumber_no_label():
+    """An uncaptioned algorithm2e float → :nonumber:, no :label: (#109)."""
+    out = postprocess.resolve_algorithms(
+        _algo_marker("step one \\;", name="NOLABEL", title="", numbered="0")
+    )
+    assert ":nonumber:" in out
+    assert ":label:" not in out
+    assert "NOLABEL" not in out
+
+
+def test_resolve_algorithms_inline_eqref_and_texttt():
+    """Inline \\eqref / \\texttt inside an algorithm body convert instead of
+    leaking verbatim (#106)."""
+    body = "compute via \\eqref{eq:gp_mean} into \\texttt{policy} \\;"
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    assert "{eq}`eq-gp_mean`" in out
+    assert "`policy`" in out
+    assert "\\eqref" not in out and "\\texttt" not in out
+
+
+def test_resolve_algorithms_tcp_comment_not_leaked():
+    """algorithm2e \\tcp{...} → (-- ...) rather than leaking (#109)."""
+    body = "observe $X_t$ \\tcp{per step}\\;"
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    assert "(-- per step)" in out
+    assert "\\tcp" not in out
+
+
+def test_resolve_algorithms_softwrapped_step_stays_one_bullet():
+    """A single \\;-terminated step that soft-wrapped across source lines is
+    one bullet, not two (#109)."""
+    body = "the controller receives a reward $R_t$ that\ndepends on the action \\;"
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    bullets = [ln for ln in out.split("\n") if ln.lstrip().startswith("- ")]
+    assert bullets == ["- the controller receives a reward $R_t$ that depends on the action"]
 
 
 # ── Exercise markers (#69) ───────────────────────────────────────────────────
@@ -232,6 +271,25 @@ def test_outer_fence_helper_sizes_to_deepest_inner_fence():
     assert outer_fence("a\n````\n```py\nx\n```\n````") == "`````"
     # A tilde fence inside is irrelevant to a backtick wrapper.
     assert outer_fence("a\n~~~\nx\n~~~\nb") == "```"
+
+
+def test_complete_image_path_extensionless_include():
+    """#104: an extensionless include resolves via the figure_ext_map; paths
+    with an extension or no map hit keep the prior behaviour."""
+    from transforms._helpers import complete_image_path
+    m = {"restud_fig11a": "restud_fig11a.png", "du": "du.svg"}
+    # Extensionless + dir prefix → remap to figures/ + resolved file.
+    assert complete_image_path("fig/restud_fig11a", m) == "figures/restud_fig11a.png"
+    assert complete_image_path("restud_fig11a", m) == "figures/restud_fig11a.png"
+    assert complete_image_path("fig/du", m) == "figures/du.svg"
+    # No map hit → unchanged (genuinely missing file; no regression).
+    assert complete_image_path("fig/unknown", m) == "fig/unknown"
+    # Already has an extension → prior behaviour (dir-prefixed stays, bare
+    # gets figures/).
+    assert complete_image_path("fig/foo.png", m) == "fig/foo.png"
+    assert complete_image_path("foo.png", m) == "figures/foo.png"
+    # No map at all → prior behaviour only.
+    assert complete_image_path("bar", None) == "figures/bar"
 
 
 # ── Minted listings (gap #015) ───────────────────────────────────────────────
@@ -653,6 +711,35 @@ def test_strip_doubled_section_symbol_preserves_external_refs():
     text = "see §10.2 of {cite}`sargent2025dynamic`"
     out = postprocess.strip_doubled_section_symbol(text)
     assert out == text
+
+
+def test_strip_doubled_noun_refs_figure_numref():
+    """`Figure~\\ref{f:x}` → `Figure {numref}`f-x`` renders 'Figure Figure
+    N' because numref auto-renders 'Figure N'; strip the prose noun (#110)."""
+    text = "See Figure {numref}`f-state_action_reward` for details."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "See {numref}`f-state_action_reward` for details."
+
+
+def test_strip_doubled_noun_refs_figures_plural_fig_prefix():
+    text = "Figures {numref}`fig-a` and {numref}`fig-b` show this."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "{numref}`fig-a` and {numref}`fig-b` show this."
+
+
+def test_strip_doubled_noun_refs_appendix_section_symbol():
+    """`Appendix~\\S\\ref{c:areal}` → `Appendix §{prf:ref}`c-areal``; both the
+    prose 'Appendix' and the stray § are redundant once the role auto-renders
+    'Appendix A' (#110)."""
+    text = "As shown in Appendix §{prf:ref}`c-areal` we have results."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "As shown in {prf:ref}`c-areal` we have results."
+
+
+def test_strip_doubled_noun_refs_figure_with_nbsp_and_section_symbol():
+    text = "Figure\xa0§{numref}`f-x` is key."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "{numref}`f-x` is key."
 
 
 # ── Frontmatter style flag ───────────────────────────────────────────────────
@@ -2624,6 +2711,74 @@ def test_multi_label_proposition_two_separate_anchors_on_one_line():
     assert '[]{#p:' not in out
 
 
+def test_prf_optional_title_lifted_to_directive_argument():
+    """The PRFTITLE marker (from _apply_prf_title_markers) → directive arg,
+    label preserved (#112)."""
+    body = (
+        '::: theorem\n'
+        '[]{#t:nsl label="t:nsl"} \\<!--PRFTITLE-START--\\>Neumann Series '
+        'Lemma\\<!--PRFTITLE-END--\\> The series converges.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert '```{prf:theorem} Neumann Series Lemma' in out
+    assert ':label: t-nsl' in out
+    assert 'PRFTITLE' not in out
+    assert 'The series converges.' in out
+
+
+def test_prf_proof_optional_title_strips_inline_proof_marker():
+    """Proof `[Proof of …]` → directive arg; the inline `*Proof.*` pandoc
+    emits is stripped so the heading isn't doubled (#112)."""
+    body = (
+        '::: proof\n'
+        '*Proof.* \\<!--PRFTITLE-START--\\>Proof of Proposition X'
+        '\\<!--PRFTITLE-END--\\> The result follows.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert '```{prf:proof} Proof of Proposition X' in out
+    assert '*Proof.*' not in out
+    assert 'PRFTITLE' not in out
+
+
+def test_prf_no_title_unchanged():
+    body = (
+        '::: theorem\n'
+        '[]{#t:plain label="t:plain"} A plain theorem.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert '```{prf:theorem}\n:label: t-plain' in out
+
+
+def test_prf_title_not_stolen_from_nested_env():
+    """An UNTITLED outer env containing a titled inner env must not lift the
+    inner's PRFTITLE onto itself (caught in the #115 detailed review): the
+    search stops at the first nested ``:::`` fence, and the inner marker —
+    which this single-level pass won't convert — degrades to bold title text
+    rather than leaking verbatim."""
+    body = (
+        ':::: theorem\n'
+        '[]{#t:outer label="t:outer"} Outer body before.\n'
+        '\n'
+        '::: remark\n'
+        '\\<!--PRFTITLE-START--\\>Inner Note Title\\<!--PRFTITLE-END--\\> '
+        'Inner remark body.\n'
+        ':::\n'
+        '\n'
+        'Outer body after.\n'
+        '::::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    # Outer directive has NO title argument.
+    assert '```{prf:theorem}\n:label: t-outer' in out
+    assert '{prf:theorem} Inner Note Title' not in out
+    # Inner marker scrubbed to bold text, never leaked.
+    assert '**Inner Note Title**' in out
+    assert 'PRFTITLE' not in out
+
+
 def test_multi_label_three_anchors_emits_two_divs():
     """Three labels → first promoted, two sibling {div}s."""
     body = (
@@ -2637,6 +2792,107 @@ def test_multi_label_three_anchors_emits_two_divs():
     assert ':name: l-b' in out
     assert ':name: l-c' in out
     assert out.count('```{div}') == 2
+
+
+def test_hoist_heading_labels_consumes_aliased_span():
+    """`\\subsection{T}\\label{ss:a}\\label{sss:b}` — the secondary label's
+    orphan span is CONSUMED (not stacked: mystmd keeps only one anchor per
+    heading — "label X replaced with Y"); refs to it are alias-rewritten to
+    the primary by convert_cross_references (#108, reworked after the dp1
+    myst-build test)."""
+    from conversion_context import ConversionContext, set_current_context
+    ctx = ConversionContext.default()
+    ctx.heading_label_aliases = {'sss-fsmdp': 'ss-gfsmdp'}
+    set_current_context(ctx)
+    try:
+        body = (
+            '(ss-gfsmdp)=\n'
+            '## The MDP Model\n'
+            '\n'
+            '[]{#sss:fsmdp label="sss:fsmdp"} We study a controller.\n'
+        )
+        out = postprocess.hoist_consecutive_heading_labels(body)
+        assert out == (
+            '(ss-gfsmdp)=\n'
+            '## The MDP Model\n'
+            '\n'
+            'We study a controller.\n'
+        )
+        # And the ref rewrite makes the alias resolve to the heading.
+        ref = ('See [\\[sss:fsmdp\\]](#sss:fsmdp)'
+               '{reference-type="ref" reference="sss:fsmdp"}.')
+        assert '{ref}`ss-gfsmdp`' in postprocess.convert_cross_references(ref, ctx)
+    finally:
+        set_current_context(ConversionContext.default())
+
+
+def test_hoist_heading_labels_own_line_aliased_span_dropped():
+    """An aliased span alone on its own line is dropped entirely (no stray
+    blank); a NON-aliased span on the same line shape is left alone."""
+    from conversion_context import ConversionContext, set_current_context
+    ctx = ConversionContext.default()
+    ctx.heading_label_aliases = {'ss-b': 'ss-a', 'ss-c': 'ss-a'}
+    set_current_context(ctx)
+    try:
+        body = (
+            '(ss-a)=\n'
+            '## Three Labels\n'
+            '\n'
+            '[]{#ss:b label="ss:b"}[]{#ss:c label="ss:c"} First paragraph.\n'
+            '\n'
+            '[]{#other:x label="other:x"} Not a heading label.\n'
+        )
+        out = postprocess.hoist_consecutive_heading_labels(body)
+        assert '[]{#ss:b' not in out and '[]{#ss:c' not in out
+        assert 'First paragraph.' in out
+        assert '[]{#other:x label="other:x"} Not a heading label.' in out
+        assert '(ss-b)=' not in out      # never stacked as an anchor
+    finally:
+        set_current_context(ConversionContext.default())
+
+
+def test_hoist_heading_labels_no_orphan_is_noop():
+    """A heading whose following paragraph has no leading anchor is untouched."""
+    body = (
+        '(ss-a)=\n'
+        '## Solo Label\n'
+        '\n'
+        'Just prose, no orphan anchor.\n'
+    )
+    out = postprocess.hoist_consecutive_heading_labels(body)
+    assert out == body
+
+
+def test_hoist_heading_labels_leaves_non_heading_orphan():
+    """A leading anchor on a paragraph NOT preceded by a heading is left for
+    the existing strip path (e.g. footnote-body orphan)."""
+    body = '[^1]: []{#fn:hcon label="fn:hcon"}Footnote body.\n'
+    out = postprocess.hoist_consecutive_heading_labels(body)
+    assert out == body
+
+
+def test_hoist_heading_labels_leaves_chapter_h1_explicit_label():
+    """A ``# Chapter`` H1 with an explicit following ``[]{#c:...}`` label must
+    NOT be hoisted — that label is consumed later by ``add_frontmatter``'s
+    "prefer explicit chapter label" path (lesson 017). Stacking the label
+    above the H1 would stop ``add_frontmatter`` from matching/absorbing the
+    heading. Only section-level (H2+) headings are hoist targets, so the H1
+    case is left untouched (both the own-line and mid-line label shapes)."""
+    own_line = (
+        '(c-intro-auto)=\n'
+        '# The Introduction\n'
+        '\n'
+        '[]{#c:climate label="c:climate"}\n'
+        'This chapter studies climate.\n'
+    )
+    mid_line = (
+        '(c-intro-auto)=\n'
+        '# The Introduction\n'
+        '\n'
+        '[]{#c:climate label="c:climate"} This chapter studies climate.\n'
+    )
+    assert postprocess.hoist_consecutive_heading_labels(own_line) == own_line
+    assert postprocess.hoist_consecutive_heading_labels(mid_line) == mid_line
 
 
 def test_standalone_labels_strips_midline_footnote_orphan():
@@ -2896,11 +3152,14 @@ def test_convert_equations_separates_inline_close_from_display_open():
     """The infamous `$\\Xsf$ $$` case: pandoc emits an inline-math close
     immediately followed by a display-math open on the same line.
     Without the [^\\n] fix to `convert_equations`, MyST swallows everything
-    as inline math and the rest of the file gets blank-line-stripped."""
+    as inline math and the rest of the file gets blank-line-stripped.
+
+    Uses a numbered ``equation`` (the bare-``$$`` path); the starred form is
+    covered by ``test_convert_equations_starred_midline_blockified``."""
     text = (
-        "Let $\\sigma$ be $g_k$-greedy. Then $$\\begin{equation*}\n"
+        "Let $\\sigma$ be $g_k$-greedy. Then $$\\begin{equation}\n"
         "    \\sigma(x) = 1\n"
-        "\\end{equation*}$$ where things happen.\n"
+        "\\end{equation}$$ where things happen.\n"
     )
     out = postprocess.convert_equations(text)
     lines = out.split("\n")
@@ -2908,6 +3167,104 @@ def test_convert_equations_separates_inline_close_from_display_open():
     open_idx = next(i for i, l in enumerate(lines) if l.strip() == "$$" and i > 0)
     # The line above the opener should be blank (separator)
     assert lines[open_idx - 1] == ""
+
+
+def test_convert_equations_starred_equation_unnumbered():
+    """``equation*`` is unnumbered in LaTeX — emit a forced-unnumbered
+    ``{math}`` directive so book-wide numbering doesn't number it (#113)."""
+    text = "$$\\begin{equation*}\ny = 2\n\\end{equation*}$$\n"
+    out = postprocess.convert_equations(text)
+    assert '```{math}' in out
+    assert ':enumerated: false' in out
+    assert 'y = 2' in out
+    assert '(eq-' not in out
+
+
+def test_convert_equations_starred_align_unnumbered():
+    text = "$$\\begin{align*}\nz &= 3 \\\\\nw &= 4\n\\end{align*}$$\n"
+    out = postprocess.convert_equations(text)
+    assert '```{math}' in out
+    assert ':enumerated: false' in out
+    assert '\\begin{aligned}' in out
+
+
+def test_convert_equations_starred_align_split_rows_stay_unnumbered():
+    """An ``align*`` with 2+ per-row labels hits the split path; each row must
+    still be a forced-unnumbered ``{math}`` directive (not a bare numbered
+    ``$$``) so it doesn't consume an equation number (#113, Copilot review)."""
+    text = ("$$\\begin{align*}\n"
+            "a &= 1 \\label{eq:a} \\\\\n"
+            "b &= 2 \\label{eq:b}\n"
+            "\\end{align*}$$\n")
+    out = postprocess.convert_equations(text)
+    assert out.count('```{math}') == 2
+    assert out.count(':enumerated: false') == 2
+    assert ':label: eq-a' in out and ':label: eq-b' in out
+    # No bare ``$$ (label)`` rows leaked through (those would be numbered).
+    assert '$$ (eq-' not in out
+
+
+def test_convert_equations_starred_gather_with_label_unnumbered():
+    """A starred ``gather*`` carrying a ``\\label`` must stay unnumbered while
+    keeping the label referenceable (#113, Copilot review)."""
+    text = "$$\\begin{gather*}\nx = 1 \\label{eq:x}\n\\end{gather*}$$\n"
+    out = postprocess.convert_equations(text)
+    assert '```{math}' in out
+    assert ':enumerated: false' in out
+    assert ':label: eq-x' in out
+    assert '$$ (eq-x)' not in out
+
+
+def test_convert_equations_plain_equation_still_numbered_bare():
+    """A non-starred ``equation`` (numbered in LaTeX) keeps the bare ``$$``
+    form (mystmd numbers it under book-wide numbering)."""
+    text = "$$\\begin{equation}\nx = 1\n\\end{equation}$$\n"
+    out = postprocess.convert_equations(text)
+    assert '```{math}' not in out
+    assert out.strip().startswith('$$')
+
+
+def test_convert_equations_starred_midline_blockified():
+    """A starred env abutting prose mid-line must be hoisted to its own block
+    (a ``{math}`` directive can't share a line with prose)."""
+    text = (
+        "Let $\\sigma$ be greedy. Then $$\\begin{equation*}\n"
+        "    \\sigma(x) = 1\n"
+        "\\end{equation*}$$ where things happen.\n"
+    )
+    out = postprocess.convert_equations(text)
+    lines = out.split("\n")
+    open_idx = next(i for i, l in enumerate(lines) if l.strip() == "```{math}")
+    assert lines[open_idx - 1] == ""          # blank line before the fence
+    close_idx = next(i for i in range(open_idx + 1, len(lines))
+                     if lines[i].strip() == "```")
+    assert lines[close_idx + 1] == ""         # blank line after the fence
+    assert "where things happen." in out
+
+
+def test_starred_equation_inside_theorem_fence_sized():
+    """A starred display inside a theorem env: the enclosing directive's fence
+    must outrank the nested ```{math} fence, else the math closer terminates
+    the theorem early (#113 review — the issue-#79 ordering class). Requires
+    convert_equations to run BEFORE convert_environment_divs in the pipeline,
+    so this test goes through process_text."""
+    pandoc_out = (
+        '::: theorem\n'
+        '[]{#t:embed label="t:embed"} The bound holds:\n'
+        '\n'
+        '$$\\begin{equation*}\n'
+        '\\|u\\| \\leq C\n'
+        '\\end{equation*}$$\n'
+        '\n'
+        'for all $u$.\n'
+        ':::\n'
+    )
+    out = postprocess.process_text(pandoc_out, stem='t', title='T')
+    assert '````{prf:theorem}' in out        # 4-tick outer fence
+    assert '```{math}' in out                # 3-tick nested math
+    assert ':enumerated: false' in out
+    # The theorem's closer is the LAST fence — body content stays inside.
+    assert out.rstrip().endswith('````')
 
 
 def test_convert_equations_label_after_body_in_equation_env():
@@ -3419,8 +3776,9 @@ def test_algpseudo_for_endfor_nests():
     )
     out = postprocess._algpseudo_convert_body(body)
     assert _bullets(out) == [
-        "- for $i = 1$ to $n$:",
+        "- for $i = 1$ to $n$ do",
         "  - work($i$)",
+        "- end",
     ]
 
 
@@ -3434,9 +3792,11 @@ def test_algpseudo_nested_for():
     )
     out = postprocess._algpseudo_convert_body(body)
     assert _bullets(out) == [
-        "- for $i$:",
-        "  - for $j$:",
+        "- for $i$ do",
+        "  - for $j$ do",
         "    - cell($i$, $j$)",
+        "  - end",
+        "- end",
     ]
 
 
@@ -3448,8 +3808,9 @@ def test_algpseudo_while_endwhile():
     )
     out = postprocess._algpseudo_convert_body(body)
     assert _bullets(out) == [
-        r"- while $v > \epsilon$:",
+        r"- while $v > \epsilon$ do",
         "  - step",
+        "- end",
     ]
 
 
@@ -3580,9 +3941,11 @@ def test_algpseudo_textbf_with_multiple_nested_braced_macros():
     line = _bullets(out)[0]
     # Bold opens and closes exactly once around the bracketed note.
     assert line.count("**") == 2
-    # Inner macros / math survive unbroken.
-    assert r"\texttt{@tf.function}" in line
-    assert r"\texttt{@jax.jit}" in line
+    # ``\texttt`` now converts to a code span (#106) rather than leaking
+    # verbatim; the nested-brace balancing of the surrounding \textbf holds.
+    assert "`@tf.function`" in line
+    assert "`@jax.jit`" in line
+    assert r"\texttt" not in line
     assert "$5$" in line
 
 
@@ -3620,8 +3983,9 @@ def test_algo_convert_body_dispatches_to_algpseudo_on_algorithmic_wrapper():
     assert "\\STATE" not in out
     assert "\\FOR" not in out
     assert "- Step one" in out
-    assert "- for $i$:" in out
+    assert "- for $i$ do" in out
     assert "  - inner" in out
+    assert "- end" in out
 
 
 # ── resolve_algorithmics end-to-end (issue #20) ──────────────────────────────
@@ -3661,10 +4025,12 @@ def test_resolve_algorithmics_full_reporter_example():
     bullets = _bullets(out)
     assert bullets == [
         "- **Input:** Initial state $x_0$",
-        r"- for episode $e = 1, \ldots, E$:",
+        r"- for episode $e = 1, \ldots, E$ do",
         "  - **Simulate path:** ...",
-        r"  - for gradient step $t = 1, \ldots, T$:",
+        r"  - for gradient step $t = 1, \ldots, T$ do",
         "    - Compute loss",
+        "  - end",
+        "- end",
         "- **Output:** Trained network",
     ]
 
@@ -3688,3 +4054,116 @@ def test_nested_subfigures_without_embed_keeps_admonition_path():
     out = postprocess.convert_html_figures(pandoc_out)
     assert '{admonition} Figure (TikZ' in out
     assert 'f-bar_a' in out and 'f-bar_b' in out
+
+
+def test_blockify_rescans_tail_for_next_opener():
+    """Two starred displays with prose between, glued onto ONE pandoc line
+    (--wrap=none + LaTeX % line-continuation): the prose tail after the first
+    block's closer contains the SECOND block's opener and must be re-scanned,
+    not appended blindly — else that opener leaks mid-line as broken MyST
+    (found in the dp1 parity run after #113 merged)."""
+    text = (
+        "Take any $f$. Then $$\\begin{align*}\n"
+        "|Tf - Tg| &\\leq \\beta\n"
+        "\\end{align*}$$ Apply the triangle inequality to obtain "
+        "$$\\begin{align*}\n"
+        "|Tf - Tg| \\leq \\beta \\|f - g\\|\n"
+        "\\end{align*}$$ Taking the supremum completes the proof.\n"
+    )
+    out = postprocess.convert_equations(text)
+    import re as _re
+    total = out.count('```{math}')
+    at_start = len(_re.findall(r'^`{3,}\{math\}', out, flags=_re.MULTILINE))
+    assert total == 2
+    assert at_start == 2          # no mid-line fence leaked
+    assert 'Apply the triangle inequality to obtain' in out
+    assert 'Taking the supremum completes the proof.' in out
+
+
+def test_scan_heading_label_aliases():
+    """Source scan finds multi-label headings in both #108 shapes (trailing
+    on the heading line; label on following lines) and maps secondary →
+    primary in hyphen form."""
+    import tempfile, pathlib
+    from conversion_context import scan_heading_label_aliases
+    tex = (
+        "\\subsection{The MDP Model}\\label{ss:gfsmdp}\n"
+        "\\label{sss:fsmdp}\n"
+        "Body text.\n"
+        "\\subsubsection{Defining ADPs}\\label{sss:opset}\\label{sss:chopt}\n"
+        "More text with an inline \\label{eq:not-a-heading} elsewhere.\n"
+        "\\section{Single}\\label{s:solo}\n"
+    )
+    with tempfile.TemporaryDirectory() as td:
+        pathlib.Path(td, 'ch.tex').write_text(tex)
+        aliases = scan_heading_label_aliases(pathlib.Path(td))
+    assert aliases == {'sss-fsmdp': 'ss-gfsmdp', 'sss-chopt': 'sss-opset'}
+
+
+def test_prf_title_with_ref_goes_to_body_not_argument():
+    """A title carrying a cross-ref must NOT become the directive argument —
+    a role in a prf directive argument poisons page-wide xref resolution in
+    mystmd (dp1 build test). It becomes a bold lead-in body line instead."""
+    body = (
+        '::: proof\n'
+        '*Proof.* \\<!--PRFTITLE-START--\\>Proof of Proposition '
+        '[\\[p:js0be\\]](#p:js0be){reference-type="ref" reference="p:js0be"}'
+        '\\<!--PRFTITLE-END--\\> The result follows.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    first_line = out.split('\n')[0]
+    assert first_line == '```{prf:proof}'          # no argument
+    assert '**Proof of Proposition' in out          # bold lead-in in body
+    assert 'The result follows.' in out
+
+
+def test_convert_pandoc_spans_smallcaps_uppercased():
+    """#124: mystmd renders pandoc's `[x]{.smallcaps}` literally — convert
+    to uppercase (the book-dp1#351 editorial choice)."""
+    out = postprocess.convert_pandoc_spans(
+        'the wage offer sequence is [iid]{.smallcaps} and nonnegative')
+    assert out == 'the wage offer sequence is IID and nonnegative'
+
+
+def test_convert_pandoc_spans_sans_serif_unwrapped():
+    out = postprocess.convert_pandoc_spans('uses [sans]{.sans-serif} text')
+    assert out == 'uses sans text'
+
+
+def test_convert_pandoc_spans_leaves_other_spans():
+    """Only the two classes the pipeline produces are converted; anything
+    else is left for explicit handling when a book actually hits it."""
+    text = 'keep [x]{.underline} as is'
+    assert postprocess.convert_pandoc_spans(text) == text
+
+
+def test_starred_equation_with_tikzcd_stays_bare():
+    """A starred env wrapping a tikzcd diagram must keep the bare ``$$``
+    form: the consumer-side TIKZCD_INLINE_MAP matches ``$$ … tikzcd … $$``
+    and replaces it with an image — the ``{math}`` form broke the match,
+    leaking tikzcd to KaTeX and losing the mapped figure (dp1 ch_fps
+    build test)."""
+    text = ("$$\\begin{equation*}\n"
+            "\\begin{tikzcd}[row sep=huge]\nA \\arrow{r} & B\n\\end{tikzcd}\n"
+            "\\end{equation*}$$\n")
+    out = postprocess.convert_equations(text)
+    assert '```{math}' not in out
+    assert out.strip().startswith('$$')
+    assert '\\begin{tikzcd}' in out
+
+
+def test_complete_image_path_dir_qualified_with_extension_relocated():
+    """Copilot review on #103: convert.sh flattens assets into
+    output/figures/<basename>, so a directory-qualified source path always
+    dangles. When the stem is in the scanned map, relocate keeping the
+    author-chosen extension; unknown stems stay untouched."""
+    from transforms._helpers import complete_image_path
+    m = {"restud_fig11a": "restud_fig11a.png", "dual": "dual.png"}
+    # relocate, keeping the author's extension (even when the map prefers png)
+    assert complete_image_path("fig/restud_fig11a.pdf", m) == "figures/restud_fig11a.pdf"
+    assert complete_image_path("../figures/dual.pdf", m) == "figures/dual.pdf"
+    # already-canonical path: idempotent
+    assert complete_image_path("figures/dual.png", m) == "figures/dual.png"
+    # unknown stem with extension: untouched (no map evidence the file exists)
+    assert complete_image_path("fig/unknown.png", m) == "fig/unknown.png"

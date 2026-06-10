@@ -1,0 +1,10 @@
+# Phase 5: a book-side project_overrides.py contributes a POST_CONVERT hook.
+# It must be fence-aware — rewrite the token in prose but NOT inside the
+# {code-block} produced from the lstlisting.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+project_overrides: project_overrides.py
+
+chapters:
+  - { stem: input, title: "Branding" }

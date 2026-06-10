@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from conversion_context import current_context
 from ._helpers import convert_label_colons
 
 
@@ -144,7 +145,7 @@ def convert_pandoc_attr_code_blocks(text: str) -> str:
     return fence_re.sub(replace, text)
 
 
-def resolve_listings(text: str) -> str:
+def resolve_listings(text: str, ctx=None) -> str:
     """Replace LISTING-START..LISTING-END markers with ``{code-block}`` directives.
 
     Marker format (emitted by _apply_listing_markers.py):
@@ -158,9 +159,8 @@ def resolve_listings(text: str) -> str:
     directive is still emitted with a TODO comment in the body so the
     build does not fail.
     """
-    # Late-import the mutable source-base set by apply_config.
-    import postprocess
-    base: Path | None = postprocess._LISTING_SOURCE_BASE
+    ctx = ctx if ctx is not None else current_context()
+    base: Path | None = ctx.listing_source_base
 
     pattern = re.compile(
         r'\\?<!--LISTING-START\s+'

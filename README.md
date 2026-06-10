@@ -103,16 +103,20 @@ so installs are reproducible across machines.
 
 | Path | Purpose |
 |------|---------|
-| `scripts/postprocess.py` | The generic transform library (~25 stages chained in `process_file`). |
-| `scripts/preprocess.sh` | LaTeX sanitization before pandoc (config-driven). Calls helpers for chapter-split, rewrites, algorithm / listing / description / table markers. |
-| `scripts/convert.sh` | Orchestrator: preprocess → pandoc → postprocess → validate. |
-| `scripts/validate.py` | Structural diff: equations, refs, theorems counted in source vs output; flags broken inline math. |
-| `scripts/templates/book-convert.sh` | Vendored wrapper books ship as their `mystmd/convert.sh`. |
-| `scripts/new-book.sh` | Scaffolds a book's `mystmd/` directory from a template. |
+| `scripts/postprocess.py` | Orchestrator: `process_text` chains the ~25 transform stages. Holds no mutable run state (a back-compat module-proxy forwards the legacy `ENV_MAP` etc. names to the context). |
+| `scripts/conversion_context.py` | `ConversionContext` — the threaded run state (env map, tikz map, rewrites, per-file counters, the `POST_CONVERT` hook); `from_config` builds it. Makes the pipeline reentrant. |
+| `scripts/transforms/` | Themed transform modules (`math`, `refs`, `cite`, `figures`, `code`, `envs`, `tables`, `frontmatter`, …). A stateful transform takes `ctx`. |
+| `scripts/transforms/_markers.py` | Shared marker base (`pandoc_batch_convert`, `encode_payload`/`decode_payload`, `reassemble`) used by the figure + table preprocessors. |
+| `scripts/preprocess.sh` | LaTeX sanitization before pandoc (config-driven). Calls helpers for chapter-split, rewrites, algorithm / listing / description / enumerate / table / figure markers. |
+| `scripts/convert.sh` | Pipeline driver: preprocess → pandoc → postprocess → validate. |
+| `scripts/validate.py`, `scripts/count_baseline.py` | Structural diff (equations, refs, theorems, figures, citations — source vs output; marker-aware; flags broken math) + per-book count baselines. |
+| `scripts/validate_fixture.sh`, `scripts/setup_fixtures.sh` | Two-baseline fixture harness: `--against snapshot` (refactor-safety byte-identity) vs the default parity gap against the worked-on `mystmd/`. |
+| `tests/golden_tex/`, `tests/test_marker_differential.py` | `.tex`-rooted golden tier + the §1b differential migration gate (Phase 1 safety net). `.github/workflows/test.yml` runs them in CI with a pinned pandoc. |
+| `scripts/templates/book-convert.sh`, `scripts/new-book.sh` | Vendored book wrapper + the scaffolder for a book's `mystmd/`. |
+| Book-side `project_overrides.py` | Optional closed surface a consumer book supplies: `TIKZ_FIGURE_MAP`, `EXTRA_REWRITES`, one `POST_CONVERT(text, stem, ctx)` hook (the graduation-rule "one book → book-side" tier). |
 | `config.example.yaml` | Per-project config (chapter list, bib, preprocess/postprocess rewrites, TikZ map, validation toggles). |
-| `lessons/` | One markdown file per lesson learned, with frontmatter. |
-| `LESSONS.md` | Index of the lessons catalogue. |
-| `CHANGELOG.md` | What changed in each tagged release. |
+| `lessons/` + `LESSONS.md` | One markdown file per lesson learned, plus the index. |
+| `CHANGELOG.md`, `ROADMAP.md`, `notes/design/` | What changed, what's next, and the architecture design substrate. |
 | `examples/book-dp1/`, `examples/book-dp2/` | Reference configurations from the originating conversions. |
 | `.claude/commands/capture-lesson.md` | `/capture-lesson` slash command to add a new lesson. |
 

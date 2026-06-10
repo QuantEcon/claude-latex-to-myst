@@ -4,11 +4,23 @@ title: "Late-import of ``postprocess`` from transform modules loads a second cop
 category: tooling
 tags: [python, modules, late-import, regression, state, p3a-refactor]
 source_project: external book (Deep_Learning_for_Solving_And_Estimating_Dynamic_Economic_Models)
-status: codified
+status: superseded
 codified_in: scripts/postprocess.py (top-of-file ``sys.modules`` aliasing)
+superseded_by: "Phase 3 ConversionContext (notes/design/phase-3-conversion-context.md); scripts/conversion_context.py"
 severity: high
 date: 2026-05-25
 ---
+
+> **SUPERSEDED (Phase 3, architecture-evolution).** The root cause — run
+> state living as *mutated module globals on ``postprocess``* — has been
+> removed. State now lives on a ``ConversionContext`` threaded as an
+> argument (``scripts/conversion_context.py``), so there is no per-module
+> singleton for a second module-load to freeze. The ``sys.modules`` alias
+> this lesson documents is **gone**; transforms no longer ``import
+> postprocess`` (they read ``ctx`` / ``conversion_context.current_context()``).
+> The fix below is kept for provenance — it was the correct stopgap while
+> state was global. The reentrancy proof is
+> ``tests/test_conversion_context.py``.
 
 ## Symptom
 

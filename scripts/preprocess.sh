@@ -134,6 +134,14 @@ for ch in "${CHAPTER_STEMS[@]}"; do
   # BSD vs GNU sed portability traps and shell quoting hell.
   python3 "$SCRIPT_DIR/_apply_rewrites.py" "$CONFIG" "$dst"
 
+  # Preserve the optional [title] of theorem-family environments. Pandoc
+  # drops the optional arg of a \begin{theorem}[Title] it can't resolve (and
+  # renders \begin{proof}[Proof of …] inline, duplicating the auto heading),
+  # so move the title into a PRFTITLE marker the postprocess env pass lifts
+  # onto the {prf:*} directive argument. No-op for envs without a [title]
+  # (#112).
+  python3 "$SCRIPT_DIR/_apply_prf_title_markers.py" "$CONFIG" "$dst"
+
   # Replace \begin{algorithm}...\end{algorithm} (algorithm2e) with marker
   # comments. Pandoc would otherwise destroy the body structure. The
   # postprocess step decodes the markers into {prf:algorithm} directives.

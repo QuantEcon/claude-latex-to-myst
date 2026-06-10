@@ -1,0 +1,7 @@
+# Seeded from lesson 011: prose noun before {prf:ref} is stripped (sphinx-proof auto-renders)
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Doubled Noun Ref" }

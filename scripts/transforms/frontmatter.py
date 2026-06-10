@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 
+from conversion_context import current_context
 from ._helpers import convert_label_colons
 
 
@@ -47,6 +48,63 @@ def convert_section_labels(text: str) -> str:
     )
 
     return text
+
+
+def hoist_consecutive_heading_labels(text: str, ctx=None) -> str:
+    """Consume a heading's *secondary* ``\\label{}`` orphan spans (#108).
+
+    LaTeX allows several consecutive labels on one sectioning command::
+
+        \\subsection{The MDP Model}\\label{ss:gfsmdp}\\label{sss:fsmdp}
+
+    Pandoc folds only the **first** label into the heading id and emits the
+    rest as leading ``[]{#…}`` spans on the *following* paragraph. Neither
+    naive treatment works in a real mystmd build:
+
+    - leaving the span (pre-#114): it resolves to the paragraph node and a
+      ``{ref}`` renders the generic node name "Paragraph";
+    - stacking it as a second ``(name)=`` anchor above the heading (the
+      first #114 attempt): mystmd keeps only ONE anchor per heading —
+      "label X replaced with Y" — and refs to the dropped one dangle
+      (verified against myst v1.9.1 in the dp1 build test).
+
+    The working design is **alias-rewriting**: ``ctx.heading_label_aliases``
+    (scanned from the sources at config time) maps each secondary label to
+    its primary, ``convert_cross_references`` rewrites every ref to the
+    primary (so it renders the true section number), and this transform's
+    only job is to *consume* the now-targetless orphan spans so they don't
+    leak. Only spans whose label is in the alias map are touched — anything
+    else (footnote orphans, genuine own-line anchors) is left for the
+    existing paths.
+    """
+    ctx = ctx if ctx is not None else current_context()
+    aliases = ctx.heading_label_aliases
+    if not aliases or '[]{#' not in text:
+        return text
+
+    lead_re = re.compile(
+        r'^(?:\[\]\{#[^\s}]+(?:\s+label="[^"]*")?\}[ \t]*)+'
+    )
+    span_re = re.compile(r'(\[\]\{#([^\s}]+)(?:\s+label="[^"]*")?\}[ \t]*)')
+
+    out: list[str] = []
+    for line in text.split('\n'):
+        if not lead_re.match(line):
+            out.append(line)
+            continue
+        rebuilt = line
+        changed = False
+        for whole, label in span_re.findall(line):
+            if convert_label_colons(label) in aliases:
+                rebuilt = rebuilt.replace(whole, '', 1)
+                changed = True
+        if not changed:
+            out.append(line)
+        elif rebuilt.strip():
+            out.append(rebuilt.lstrip())
+        # else: the line was nothing but consumed spans — drop it entirely
+        # (no stray blank inside the paragraph).
+    return '\n'.join(out)
 
 
 def convert_standalone_labels(text: str) -> str:
@@ -80,7 +138,7 @@ def convert_standalone_labels(text: str) -> str:
     return text
 
 
-def apply_postprocess_rewrites(text: str, stem: str) -> str:
+def apply_postprocess_rewrites(text: str, stem: str, ctx=None) -> str:
     """Apply book-specific Markdown rewrites declared in
     ``config.postprocess.rewrites``.
 
@@ -96,15 +154,15 @@ def apply_postprocess_rewrites(text: str, stem: str) -> str:
     regexes with ``re.MULTILINE`` so ``^...$`` matches line
     boundaries — the common shape for editorial-heading patterns.
     """
-    import postprocess
-    for pattern, replacement, stems in postprocess.POSTPROCESS_REWRITES:
+    ctx = ctx if ctx is not None else current_context()
+    for pattern, replacement, stems in ctx.postprocess_rewrites:
         if stems is not None and stem not in stems:
             continue
         text = pattern.sub(replacement, text)
     return text
 
 
-def add_frontmatter(text: str, title: str, style: str | None = None) -> str:
+def add_frontmatter(text: str, title: str, style: str | None = None, ctx=None) -> str:
     """Emit frontmatter / chapter heading in the configured style.
 
     Two valid MyST conventions, both round-trip:
@@ -127,9 +185,9 @@ def add_frontmatter(text: str, title: str, style: str | None = None) -> str:
           (c-foo)=
           # Foo
 
-    ``style`` overrides the module-level ``_FRONTMATTER_STYLE`` for this
-    one call — used by ``process_file`` to honour per-chapter overrides
-    declared in ``config.chapters[].frontmatter_style`` or
+    ``style`` overrides ``ctx.frontmatter_style`` for this one call — used
+    by ``process_file`` to honour per-chapter overrides declared in
+    ``config.chapters[].frontmatter_style`` or
     ``config.extra_files[].frontmatter_style``.
 
     Idempotent: re-processing a file already in either style is a no-op
@@ -137,8 +195,8 @@ def add_frontmatter(text: str, title: str, style: str | None = None) -> str:
     are preserved so chapter cross-references like ``{prf:ref}`c-egs```
     keep resolving even if the LaTeX source no longer carries the label.
     """
-    import postprocess
-    effective_style = style if style is not None else postprocess._FRONTMATTER_STYLE
+    ctx = ctx if ctx is not None else current_context()
+    effective_style = style if style is not None else ctx.frontmatter_style
     # Strip any existing YAML frontmatter, capturing label: if present so
     # we don't lose it across re-runs.
     existing_label = None

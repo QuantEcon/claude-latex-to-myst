@@ -61,6 +61,7 @@ PANDOC = shutil.which('pandoc')
 # sources that don't contain their construct, so running the full chain on a
 # focused fixture is safe and keeps the harness faithful to the real pipeline.
 _MARKER_SCRIPTS = [
+    '_apply_prf_title_markers.py',
     '_apply_algorithm_markers.py',
     '_apply_algorithmic_markers.py',
     '_apply_listing_markers.py',
@@ -125,9 +126,11 @@ def _run_pipeline(case_dir: Path) -> str:
     # bleed into the next when the suite runs all cases in one process.
     postprocess.TIKZ_FIGURE_MAP = {}
     postprocess.TIKZCD_INLINE_MAP = {}
-    tikz_overrides = config.get('tikz_overrides')
-    if tikz_overrides:
-        overrides_path = (case_dir / tikz_overrides).resolve()
+    # ``project_overrides`` (Phase 5) is the preferred key; ``tikz_overrides``
+    # is the retained alias — same loader.
+    overrides_rel = config.get('project_overrides') or config.get('tikz_overrides')
+    if overrides_rel:
+        overrides_path = (case_dir / overrides_rel).resolve()
         if overrides_path.exists():
             postprocess.load_overrides(overrides_path)
     return postprocess.process_text(md, stem=stem, title=title)
@@ -167,13 +170,42 @@ def test_golden_tex(case: str):
 
 
 def test_golden_tex_seeded():
-    """Guard: the #98 regression reproducers must stay in the corpus."""
+    """Guard: the seeded reproducers must stay in the corpus.
+
+    Two groups: the four #98 figure-marker regressions (the cases that
+    motivated this tier), and the Phase-1 seeding from the pandoc-quirk
+    lesson catalogue (each maps to a codified lesson — see
+    ``LESSON_COVERAGE.md``). A lesson with no reproducer here is one that
+    can silently regress, so the corpus is not allowed to shrink below this
+    set without a deliberate edit to this guard."""
     cases = set(_cases())
     required = {
+        # #98 figure-marker regression reproducers (the motivating cases)
         'figure_width_option',
         'figure_label_in_caption',
         'figure_raw_tikzpicture_with_override_bails',
         'figure_includegraphics_path_on_next_line',
+        'subfigure_includegraphics',      # #94 (Phase 4)
+        'subfigure_outer_and_panel_labels',  # Copilot review: outer label kept
+        'tikz_figure_caption_math',        # Phase 6 tikz caption-math preservation
+        'post_convert_fence_aware',        # Phase 5 book-side POST_CONVERT
+        # Phase-1 seeding from the lesson catalogue (lesson id in comment)
+        'table_float_hline',              # 019 / 025
+        'cite_textual_colon_key',         # 031 / 035
+        'cite_natbib_variants',           # 020
+        'cref_comma_split',               # 007
+        'doubled_noun_ref',               # 011
+        'math_text_dollar',               # 003
+        'math_percent_comment',           # 006
+        'math_thin_space_superscript',    # 042
+        'align_per_row_labels',           # 032
+        'description_item_labels',        # 022
+        'lstlisting_code_block',          # 034
+        'unnumbered_section_label',       # 017
+        'figure_caption_citation',        # 043
+        'algorithm2e_block',              # 014 / 023
+        'enumerate_exercise',             # 039
+        'multline_gather_labels',         # 037
     }
     missing = required - cases
-    assert not missing, f'golden_tex missing #98 reproducer cases: {sorted(missing)}'
+    assert not missing, f'golden_tex missing seeded reproducer cases: {sorted(missing)}'

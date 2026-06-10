@@ -44,9 +44,11 @@ def _find_balanced_end(s: str, start: int, open_ch: str, close_ch: str) -> int:
     return -1
 
 
-def _extract_caption(body: str) -> tuple[str, str, str]:
+def _extract_caption(body: str) -> tuple[str, str, str, bool]:
     """Strip the last ``\\caption{...}`` from the body and return
-    ``(stripped_body, label, title)``. Either label or title may be empty.
+    ``(stripped_body, label, title, has_caption)``. Either label or title may
+    be empty; ``has_caption`` is True iff the body carried a ``\\caption{}``
+    (algorithm2e numbers only captioned floats — #109).
 
     Recognises four layouts:
         \\caption{\\label{algo:foo} Title}                                 # label inside caption (#39)
@@ -58,6 +60,7 @@ def _extract_caption(body: str) -> tuple[str, str, str]:
     title = ''
 
     last_idx = body.rfind('\\caption{')
+    has_caption = last_idx != -1
     pre_caption = body if last_idx == -1 else body[:last_idx]
     post_caption = ''
 
@@ -65,7 +68,7 @@ def _extract_caption(body: str) -> tuple[str, str, str]:
         brace_open = last_idx + len('\\caption')
         brace_close = _find_balanced_end(body, brace_open, '{', '}')
         if brace_close == -1:
-            return body.rstrip(), label, title
+            return body.rstrip(), label, title, has_caption
 
         post_caption = body[brace_close + 1 :]
         inner = body[brace_open + 1 : brace_close]
@@ -95,22 +98,33 @@ def _extract_caption(body: str) -> tuple[str, str, str]:
                 break
 
     stripped = (pre_caption + post_caption).rstrip()
-    return stripped, label, title
+    return stripped, label, title, has_caption
 
 
 def rewrite_algorithm(body: str, auto_name_fn) -> str:
     """Return the marker replacement for one algorithm body."""
-    stripped, label, title = _extract_caption(body)
+    stripped, label, title, has_caption = _extract_caption(body)
 
-    name = label or auto_name_fn()
+    # algorithm2e numbers only *captioned* floats (#109). An uncaptioned
+    # ``\begin{algorithm}`` renders unnumbered, so don't mint an auto-label
+    # for it — that would both number it and shift the numbering of the
+    # captioned algorithms that follow.
+    if has_caption:
+        name = label or auto_name_fn()
+    else:
+        name = label  # usually '' for an uncaptioned block
     # MyST labels use hyphens, not colons.
-    name_my = name.replace(':', '-')
+    name_my = name.replace(':', '-') if name else 'NOLABEL'
+    numbered = '1' if has_caption else '0'
 
     # Trim and base64-encode the body.
     stripped = stripped.strip()
     b64 = base64.b64encode(stripped.encode('utf-8')).decode('ascii')
 
-    return f'\n\n<!--ALGORITHM name={name_my} title={title} body={b64}-->\n\n'
+    return (
+        f'\n\n<!--ALGORITHM name={name_my} numbered={numbered} '
+        f'title={title} body={b64}-->\n\n'
+    )
 
 
 def _starts_in_comment(text: str, pos: int) -> bool:

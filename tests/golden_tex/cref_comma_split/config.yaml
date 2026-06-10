@@ -1,0 +1,7 @@
+# Seeded from lesson 007: \cref{a,b} must emit one ref per key
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Cleveref Comma Split" }

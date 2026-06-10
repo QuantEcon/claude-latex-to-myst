@@ -33,15 +33,16 @@ def _apply_natbib(text: str) -> str:
 
 def _extract_marker(out: str) -> dict:
     m = re.search(
-        r'<!--ALGORITHM name=(\S+) title=(.*?) body=([A-Za-z0-9+/=]+)-->',
+        r'<!--ALGORITHM name=(\S+) numbered=([01]) title=(.*?) body=([A-Za-z0-9+/=]+)-->',
         out,
         re.DOTALL,
     )
     assert m, f"no marker in output: {out!r}"
     return {
         "name": m.group(1),
-        "title": m.group(2),
-        "body": base64.b64decode(m.group(3)).decode("utf-8"),
+        "numbered": m.group(2),
+        "title": m.group(3),
+        "body": base64.b64decode(m.group(4)).decode("utf-8"),
     }
 
 
@@ -167,15 +168,16 @@ def test_algorithm_marker_caption_without_label():
     assert m["title"] == "Just a title"
 
 
-def test_algorithm_marker_no_caption_auto_labels():
+def test_algorithm_marker_no_caption_unnumbered_no_label():
+    """algorithm2e numbers only captioned floats — an uncaptioned block is
+    unnumbered, so it gets no auto-label and numbered=0 (#109)."""
     tex = (
         "\\begin{algorithm}\nbody1 \\;\n\\end{algorithm}\n"
         "\\begin{algorithm}\nbody2 \\;\n\\end{algorithm}\n"
     )
     out = alg.process_text(tex, auto_prefix="ch")
-    # Two markers, each with an auto-generated name
-    markers = re.findall(r'name=(\S+)', out)
-    assert markers == ["algo-ch-auto-1", "algo-ch-auto-2"]
+    assert re.findall(r'name=(\S+)', out) == ["NOLABEL", "NOLABEL"]
+    assert re.findall(r'numbered=(\d)', out) == ["0", "0"]
 
 
 def test_algorithm_marker_optional_arg_ignored():
@@ -1085,3 +1087,133 @@ def test_enum_parse_ignores_nested_item_boundaries():
     assert items[0][0] == "ex:a" and items[1][0] == "ex:b"
     assert items[0][1].count("\\item nested") == 2
     assert "\\begin{itemize}" in items[0][1]
+
+
+# ── Declaration font forms + texttt brace flattening (#107 gap1, #105) ─────────
+
+
+def test_declaration_form_sc_to_textsc():
+    assert rew.normalize_declaration_forms(r'{\sc iid}') == r'\textsc{iid}'
+
+
+def test_declaration_form_all_five():
+    src = r'{\sc a} {\sf b} {\bf c} {\it d} {\tt e}'
+    out = rew.normalize_declaration_forms(src)
+    assert out == r'\textsc{a} \textsf{b} \textbf{c} \textit{d} \texttt{e}'
+
+
+def test_declaration_form_nested_braces_balanced():
+    assert rew.normalize_declaration_forms(r'{\sc a \textbf{b} c}') == r'\textsc{a \textbf{b} c}'
+
+
+def test_declaration_form_leaves_real_commands():
+    """``{\\section}`` is a brace-wrapped command, not a declaration."""
+    src = r'before {\section} after'
+    assert rew.normalize_declaration_forms(src) == src
+
+
+def test_texttt_flattens_at_brace_group():
+    assert rew.flatten_texttt_brace_groups(r'\texttt{{@}tf.function}') == r'\texttt{@tf.function}'
+
+
+def test_texttt_preserves_command_argument():
+    """A real command arg inside texttt (``\\textbf{keep}``) must NOT flatten."""
+    assert rew.flatten_texttt_brace_groups(r'\texttt{\textbf{keep}}') == r'\texttt{\textbf{keep}}'
+
+
+def test_texttt_preserves_command_argument_with_whitespace():
+    """Valid LaTeX puts whitespace between a command and its argument
+    (``\\textbf {keep}``); that brace group is still a command argument and
+    must NOT be flattened (Copilot review)."""
+    assert (rew.flatten_texttt_brace_groups(r'\texttt{\textbf {keep}}')
+            == r'\texttt{\textbf {keep}}')
+
+
+def test_texttt_preserves_nested_math_command_argument():
+    src = r'\texttt{\textbf{$\mathcal{Q}$ x}}'
+    assert rew.flatten_texttt_brace_groups(src) == src
+
+
+def test_texttt_plain_arg_unchanged():
+    assert rew.flatten_texttt_brace_groups(r'\texttt{@plain}') == r'\texttt{@plain}'
+
+
+# ── multicols column-count strip (#111) ────────────────────────────────────────
+
+
+def _strip_multicols(text: str) -> str:
+    return rew._MULTICOLS_ARGS.sub(rew._strip_multicols_args, text)
+
+
+def test_multicols_count_argument_stripped():
+    assert _strip_multicols(r"\begin{multicols}{2}") == r"\begin{multicols}"
+
+
+def test_multicols_star_pretext_hoisted_above_env():
+    """The optional ``[pre-text]`` is real spanning content. It can't be left
+    in the optional-arg slot — pandoc silently drops an optional arg on the
+    count-less env (verified; worse than the pre-fix garbled leak). Hoist it
+    out as a paragraph above the env, matching multicols' own semantics
+    (full-width text printed before the columns)."""
+    out = _strip_multicols(r"\begin{multicols*}{3}[Intro text]")
+    assert out == "Intro text\n\n\\begin{multicols*}"
+
+
+def test_multicols_count_strip_keeps_following_content():
+    src = "\\begin{multicols}{2}\n\\item a\n"
+    assert _strip_multicols(src) == "\\begin{multicols}\n\\item a\n"
+
+
+def test_multicols_empty_pretext_dropped():
+    assert _strip_multicols(r"\begin{multicols}{2}[ ]") == r"\begin{multicols}"
+
+
+# ── PRF title markers (#112) ───────────────────────────────────────────────────
+
+import _apply_prf_title_markers as prft
+
+
+def _apply_prf(text: str) -> str:
+    return prft.apply_markers(text, prft._DEFAULT_PRF_ENVS)
+
+
+def test_prf_title_theorem_optional_arg_moved_to_marker():
+    src = "\\begin{theorem}[Neumann Series Lemma]\\label{t:nsl}\nBody.\n\\end{theorem}\n"
+    out = _apply_prf(src)
+    assert "[Neumann Series Lemma]" not in out
+    assert "\\begin{theorem}\\label{t:nsl}" in out
+    assert "<!--PRFTITLE-START-->Neumann Series Lemma<!--PRFTITLE-END-->" in out
+
+
+def test_prf_title_proof_optional_arg_with_ref():
+    src = "\\begin{proof}[Proof of Proposition~\\ref{p:js0be}]\nIt follows.\n\\end{proof}\n"
+    out = _apply_prf(src)
+    assert "\\begin{proof}\n" in out
+    assert "<!--PRFTITLE-START-->Proof of Proposition~\\ref{p:js0be}<!--PRFTITLE-END-->" in out
+
+
+def test_prf_title_no_optional_arg_is_noop():
+    src = "\\begin{theorem}\\label{t:plain}\nBody.\n\\end{theorem}\n"
+    assert _apply_prf(src) == src
+
+
+def test_prf_title_does_not_match_bracket_in_body():
+    """A ``[0,1]`` on a following line is body content, not the optional arg."""
+    src = "\\begin{remark}\n$[0,1]$ is the unit interval.\n\\end{remark}\n"
+    assert _apply_prf(src) == src
+
+
+def test_prf_title_skips_commented_out_begin():
+    """A commented-out ``% \\begin{theorem}[T]`` must be left alone — injecting
+    an uncommented marker would leak it into pandoc output (same leak-prevention
+    guard as the algorithm / listing preprocessors)."""
+    src = "% \\begin{theorem}[Hidden]\\label{t:x}\n% body\n% \\end{theorem}\n"
+    assert _apply_prf(src) == src
+    assert "PRFTITLE" not in _apply_prf(src)
+
+
+def test_prf_title_balanced_brackets_in_title():
+    src = "\\begin{lemma}[Bound on $f[x]$ growth]\\label{l:b}\nBody.\n\\end{lemma}\n"
+    out = _apply_prf(src)
+    assert "<!--PRFTITLE-START-->Bound on $f[x]$ growth<!--PRFTITLE-END-->" in out
+    assert "[Bound on" not in out

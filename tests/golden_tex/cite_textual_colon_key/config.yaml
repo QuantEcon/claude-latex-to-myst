@@ -1,0 +1,7 @@
+# Seeded from lesson 031/035: \citet with a colon-bearing bib key must not truncate
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Colon Citation Key" }

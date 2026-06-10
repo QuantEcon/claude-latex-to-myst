@@ -44,23 +44,42 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 035 | [Citation regex trailing-`:` swallowed into key after the #32 widening](lessons/035-citation-regex-trailing-colon-swallowed-into-key.md) | regex-safety | 🟡 | codified |
 | 036 | [Pandoc-attr fence regex stops at the first `}` inside a quoted caption value](lessons/036-attr-fence-regex-chokes-on-braces-in-caption-values.md) | regex-safety | 🟡 | codified |
 | 037 | [`\label{}` extraction not applied to `multline` / `gather` (incompleteness from #30)](lessons/037-multline-gather-label-extraction-incomplete.md) | post-processing | 🟢 | codified |
-| 038 | [Late-import of `postprocess` from transform modules loads a second copy when run as `__main__`](lessons/038-postprocess-main-module-double-load.md) | tooling | 🔴 | codified |
+| 038 | [Late-import of `postprocess` from transform modules loads a second copy when run as `__main__`](lessons/038-postprocess-main-module-double-load.md) | tooling | 🔴 | superseded (P3) |
 | 039 | [Enumerate-exercise preprocessor: flat \\item scan AND non-greedy block regex both break on nested lists inside an exercise](lessons/039-enumerate-exercise-markers-nested-list-depth-and-block-pairing.md) | preprocess | 🔴 | codified |
 | 040 | [Nested fences resolve by same-character count (k+1) — directive emitters must outrank any code fence in their body](lessons/040-myst-nested-fence-count-rule.md) | myst | 🟡 | codified |
 | 041 | [A {list-table} nested in a {table} double-enumerates — suppress the inner with :enumerated: false](lessons/041-nested-table-directive-double-enumerates.md) | myst | 🟡 | codified |
 | 042 | [KaTeX errors on `\\,^X` (superscript right after thin space) — insert an empty base `\\,{}^X`](lessons/042-katex-thin-space-superscript-needs-empty-base.md) | katex | 🟡 | codified |
 | 043 | [Pandoc figure-caption emit drops citations and minipage sub-captions — recover from HTML attributes and sibling divs](lessons/043-pandoc-figure-caption-content-loss.md) | post-processing | 🟡 | codified |
 | 044 | [Migrating a construct fallback→marker re-implements a parser that starts incomplete — lock it with a .tex-rooted differential gate, not counts](lessons/044-marker-migration-needs-differential-tex-gate.md) | preprocess | 🔴 | codified |
+| 045 | [Pandoc's HTML figcaption flattens caption math for tikzpicture figures — extract the caption from source instead](lessons/045-tikzpicture-figcaption-math-flattened-by-pandoc-html.md) | post-processing | 🔴 | codified |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045
 - **regex-safety:** 002, 017, 024, 031, 035, 036
 - **pandoc:** 027
 - **preprocess:** 028, 029, 030, 039, 044
 - **katex:** 003, 006, 042
 - **myst:** 013, 040, 041
 - **tooling:** 009, 010, 038
+
+## By axis: pandoc-quirk vs permanent (Phase 4 re-tagging)
+
+A second classification, orthogonal to category, that makes catalogue
+*growth* interpretable (Phase 4 §4). **A rising quirk-count means the
+pandoc/marker boundary is leaking; a rising permanent-count is just normal
+coverage.**
+
+- **pandoc-emission quirk** — a workaround for what pandoc *emits* for a
+  construct. These *shrink* as constructs move onto the marker path (the
+  marker bypasses pandoc for that construct), then survive only as a
+  `golden_tex` lock: 007, 014, 015, 016, 017, 019, 020, 021, 022, 023, 026,
+  027, 028, 029, 030, 031, 032, 033, 034, 035, 036, 037, 043, 045.
+- **permanent** — a fact about MyST / KaTeX / sphinx-proof rendering, a
+  property of our own transforms/architecture, or tooling. Not pandoc's
+  fault; won't disappear by marker-izing anything: 001, 002, 003, 004, 005,
+  006, 008, 009, 010, 011, 012, 013, 018, 024, 025, 038 (superseded), 039,
+  040, 041, 042, 044.
 
 ## Open (gaps to close on the next book)
 

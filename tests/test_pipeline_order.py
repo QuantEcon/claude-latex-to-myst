@@ -36,10 +36,14 @@ EXPECTED_PIPELINE_ORDER: list[str] = [
     'resolve_table_markers',
     'resolve_figure_markers',
     'convert_simple_tables',
+    # convert_equations precedes the env/exercise emitters so their
+    # outer_fence() sizing sees the ```{math} fences starred displays now
+    # emit (#113); converted after, an inner {math} closer would terminate
+    # a theorem/exercise directive early (the issue-#79 ordering class).
+    'convert_equations',
     'convert_environment_divs',
     'convert_description_lists',
     'resolve_exercise_markers',
-    'convert_equations',
     'decode_natbib_markers',
     'convert_cross_references',
     'strip_doubled_noun_refs',
@@ -48,6 +52,7 @@ EXPECTED_PIPELINE_ORDER: list[str] = [
     'convert_html_figures',
     'resolve_tikz_figures',
     'convert_section_labels',
+    'hoist_consecutive_heading_labels',
     'convert_citations',
     'convert_standalone_labels',
     'resolve_listings',
@@ -56,6 +61,7 @@ EXPECTED_PIPELINE_ORDER: list[str] = [
     'fix_spacing_superscript',
     'join_split_inline_math',
     'ensure_blank_after_display_math',
+    'convert_pandoc_spans',
     'cleanup_typography',
     'strip_blank_lines_in_math',
     'strip_footnote_refs',

@@ -1,6 +1,44 @@
 # Phase 4 — Surface reduction + decision records
 
-**Status:** proposed · **Effort:** subfigure ~2–3 days; fallback removal ~1 day · **Risk:** medium · **Depends on:** Phases 2–3 and GH #94
+**Status:** LANDED (architecture-evolution branch, commit 4/5) · **Effort:** subfigure ~2–3 days; fallback removal ~1 day · **Risk:** medium · **Depends on:** Phases 2–3 and GH #94
+
+> **Landed — with a reassessment (the design was partly wrong; corrected
+> here first, per the session prompt).**
+>
+> 1. **#94 subfigure marker — done for the fully-modelled shape.**
+>    `_apply_figure_markers` now marker-izes a `\begin{figure}` whose every
+>    `\begin{subfigure}` panel is a plain `\includegraphics`, emitting one
+>    `{figure}` per panel (outer label → first panel, `-b`/`-c` suffix for
+>    later unlabelled panels; lesson 021 semantics). Panels that aren't plain
+>    `\includegraphics` (dp1's `\scalebox{\input{…pdf_t}}`) **bail** to the
+>    HTML path — conservatism (bail unless fully modelled). Gated by the §1b
+>    differential (`tests/marker_corpus/figures/subfigure.tex` → equal) and a
+>    `golden_tex` case (`subfigure_includegraphics`). Real-book effect: dp2
+>    `ch_approx_learning` improved (panel-caption math `$\alpha=0.7$` is now
+>    preserved, vs the old fallback flattening it to unicode `α`); dp1
+>    `ch_val` `f-du` unchanged in substance (the composite `du.svg` override
+>    still wins — see below) with a cosmetic apostrophe flip. Snapshot
+>    **re-pinned** after review.
+>
+> 2. **`convert_html_figures` is NOT removed — the design's premise was
+>    invalidated by #98 #3.** The plan assumed subfigure was the last shape
+>    keeping the fallback alive. But the post-#design `\begin{tikzpicture}`
+>    bail (#98 #3) and the scalebox/input-subfigure bail both *route through*
+>    `convert_html_figures` → `resolve_tikz_figures` to apply the consumer's
+>    `TIKZ_FIGURE_MAP` override. The preprocessor can't see that map, so it
+>    must bail and the fallback must stay. **Revised rule: one path per
+>    *fully-modelled* construct; the fallback is retained for the bail set.**
+>    An outer-label override still wins for a marker-ized subfigure float —
+>    the check moved post-pandoc into `_emit_figure` (where the map is
+>    visible), which is what keeps dp1 `f-du` rendering `du.svg`.
+>
+> 3. **Table audit:** `convert_simple_tables` handles **non-float**
+>    `\begin{center}\begin{tabular}` (pandoc fixed-width output); the marker
+>    path owns `\begin{table}` floats. Disjoint shapes — one path per
+>    construct already holds; neither retires the other. No change.
+>
+> 4. **AST decision record** landed in CLAUDE.md "Settled architectural
+>    decisions"; **lessons re-tagged** quirk-vs-permanent in LESSONS.md.
 
 ## Problem
 

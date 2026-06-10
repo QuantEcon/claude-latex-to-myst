@@ -29,18 +29,40 @@ multiple times across pipeline revisions, append a date or revision suffix.
 
 ## Re-running parity tests
 
-Parity tests run against `fixtures/book-dp1/` and `fixtures/book-dp2/` —
-local copies of the upstream book repos so the conversion pipeline never
-touches an in-progress branch in `../book-dp1` or `../book-dp2`. The
-`fixtures/` directory is gitignored and must be populated before testing:
+Parity tests run against `fixtures/book-dp1/`, `fixtures/book-dp2/`, and
+`fixtures/book-dp-deep-learning/` — gitignored local clones of the upstream
+book repos (on their `mystmd-conversion` branch) so the pipeline never
+touches an in-progress branch in the sibling repos. Populate them first:
 
 ```bash
-bash scripts/setup_fixtures.sh                 # bootstrap dp1 + dp2
-bash scripts/setup_fixtures.sh --refresh dp1   # re-sync just dp1
+bash scripts/setup_fixtures.sh                 # bootstrap all three
+bash scripts/setup_fixtures.sh --refresh dp1   # re-clone just dp1
 ```
 
-Override the upstream locations with `BOOK_DP1_SRC=/path BOOK_DP2_SRC=/path`
-if the sibling repos live elsewhere.
+Override the upstream locations with `BOOK_DP1_SRC=/path` /
+`BOOK_DP2_SRC=/path` / `BOOK_DL_SRC=/path` if the sibling repos live elsewhere.
+
+### Primary harness — `validate_fixture.sh` (two baselines)
+
+The canonical parity check is `scripts/validate_fixture.sh`, which runs one
+common regen → validate → diff process for any book against **two distinct
+baselines** (see [`notes/design/`](../notes/design/) + CLAUDE.md):
+
+```bash
+bash scripts/validate_fixture.sh all                     # parity gap vs the
+                                                          # worked-on mystmd/ (objective)
+bash scripts/validate_fixture.sh all --against snapshot  # refactor-safety:
+                                                          # regen must be byte-identical
+                                                          # to the pinned _snapshot/ (gate)
+bash scripts/validate_fixture.sh all --pin               # (re)pin the snapshot
+```
+
+`--against snapshot` is the hard gate for a behavior-preserving change
+(tool-vs-tool byte-identity, always achievable); the default `--against
+baseline` is the parity *objective* to drive down (the worked-on `mystmd/`
+carries irreducible hand-edits, so the bar is "close / only documented
+drift"). The per-construct recipes below are still useful for a focused
+regression check on one construct family.
 
 ### dp2 smoke test
 

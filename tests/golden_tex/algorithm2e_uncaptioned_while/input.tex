@@ -1,0 +1,12 @@
+\begin{algorithm}[H]
+  \DontPrintSemicolon
+  an initial state $X_0$ is given \;
+  $t \leftarrow 0$ \;
+  \While{$t < T$}
+  {
+      the controller observes the current state $X_t$ \tcp{per step}\;
+      the controller receives a reward $R_t$ that
+      depends on the current state and action \;
+      using \eqref{eq:gp_mean} update \texttt{policy} \;
+  }
+\end{algorithm}

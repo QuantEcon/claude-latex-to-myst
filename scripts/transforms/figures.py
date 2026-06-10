@@ -27,6 +27,7 @@ from __future__ import annotations
 import html
 import re
 
+from conversion_context import current_context
 from ._helpers import convert_label_colons
 from .refs import routing_role, strip_doubled_noun_refs, strip_doubled_section_symbol
 
@@ -93,7 +94,7 @@ def convert_figures(text: str) -> str:
     return text
 
 
-def convert_html_figures(text: str) -> str:
+def convert_html_figures(text: str, ctx=None) -> str:
     """Convert HTML figure blocks (from TikZ placeholders) to MyST admonitions.
 
     <figure id="..."> ... <figcaption>...</figcaption> </figure>
@@ -114,6 +115,8 @@ def convert_html_figures(text: str) -> str:
     For nested patterns the parent label becomes a section anchor and each
     labelled subfigure becomes its own admonition placeholder.
     """
+    ctx = ctx if ctx is not None else current_context()
+
     def make_admonition(label, caption):
         lines = ['```{admonition} Figure (TikZ — needs manual conversion)']
         if label:
@@ -279,12 +282,8 @@ def convert_html_figures(text: str) -> str:
         # produce ``{figure}`` directives with broken image refs.
         # Emit a single admonition placeholder for the outer label;
         # ``resolve_tikz_figures`` substitutes the composite from
-        # ``TIKZ_FIGURE_MAP``. The outer caption is preserved.
-        #
-        # Late-import to avoid the load-time circular per the
-        # state-coupling note at the top of the module.
-        import postprocess as pp
-        if outer_label and outer_label in pp.TIKZ_FIGURE_MAP:
+        # ``ctx.tikz_figure_map``. The outer caption is preserved.
+        if outer_label and outer_label in ctx.tikz_figure_map:
             outer_cap_raw = m.group('outer_cap')
             outer_caption = extract_caption(
                 f'<figcaption>{outer_cap_raw}</figcaption>'
@@ -365,7 +364,7 @@ def convert_html_figures(text: str) -> str:
     return text
 
 
-def resolve_tikz_figures(text: str, stem: str) -> str:
+def resolve_tikz_figures(text: str, stem: str, ctx=None) -> str:
     """Replace TikZ admonition placeholders with actual figure directives.
 
     Also handles:
@@ -373,10 +372,10 @@ def resolve_tikz_figures(text: str, stem: str) -> str:
     - Unlabeled TikZ admonition blocks (orphaned sub-panels)
     - Inline tikzcd math blocks → {image} directives
     """
-    # Late-import the per-project TikZ maps (populated by load_overrides).
-    import postprocess
-    tikz_figure_map = postprocess.TIKZ_FIGURE_MAP
-    tikzcd_inline_map = postprocess.TIKZCD_INLINE_MAP
+    # Per-project TikZ maps live on the context (populated by load_overrides).
+    ctx = ctx if ctx is not None else current_context()
+    tikz_figure_map = ctx.tikz_figure_map
+    tikzcd_inline_map = ctx.tikzcd_inline_map
 
     lines = text.split('\n')
     result = []

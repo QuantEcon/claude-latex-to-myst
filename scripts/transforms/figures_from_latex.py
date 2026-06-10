@@ -23,12 +23,12 @@ output (#92).
 
 from __future__ import annotations
 
-import base64
-import json
 import re
 from dataclasses import asdict, dataclass, field
 
-from ._helpers import convert_label_colons
+from conversion_context import current_context
+from ._helpers import complete_image_path, convert_label_colons
+from ._markers import decode_payload, encode_payload
 
 
 @dataclass
@@ -45,6 +45,12 @@ class FigureSpec:
     tikz_input: str | None = None      # \input{tikz/stem} → "stem", or None
     sub_captions: list[str] = field(default_factory=list)
     placement: str | None = None       # [ht]?  preserved for fidelity
+    # ``\begin{subfigure}`` panels (#94). Non-empty only for a subfigure
+    # float whose every panel is a plain ``\includegraphics`` (the
+    # fully-modelled shape — scalebox/input/tikz panels bail to the HTML
+    # path). Each item: ``{name, caption, image_src, width}``. When set,
+    # ``_emit_figure`` emits one ``{figure}`` per panel.
+    subfigures: list[dict] = field(default_factory=list)
 
 
 # ── source parsing (called pre-pandoc by _apply_figure_markers.py) ─────────
@@ -55,7 +61,18 @@ _FIGURE_BLOCK_RE = re.compile(
     re.DOTALL,
 )
 _SUBFIGURE_RE = re.compile(r'\\begin\{subfigure\}')
+# A whole ``\begin{subfigure}[pos]{width} … \end{subfigure}`` panel. The
+# ``[pos]`` and ``{width}`` args are optional/consumed; group(1) is the body.
+_SUBFIGURE_BLOCK_RE = re.compile(
+    r'\\begin\{subfigure\}(?:\[[^\]]*\])?(?:\{[^}]*\})?(.*?)\\end\{subfigure\}',
+    re.DOTALL,
+)
 _TIKZPICTURE_RE = re.compile(r'\\begin\{tikzpicture\}')
+# A whole ``\begin{tikzpicture}…\end{tikzpicture}`` region — stripped before
+# caption/label extraction so tikz node text isn't scooped (#98 #3).
+_TIKZPICTURE_BLOCK_RE = re.compile(
+    r'\\begin\{tikzpicture\}.*?\\end\{tikzpicture\}', re.DOTALL
+)
 _LABEL_RE = re.compile(r'\\label\{([^}]+)\}')
 # group(1) = the optional ``[opts]`` (or None), group(2) = the ``{path}``.
 # ``\s*`` between them tolerates an ``\includegraphics[…]`` whose ``{path}``
@@ -158,26 +175,91 @@ def _extract_footnotesize_subcaptions(body: str) -> list[str]:
     return out
 
 
+def _parse_subfigures(body: str) -> list[dict] | None:
+    """Parse every ``\\begin{subfigure}`` panel into ``{name, caption,
+    image_src, width}`` dicts (#94). Returns ``None`` — bail for the whole
+    float — if ANY panel is not a plain ``\\includegraphics`` (e.g. dp1's
+    ``\\scalebox{\\input{…pdf_t}}`` panels, or a raw ``tikzpicture`` panel):
+    those need the consumer's TIKZ map / a render the marker path can't model,
+    so they fall through to ``convert_html_figures`` exactly as before. This
+    is the same "bail unless fully modelled" stance as the figure/tikz bails.
+    """
+    subs: list[dict] = []
+    for m in _SUBFIGURE_BLOCK_RE.finditer(body):
+        panel = m.group(1)
+        img_m = _INCLUDEGRAPHICS_RE.search(panel)
+        if not img_m:
+            return None  # panel has no plain \includegraphics — bail
+        cap, _ = _extract_caption(panel)
+        if cap is not None:
+            cap = _LABEL_RE.sub('', cap).strip() or None
+        label_m = _LABEL_RE.search(panel)
+        subs.append({
+            'name': convert_label_colons(label_m.group(1)) if label_m else None,
+            'caption': cap,
+            'image_src': img_m.group(2),
+            'width': _convert_includegraphics_width(img_m.group(1)),
+        })
+    return subs or None
+
+
 def parse_figure_block(body: str, placement: str | None) -> FigureSpec | None:
     """Parse a ``\\begin{figure}[opt]?...\\end{figure}`` body into a
-    FigureSpec. Returns ``None`` to signal "leave this block alone"
-    (Phase 1 bails on subfigure blocks and multi-image blocks;
-    ``convert_html_figures`` handles those via the existing HTML path)."""
+    FigureSpec. Returns ``None`` to signal "leave this block alone" —
+    ``convert_html_figures`` handles those via the existing HTML path."""
     if _SUBFIGURE_RE.search(body):
-        return None  # Phase 2 — issue #94
+        # #94: a subfigure float whose every panel is a plain
+        # ``\includegraphics`` is fully modelled — emit one ``{figure}`` per
+        # panel. Mixed shapes (scalebox/input/tikz panels) bail (None).
+        subs = _parse_subfigures(body)
+        if subs is None:
+            return None
+        spec = FigureSpec(placement=placement, subfigures=subs)
+        # Outer label / caption: search the body with the panels removed so a
+        # panel's own \label/\caption can't be mistaken for the float's.
+        outer = _SUBFIGURE_BLOCK_RE.sub('', body)
+        outer_label = _LABEL_RE.search(outer)
+        if outer_label:
+            spec.name = convert_label_colons(outer_label.group(1))
+        outer_cap, _ = _extract_caption(outer)
+        if outer_cap is not None:
+            spec.caption = _LABEL_RE.sub('', outer_cap).strip() or None
+        return spec
 
-    # A ``\begin{figure}`` wrapping a raw ``\begin{tikzpicture}`` is left
-    # for the post-pandoc path (``convert_html_figures`` →
-    # ``resolve_tikz_figures``), which CAN consult ``TIKZ_FIGURE_MAP`` to
-    # substitute the consumer's pre-rendered SVG. This preprocessor runs as
-    # a separate process and cannot see that map, so the decision to bail
-    # must be purely syntactic — otherwise
-    # ``_extract_footnotesize_subcaptions`` scoops the tikz ``{\footnotesize
-    # …}`` node labels in as sub-captions and they leak above the override
-    # caption (#98 #3). Mirrors the ``subfigure`` bail above; "bail unless
-    # fully modelled" per ``design/phase-2-marker-shared-base.md``.
+    # A ``\begin{figure}`` wrapping a raw ``\begin{tikzpicture}``: the tikz
+    # BODY can't be modelled (it's rendered via the consumer's
+    # ``TIKZ_FIGURE_MAP`` override post-pandoc — `_emit_figure` does the
+    # lookup, since the preprocessor can't see the map). But the CAPTION can
+    # be — and pandoc's HTML figcaption FLATTENS its math
+    # (``$\theta_0$`` → ``<span class=math><sub>…``→ unicode ``θ0``), losing
+    # fidelity across DL's 78 inline-tikz figures. So extract label + caption
+    # from the body with the tikzpicture region REMOVED first — that strip is
+    # what stops ``_extract_footnotesize_subcaptions`` scooping the tikz
+    # ``{\footnotesize …}`` node labels as sub-captions (the #98 #3 bug the
+    # old unconditional bail avoided). The batch-pandoc caption conversion in
+    # ``_apply_figure_markers`` then preserves the math. No image/tikz_input
+    # is set, so ``_emit_figure`` resolves via the override (mapped SVG +
+    # math caption) or, with no override, falls back to a caption admonition.
     if _TIKZPICTURE_RE.search(body):
-        return None
+        outer = _TIKZPICTURE_BLOCK_RE.sub('', body)
+        spec = FigureSpec(placement=placement)
+        label_m = _LABEL_RE.search(outer)
+        if label_m:
+            spec.name = convert_label_colons(label_m.group(1))
+        cap, _ = _extract_caption(outer)
+        if cap is not None:
+            spec.caption = _LABEL_RE.sub('', cap).strip() or None
+        # Legitimate ``{\footnotesize (a) …}`` sub-panel captions live OUTSIDE
+        # the tikzpicture (between/after panels); the tikz NODE labels lived
+        # inside it and were just stripped — so extracting from ``outer`` here
+        # recovers the real sub-captions (multi-panel figures, e.g. DL's
+        # volume-ratio figure) without re-introducing the #98 #3 node scoop.
+        spec.sub_captions = _extract_footnotesize_subcaptions(outer)
+        # Nothing to carry (no label, no caption, no sub-captions) ⇒ leave it
+        # for the HTML path exactly as before — marker-izing gains nothing.
+        if not spec.name and not spec.caption and not spec.sub_captions:
+            return None
+        return spec
 
     # Phase 1 is single-figure scope. Multi-image / multi-tikz layouts
     # (side-by-side panels without ``\begin{subfigure}``) would silently
@@ -279,24 +361,15 @@ def find_figure_blocks(text: str) -> list[tuple[int, int, str, str | None]]:
 
 
 def encode_marker(spec: FigureSpec) -> str:
-    """Encode a ``FigureSpec`` as a single-line HTML-comment marker.
-
-    Format::
-
-        <!--FIGURE payload=BASE64-->
-
-    where BASE64 is the base64 of JSON-encoded spec fields. Single-line
-    so pandoc treats it as a self-contained block.
-    """
-    payload = base64.b64encode(
-        json.dumps(asdict(spec), ensure_ascii=False).encode('utf-8')
-    ).decode('ascii')
-    return f'<!--FIGURE payload={payload}-->'
+    """Encode a ``FigureSpec`` as a single-line ``<!--FIGURE payload=…-->``
+    marker (shared base64+JSON codec — ``transforms._markers``). Single-line
+    so pandoc treats it as a self-contained block."""
+    return encode_payload('FIGURE', asdict(spec))
 
 
 def decode_marker(payload_b64: str) -> FigureSpec:
     """Decode a base64 payload back into a FigureSpec."""
-    data = json.loads(base64.b64decode(payload_b64).decode('utf-8'))
+    data = decode_payload(payload_b64)
     return FigureSpec(
         name=data.get('name'),
         caption=data.get('caption'),
@@ -305,34 +378,35 @@ def decode_marker(payload_b64: str) -> FigureSpec:
         tikz_input=data.get('tikz_input'),
         sub_captions=list(data.get('sub_captions') or []),
         placement=data.get('placement'),
+        subfigures=list(data.get('subfigures') or []),
     )
 
 
 # ── post-pandoc resolver ────────────────────────────────────────────────────
 
 
-def _lookup_tikz_map(name: str | None) -> tuple[str, str | None] | None:
-    """Look up ``name`` in the per-project ``TIKZ_FIGURE_MAP`` (populated
-    from the consumer book's ``tikz_overrides.py``). Returns
+def _lookup_tikz_map(name: str | None, ctx=None) -> tuple[str, str | None] | None:
+    """Look up ``name`` in the per-project ``ctx.tikz_figure_map`` (populated
+    from the consumer book's overrides file). Returns
     ``(path, caption_override)`` or None.
 
-    Late-imported from ``postprocess`` to avoid the load-time circular
-    per the state-coupling pattern used in ``figures.py``. The map is a
-    runtime concern: consumer books call ``apply_config`` which
-    populates ``postprocess.TIKZ_FIGURE_MAP``; the parsers / emitters
-    here read it at call time.
+    The map is a runtime concern: consumer books call ``apply_config`` then
+    ``load_overrides`` which populate the context; the parsers / emitters
+    here read it at call time. ``ctx`` defaults to the current context.
     """
     if not name:
         return None
-    try:
-        import postprocess as pp
-    except Exception:
-        return None
-    entry = pp.TIKZ_FIGURE_MAP.get(name)
-    return entry
+    ctx = ctx if ctx is not None else current_context()
+    return ctx.tikz_figure_map.get(name)
 
 
-def _emit_figure(spec: FigureSpec) -> str:
+def _figure_ext_map(ctx=None) -> dict:
+    """The current context's figure stem→filename map (#104)."""
+    ctx = ctx if ctx is not None else current_context()
+    return ctx.figure_ext_map
+
+
+def _emit_figure(spec: FigureSpec, ctx=None) -> str:
     """Emit a MyST ``{figure}`` directive from a FigureSpec (Phase 1).
 
     Image-source resolution priority:
@@ -381,15 +455,56 @@ def _emit_figure(spec: FigureSpec) -> str:
         lines.append('```')
         return '\n'.join(lines)
 
+    # #94 subfigure float: one ``{figure}`` per panel. The outer label goes
+    # to the first panel; later unlabelled panels get a ``-b`` / ``-c`` suffix
+    # (matching the legacy ``convert_html_figures`` nested-pattern semantics,
+    # lesson 021). A panel's own ``\label`` wins when present. Panel width is
+    # intentionally omitted — the source ``[width=\linewidth]`` is relative to
+    # the (sub-page-width) panel, so a standalone ``:width: 100%`` would be
+    # wrong; the legacy path dropped it too.
+    if spec.subfigures:
+        # An OUTER-label TIKZ_FIGURE_MAP override wins over panel expansion:
+        # a consumer that maps the whole float to a single composite image
+        # (dp1 ``f-du`` → ``du.svg``) means the individual panels are just
+        # the pre-render source. The preprocessor can't see the map (#98 #3),
+        # so this check lives here, post-pandoc, where the map is visible.
+        mapped = _lookup_tikz_map(spec.name, ctx)
+        if mapped is not None:
+            mapped_path, caption_override = mapped
+            return _emit_figure_directive(
+                mapped_path, spec.name, caption_override if caption_override else body
+            )
+        parts: list[str] = []
+        outer_used = False
+        for i, sub in enumerate(spec.subfigures):
+            name = sub.get('name')
+            if not name and spec.name:
+                if i == 0:
+                    name, outer_used = spec.name, True
+                else:
+                    name = f'{spec.name}-{chr(ord("a") + i)}'
+            path = sub.get('image_src') or ''
+            if path:
+                path = complete_image_path(path, _figure_ext_map(ctx))
+            cap = (sub.get('caption') or '').strip()
+            parts.append(_emit_figure_directive(path, name, cap))
+        out = '\n'.join(parts)
+        # If the float carried an outer \label that NO panel adopted (every
+        # panel had its own \label), emit it as a target anchor before the
+        # first panel so an outer-label reference (e.g. {numref}`f-outer`)
+        # still resolves — the lesson-021 "parent label takes the first child
+        # slot" rule. Without this the outer ref would dangle.
+        if spec.name and not outer_used:
+            out = f'({spec.name})=\n\n{out}'
+        return out
+
     # Priority 1: ``\includegraphics`` literal path from source. Mirror
     # ``figures.make_figure`` — when the source path has no directory
     # component, prepend ``figures/`` (the canonical asset folder).
     # This is source-side path completion; only applies to author-
     # written paths, NOT to map entries.
     if spec.image_src:
-        path = spec.image_src
-        if '/' not in path:
-            path = 'figures/' + path
+        path = complete_image_path(spec.image_src, _figure_ext_map(ctx))
         return _emit_figure_directive(path, spec.name, body, spec.width)
 
     # Priority 2: TIKZ_FIGURE_MAP lookup by label. Covers both inline
@@ -400,7 +515,7 @@ def _emit_figure(spec: FigureSpec) -> str:
     # ``figures/`` prefix). Adding a prefix would silently misroute any
     # entry that uses a bare filename or a non-``figures/`` root
     # (caught by Copilot review on PR #97).
-    mapped = _lookup_tikz_map(spec.name)
+    mapped = _lookup_tikz_map(spec.name, ctx)
     if mapped is not None:
         mapped_path, caption_override = mapped
         final_body = caption_override if caption_override else body
@@ -436,7 +551,7 @@ _MARKER_RE = re.compile(
 )
 
 
-def resolve_figure_markers(text: str) -> str:
+def resolve_figure_markers(text: str, ctx=None) -> str:
     """Decode every ``<!--FIGURE payload=...-->`` marker in ``text`` into
     a ``{figure}`` directive."""
     def repl(m: re.Match) -> str:
@@ -452,7 +567,7 @@ def resolve_figure_markers(text: str) -> str:
         # unanticipated failure modes.
         try:
             spec = decode_marker(m.group(1))
-            return _emit_figure(spec)
+            return _emit_figure(spec, ctx)
         except Exception:
             return m.group(0)
 

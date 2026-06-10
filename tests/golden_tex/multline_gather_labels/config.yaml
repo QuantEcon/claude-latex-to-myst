@@ -1,0 +1,7 @@
+# Seeded from lesson 037: \label inside multline/gather extracted as anchors
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Multline Gather Labels" }

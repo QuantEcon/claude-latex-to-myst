@@ -1,0 +1,15 @@
+\section{An algorithm}
+
+\begin{algorithm}
+\caption{Value iteration}
+\label{algo:vi}
+\begin{algorithmic}
+\REQUIRE initial guess $v_0$, tolerance $\epsilon$
+\STATE $k \gets 0$
+\WHILE{$\|v_{k+1} - v_k\| > \epsilon$}
+    \STATE $v_{k+1} \gets T v_k$
+    \STATE $k \gets k + 1$
+\ENDWHILE
+\RETURN $v_k$
+\end{algorithmic}
+\end{algorithm}

@@ -76,6 +76,38 @@ def test_count_figures_mixed_figures_and_subfigures():
     assert v.count_latex(tex)['figures'] == 6
 
 
+# ── Phase 6: marker-aware counting for split-source books ────────────────────
+# ``validate`` reads the *preprocessed* tmp file for ``preprocess.split:``
+# books (e.g. Deep-Learning), where figures/citations are already markers.
+# Counting must see through the markers or it under-counts the source (a
+# measurement artifact — the markdown is faithful).
+
+def test_count_figures_counts_figure_markers():
+    """A ``<!--FIGURE payload=…-->`` marker (preprocessed figure) counts as a
+    figure, alongside any raw ``\\begin{figure}`` blocks."""
+    from transforms.figures_from_latex import FigureSpec, encode_marker
+    marker = encode_marker(FigureSpec(name='f-x', caption='C'))
+    tex = marker + "\n\n" + r"\begin{figure}\includegraphics{y}\end{figure}" "\n"
+    assert v.count_latex(tex)['figures'] == 2
+
+
+def test_count_figures_marker_honours_subfigure_panels():
+    """A subfigure-float marker counts as N (one per panel)."""
+    from transforms.figures_from_latex import FigureSpec, encode_marker
+    spec = FigureSpec(name='f-x', subfigures=[
+        {'name': None, 'caption': 'a', 'image_src': 'a.pdf', 'width': None},
+        {'name': None, 'caption': 'b', 'image_src': 'b.pdf', 'width': None},
+    ])
+    assert v.count_latex(encode_marker(spec))['figures'] == 2
+
+
+def test_count_citations_counts_natbib_markers():
+    """``[[CITEP:…]]`` / ``[[CITEALT:…]]`` markers (preprocessed natbib) count
+    as citations alongside raw ``\\cite…`` commands."""
+    tex = r"\citet{a} and [[CITEP:b,c]] and [[CITEALT:d]]." "\n"
+    assert v.count_latex(tex)['citations'] == 3
+
+
 # ── #16: MyST equation count includes labeled-close fences ───────────────────
 
 
@@ -579,3 +611,33 @@ def test_validate_vacuous_pass_guard_exits_nonzero(tmp_path):
     )
     assert "no chapters were validated" in result.stderr
     assert "All counts match" not in result.stdout
+
+
+def test_count_myst_equations_math_directive():
+    """Starred displays emit ```{math} directives (#113) — count them as
+    equations so a starred env doesn't read as a drop (dp1 parity run)."""
+    md = (
+        "```{math}\n:enumerated: false\n\nx = 1\n```\n\n"
+        "$$\ny = 2\n$$\n"
+    )
+    assert v.count_myst(md)['equations'] == 2
+
+
+def test_backtick_in_fence_info_string_flagged():
+    """#122: CommonMark forbids backticks in a backtick-fence info string —
+    the directive never opens and its closer swallows following content.
+    validate must flag the emission so the class is caught in CI."""
+    md = "```{prf:proof} Proof of {prf:ref}`p-x`\nBody.\n```\n"
+    diags = v.check_resolution(md, 'f.md', bib_keys=None)
+    assert any('backtick in backtick-fence info string' in d for d in diags)
+    clean = "```{prf:proof} Proof of the main result\nBody.\n```\n"
+    assert not any('info string' in d
+                   for d in v.check_resolution(clean, 'f.md', bib_keys=None))
+
+
+def test_backtick_in_indented_fence_info_string_flagged():
+    """CommonMark allows fences indented up to 3 spaces (e.g. a directive
+    nested in a list item) — the info-string check must catch those too."""
+    md = "- item\n\n  ```{prf:proof} Proof of {prf:ref}`p-x`\n  Body.\n  ```\n"
+    diags = v.check_resolution(md, 'f.md', bib_keys=None)
+    assert any('backtick in backtick-fence info string' in d for d in diags)

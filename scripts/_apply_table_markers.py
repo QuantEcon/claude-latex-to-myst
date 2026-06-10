@@ -20,11 +20,13 @@ self-contained block):
 Payload is base64-encoded JSON ``{name, caption, colspec, header_rows,
 body_rows}``. Cells and caption are MARKDOWN at marker-write time —
 this preprocessor batches them through pandoc once per file before
-writing markers. ``resolve_table_markers`` in ``postprocess.py``
-decodes and emits MyST directives.
+writing markers (``pandoc_batch_convert`` from ``transforms._markers``,
+the shared marker base — Phase 2). ``resolve_table_markers`` in
+``postprocess.py`` decodes and emits MyST directives.
 
 This is the table analogue of ``_apply_listing_markers.py`` and
-``_apply_algorithm_markers.py``.
+``_apply_algorithm_markers.py``; it shares the pandoc-batch scaffolding
+with ``_apply_figure_markers.py`` via ``transforms._markers``.
 
 Usage:
     _apply_table_markers.py TEX_FILE
@@ -32,8 +34,6 @@ Usage:
 
 from __future__ import annotations
 
-import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -41,117 +41,20 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+# Shared marker base (Phase 2). ``_pandoc_batch_convert`` is kept as a
+# module-level alias because tests monkeypatch + call it by that name on
+# this module (tests/test_tables_from_latex.py). Tables do NOT use the
+# paren-guard (figures do), so the default ``paren_guard=False`` is correct.
+from transforms._markers import (  # noqa: E402
+    pandoc_batch_convert as _pandoc_batch_convert,
+    reassemble,
+)
 from transforms.tables_from_latex import (  # noqa: E402
     TableSpec,
     encode_marker,
     find_table_blocks,
     parse_table_block,
 )
-
-
-# Pandoc batch-conversion sentinel. We collect every cell (and the
-# caption) from every table in the file into a single LaTeX input
-# separated by ``<!--CELL_N-->`` markers. Pandoc preserves the HTML
-# comments (escaping them as ``\<!--CELL_N--\>``) and converts the
-# LaTeX between them. We then split the output to distribute markdown
-# cells back to their TableSpecs.
-_CELL_SENTINEL_OUT_RE = re.compile(r'\\?<!--CELL_(\d+)--\\?>')
-
-
-def _pandoc_batch_convert(cells: list[str]) -> list[str]:
-    """Convert a list of LaTeX cell-content strings to markdown in ONE
-    pandoc invocation.
-
-    Empty cells are replaced with ``\\mbox{}`` so pandoc still emits a
-    paragraph block for them — otherwise consecutive sentinels collapse
-    and splitting becomes ambiguous.
-
-    Returns a list of markdown strings, same length and order as input.
-    """
-    if not cells:
-        return []
-
-    parts: list[str] = []
-    for i, cell in enumerate(cells):
-        parts.append(f'<!--CELL_{i}-->')
-        # ``\mbox{}`` produces an empty paragraph that pandoc converts
-        # to a blank line — preserves the sentinel boundary for empty
-        # cells (common in books, e.g. dp2's checkmark columns).
-        parts.append(cell.strip() or r'\mbox{}')
-
-    latex_in = '\n\n'.join(parts) + '\n'
-
-    # Defensive: pandoc can fail for reasons unrelated to a specific
-    # cell's content (binary missing, OOM on a huge document, version
-    # mismatch on a specific construct). Fall back to returning the
-    # original LaTeX cells unchanged — resolve_table_markers will
-    # still emit the {table} structure with header detection intact;
-    # cells will contain raw LaTeX rather than converted markdown,
-    # which is worse than the happy path but far better than aborting
-    # the whole preprocess pass. Mirrors the sentinel-missing fallback
-    # below.
-    try:
-        result = subprocess.run(
-            ['pandoc', '-f', 'latex', '-t', 'markdown', '--wrap=none'],
-            input=latex_in,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(
-            f'_apply_table_markers: pandoc batch conversion failed '
-            f'({type(e).__name__}); falling back to raw-LaTeX cells. '
-            f'stderr: {getattr(e, "stderr", "")!r}',
-            file=sys.stderr,
-        )
-        return list(cells)
-    md_out = result.stdout
-
-    # Split on the sentinel pattern. ``re.split`` with a capture group
-    # interleaves the capture (the cell index) with the surrounding
-    # text. After the first sentinel, the structure is:
-    #   [pre_text, '0', content0, '1', content1, ..., 'N', contentN]
-    pieces = _CELL_SENTINEL_OUT_RE.split(md_out)
-    if len(pieces) < 3:
-        # Pandoc didn't preserve any sentinels — fallback: return
-        # original cells (preserves correctness over conversion).
-        return list(cells)
-
-    out_cells: list[str] = [''] * len(cells)
-    # pieces[0] is pre-first-sentinel text (usually empty).
-    for i in range(1, len(pieces), 2):
-        try:
-            idx = int(pieces[i])
-        except (ValueError, IndexError):
-            continue
-        content = pieces[i + 1] if i + 1 < len(pieces) else ''
-        # Strip trailing newlines/paragraph breaks but preserve interior.
-        content = content.strip()
-        # Replace the \mbox{} placeholder back to empty.
-        if content in (r'\mbox{}', ''):
-            content = ''
-        # Strip pandoc's adjacency-separator artifact. When a cell
-        # contains ``$math$`` followed directly by a digit/letter (no
-        # space), pandoc's markdown writer emits a defensive no-op
-        # ``\`<!-- -->\`{=html}`` between them to prevent some
-        # markdown parsers from misreading the adjacency. mystmd
-        # handles ``$\times$9`` natively, so the separator is pure
-        # noise. Surfaced by PR #60 retest where 4 cells in 3
-        # Deep-Learning files had this pattern.
-        content = _PANDOC_ADJACENCY_ARTIFACT_RE.sub('', content)
-        if 0 <= idx < len(out_cells):
-            out_cells[idx] = content
-
-    return out_cells
-
-
-# Pandoc's adjacency-separator: ``\`<!-- -->\`{=html}``. The backticks
-# are literal, ``<!-- -->`` is the HTML comment, ``{=html}`` is
-# pandoc's raw-HTML attribute. Together they render as a no-op in
-# both HTML and plain text. Stripping is safe; the artifact is never
-# load-bearing.
-_PANDOC_ADJACENCY_ARTIFACT_RE = re.compile(r'`<!-- -->`\{=html\}')
 
 
 def _flatten_table_cells(spec: TableSpec) -> list[str]:
@@ -200,7 +103,13 @@ def _unflatten_table_cells(spec: TableSpec, converted: list[str]) -> TableSpec:
 
 def process_text(text: str) -> str:
     """Find all ``\\begin{table}`` blocks, convert their cells through
-    pandoc in a single batch, and replace each block with a marker."""
+    pandoc in a single batch, and replace each block with a marker.
+
+    The marker is wrapped in blank lines by ``reassemble`` — critical when
+    a ``\\begin{table}`` sits immediately after prose with no blank line
+    (Deep-Learning ``ch07_pinns.tex`` + 4 others): without the wrap the
+    marker glues to the paragraph, pandoc emits it inline, and the decoded
+    directive collapses (PR #53)."""
     blocks = find_table_blocks(text)
     if not blocks:
         return text
@@ -223,7 +132,7 @@ def process_text(text: str) -> str:
         flat_in.extend(cells)
 
     # Single pandoc batch invocation for the whole file.
-    flat_out = _pandoc_batch_convert(flat_in)
+    flat_out = _pandoc_batch_convert(flat_in, caller='_apply_table_markers')
 
     # Apply converted cells back to specs.
     converted_specs: list[TableSpec | None] = []
@@ -235,40 +144,13 @@ def process_text(text: str) -> str:
             _unflatten_table_cells(spec, flat_out[start : start + length])
         )
 
-    # Stream the output forward: ``find_table_blocks`` returns blocks
-    # in source order, so we walk them left-to-right, appending each
-    # inter-block slice followed by either the marker (when parsing
-    # succeeded) or the original block text (defensive fallback). No
-    # in-place mutation of ``text`` — purely re-assembly.
-    #
-    # Critical: the marker MUST be on its own paragraph in the .tex we
-    # hand to pandoc. If the original ``\begin{table}`` sat
-    # immediately after prose with no blank line (as in Deep-Learning
-    # ``ch07_pinns.tex:5953`` and 4 other tables), the marker would
-    # be glued to that paragraph, pandoc would emit it inline with
-    # the prose, and ``resolve_table_markers`` would then expand the
-    # multi-line ``\`\`\`\`{table}`` directive onto the same line as
-    # the prose — MyST refuses to parse a directive in that position,
-    # so the table collapses, the closing fence leaks into the next
-    # paragraph, and cross-refs to the label fall through unresolved.
-    # See https://github.com/QuantEcon/claude-latex-to-myst/pull/53
-    # for the regression report. Wrap the marker in ``\n\n`` on both
-    # sides — pandoc and LaTeX both collapse multiple blank lines to
-    # a single paragraph break, so this is safe even when the source
-    # already had blank lines around the block.
-    out_parts: list[str] = []
-    last_end = 0
-    for (start, end, _), spec in zip(blocks, converted_specs):
-        out_parts.append(text[last_end:start])
-        if spec is None:
-            # Couldn't parse — leave the block in place. Pandoc will
-            # handle it as best it can.
-            out_parts.append(text[start:end])
-        else:
-            out_parts.append(f'\n\n{encode_marker(spec)}\n\n')
-        last_end = end
-    out_parts.append(text[last_end:])
-    return ''.join(out_parts)
+    # Stream re-assembly in source order (shared ``reassemble``): each
+    # parsed block becomes a blank-line-wrapped marker; unparsed shapes
+    # (spec is None) are left in place for the post-pandoc fallback.
+    spans = [(start, end) for start, end, _ in blocks]
+    rendered = [encode_marker(spec) if spec is not None else None
+                for spec in converted_specs]
+    return reassemble(text, spans, rendered)
 
 
 def main() -> None:

@@ -11,39 +11,65 @@ done — see `scripts/postprocess.py`, `scripts/preprocess.sh`, `scripts/convert
 
 ### Code layout
 
-- `scripts/postprocess.py` — orchestrator. Defines `process_text` (the
-  in-memory pipeline) and `process_file` (the I/O wrapper). Owns the
-  module-level mutable state populated by `apply_config`: `ENV_MAP`,
-  `CHAPTER_TITLES`, `TIKZ_FIGURE_MAP`, `_EXTRA_CROSS_REF_ROUTING`,
-  `_EXTRA_DOUBLED_NOUN_REFS`, `_LISTING_SOURCE_BASE`, `POSTPROCESS_REWRITES`,
-  the frontmatter/whitespace style flags, and the per-file exercise
-  counters.
+- `scripts/conversion_context.py` — **the run state** (Phase 3).
+  `ConversionContext` holds everything that used to be a mutable global
+  (`env_map`, `chapter_titles`, `tikz_figure_map`, `cross_ref_routing`,
+  `doubled_noun_refs`, `listing_source_base`, `postprocess_rewrites`,
+  `frontmatter_style`, `whitespace_style`, the per-file `counters`, and the
+  Phase-5 `post_convert` hook). Built once by `ConversionContext.from_config`
+  and threaded as an argument. `current_context()` / `set_current_context()`
+  are the test-compat registry.
+- `scripts/postprocess.py` — orchestrator. Defines `process_text(…, ctx)`
+  (the in-memory pipeline) and `process_file`. `apply_config` is now a thin
+  wrapper: validate → `ConversionContext.from_config` → register. It holds
+  **no mutable run state** — the legacy `postprocess.ENV_MAP` (etc.) names
+  still resolve via a module-proxy at the bottom of the file that forwards to
+  the current context (a backward-compat shim for the ~600 tests; the
+  lesson-038 `sys.modules` alias is gone).
 - `scripts/transforms/` — themed transform modules: `math.py`, `refs.py`,
-  `cite.py`, `figures.py`, `code.py`, `envs.py`, `tables.py`,
-  `tables_from_latex.py`, `typography.py`, `algorithms.py`,
-  `frontmatter.py`. Each module owns one family of transforms; tests
-  still import via `postprocess.convert_X` (re-exported from the top
-  of `postprocess.py`).
+  `cite.py`, `figures.py`, `figures_from_latex.py`, `code.py`, `envs.py`,
+  `tables.py`, `tables_from_latex.py`, `typography.py`, `algorithms.py`,
+  `frontmatter.py`. Each owns one family; a stateful transform takes `ctx`
+  (falling back to `current_context()` when called without one); pure ones
+  (most `math`/`cite`) stay pure. Tests import via `postprocess.convert_X`
+  (re-exported from the top of `postprocess.py`).
+- `scripts/transforms/_markers.py` — the shared marker base (Phase 2):
+  `pandoc_batch_convert` (one batch pandoc call over `<!--CELL_N-->`-joined
+  cells, with the `~` paren-guard + adjacency scrub), `encode_payload` /
+  `decode_payload` (the base64+JSON marker codec), `reassemble`
+  (blank-line-wrapped, source-order rebuild). Plain functions — no plugin
+  class. The audited per-construct bail predicates are documented at its top.
 - `scripts/_apply_*.py` — preprocess scripts that run BEFORE pandoc.
   Each rewrites a specific LaTeX construct (algorithms, listings,
-  description lists, tables) into a marker comment that pandoc passes
-  through verbatim; the post-pandoc pass decodes the marker back into
-  the target MyST shape. Patterns: `_apply_algorithm_markers.py`,
-  `_apply_listing_markers.py`, `_apply_description_markers.py`,
-  `_apply_table_markers.py`. Use this pattern when pandoc's reader
-  drops or mangles structure you need to preserve (lessons 014, 015,
-  022, and #51 / #55 for tables).
-- `scripts/transforms/_helpers.py` — shared helpers (currently just
-  `convert_label_colons`). Add here when a helper is needed by ≥2 transform
-  modules.
+  description lists, enumerate, tables, figures) into a marker comment that
+  pandoc passes through verbatim; the post-pandoc pass decodes the marker
+  back into the target MyST shape. The figure + table preprocessors share
+  `transforms/_markers.py`. Use this pattern when pandoc's reader drops or
+  mangles structure you need to preserve (lessons 014, 015, 022, 045, and
+  #51 / #55 for tables).
+- `scripts/transforms/_helpers.py` — shared helpers (e.g.
+  `convert_label_colons`, `outer_fence`). Add here when a helper is needed by
+  ≥2 transform modules.
+- `scripts/validate.py` / `scripts/count_baseline.py` — structural-count
+  validation (latex-vs-myst counts, xref resolution, marker-aware). The
+  `.tex`-rooted `tests/golden_tex/` tier, the §1b differential gate
+  (`tests/test_marker_differential.py`), the per-book `tests/baselines/*.json`,
+  and `.github/workflows/test.yml` are the Phase-1 safety net.
+- `scripts/validate_fixture.sh` / `scripts/setup_fixtures.sh` — the
+  two-baseline fixture harness (`--against snapshot` = refactor-safety gate;
+  default = parity gap vs the worked-on `mystmd/`).
 
 **Adding a new transform.** Drop it into the appropriate `transforms/*.py`,
 add a re-import in `postprocess.py`'s import block, and a call in
 `process_text` at the right ordering position (update
 `tests/test_pipeline_order.py::EXPECTED_PIPELINE_ORDER` too). If the
-transform needs mutable state, add it to `postprocess.py` and late-import
-inside the function — that's the established pattern; module docstrings
-mark this with a "State coupling" header.
+transform needs run state, add a field to `ConversionContext`
+(`conversion_context.py`), build it in `from_config`, and give the transform
+a `ctx` argument that reads it (fall back to `current_context()` for direct
+test calls) — **never reintroduce a module-level mutable global on
+`postprocess.py`** (that's the lesson-038 class Phase 3 removed). A
+book-specific edge case goes book-side first (`project_overrides.py`,
+`EXTRA_REWRITES` / `POST_CONVERT`) per the graduation rule, not here.
 
 ## How to approach a new book conversion
 
@@ -227,6 +253,53 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   iterations of regex-pairing bugs (#84, #85, #86, #87); see lesson
   [042](lessons/042-katex-thin-space-superscript-needs-empty-base.md)
   for the rationale.
+- **The pandoc/marker boundary is explicit (Phase 2).** *Pandoc owns
+  inline prose, paragraph/inline math, native inline citations
+  (`\cite`/`\citet`/`\citep`), and cross-ref plumbing (the
+  `data-reference` recovery path). Everything structural — floats,
+  tabulars, algorithms, listings, description/enumerate lists — is
+  extracted to a marker pre-pandoc and decoded post-pandoc. New
+  structural constructs follow the marker pattern; do not add a new
+  post-pandoc HTML-scraping path.* The shared scaffolding for the
+  constructs whose cells need pandoc conversion (figure, table) lives once
+  in [`transforms/_markers.py`](scripts/transforms/_markers.py)
+  (`pandoc_batch_convert`, `encode_payload`/`decode_payload`,
+  `reassemble`) — **plain functions, not a `MarkerPlugin` class** (the win
+  is deduplication, not extensibility). A marker preprocessor's
+  "should I marker-ize this block?" decision must be **purely syntactic
+  and conservative**: bail (return `None`) on any shape it can't fully
+  model, because it runs pre-pandoc and cannot see post-pandoc config
+  (`TIKZ_FIGURE_MAP`, `ENV_MAP`, routing) — the #98 #3 lesson. The audited
+  per-construct bail predicates are documented at the top of
+  `transforms/_markers.py`. Retiring the post-pandoc HTML fallbacks (one
+  path per construct) is the Phase-4 payoff; the boundary is locked now so
+  it stops moving by accretion.
+- **No custom LaTeX → AST → MyST rewrite (Phase 4 decision record).**
+  Evaluated in [DESIGN-REVIEW §2](notes/DESIGN-REVIEW.md) and declined.
+  Pandoc's math/cite/prose reader is ~15 years hardened and would take
+  multiple quarters to match; a from-scratch parser is pure new bug surface.
+  The marker-hybrid already replaces pandoc exactly where it's weak
+  (structure) while keeping it where it's strong (inline prose, math, native
+  cites, ref plumbing). Revisit only if the marker boundary proves unable to
+  cover a structural construct that matters — which has not happened across
+  tables, figures (incl. subfigures), algorithms, listings, description, and
+  enumerate.
+- **The HTML fallbacks are NOT fully retired — deliberately (revised in
+  Phase 4).** The original Phase-4 plan was "subfigure (#94) is the last
+  shape on the fallback; then delete `convert_html_figures`." Reality (from
+  doing it): `convert_html_figures` + `resolve_tikz_figures` stay
+  **load-bearing** for the constructs the marker preprocessor *deliberately
+  bails on* — a `\begin{figure}` wrapping a raw `\begin{tikzpicture}`
+  (#98 #3) and subfigure panels that aren't plain `\includegraphics` (dp1's
+  `\scalebox{\input{…pdf_t}}`). Those bail pre-pandoc and rely on the
+  post-pandoc `TIKZ_FIGURE_MAP` override. So the rule is **one path per
+  *fully-modelled* construct, fallback retained for the bail set** — not
+  "delete the fallback." #94 moved the `\includegraphics`-subfigure shape
+  onto the marker path; the bail set keeps the fallback. An outer-label
+  override always wins post-pandoc, so a marker-ized subfigure float with a
+  composite-image override still renders the override (the check lives in
+  `figures_from_latex._emit_figure`, where the map is visible — the
+  preprocessor can't see it).
 
 ## Working-style conventions
 

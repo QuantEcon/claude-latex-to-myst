@@ -20,10 +20,11 @@ from __future__ import annotations
 import base64
 import re
 
+from conversion_context import current_context
 from ._helpers import convert_label_colons, outer_fence
 
 
-def convert_environment_divs(text: str) -> str:
+def convert_environment_divs(text: str, ctx=None) -> str:
     """Convert ::: envname ... ::: blocks to MyST directives.
 
     Handles:
@@ -33,9 +34,10 @@ def convert_environment_divs(text: str) -> str:
     - Nested labels []{#label label="label"} → :label: converted-label
     - *Proof.* markers inside proof blocks → removed (sphinx-proof adds its own)
     """
-    import postprocess as pp
-    env_map = pp.ENV_MAP
-    env_skip = pp.ENV_SKIP
+    ctx = ctx if ctx is not None else current_context()
+    env_map = ctx.env_map
+    env_skip = ctx.env_skip
+    counters = ctx.counters
 
     lines = text.split('\n')
     result = []
@@ -105,6 +107,38 @@ def convert_environment_divs(text: str) -> str:
                 body_lines.append(lines[i])
                 i += 1
 
+            # Extract the optional ``[title]`` preserved pre-pandoc by
+            # ``_apply_prf_title_markers.py`` (issue #112). The marker
+            # delimiters survive pandoc (escaped as ``\<!--…--\>``) while the
+            # title text between them is pandoc-converted, so a ``\ref`` /
+            # math in the title is already in pandoc-link form here — the
+            # later ``convert_cross_references`` pass turns it into a role.
+            #
+            # The search is truncated at the first nested ``:::`` fence line:
+            # THIS env's marker always lands at the start of its body (it was
+            # injected on the first line after ``\begin{env}``), while a marker
+            # past a nested fence belongs to an inner titled env — searching
+            # the whole body would steal the inner env's title (caught in the
+            # PR #115 detailed review). Any marker left in the body afterwards
+            # (an inner env this single-level pass won't convert) is scrubbed
+            # to its bold title text so the marker never leaks verbatim.
+            prftitle_re = re.compile(
+                r'\\?<!--PRFTITLE-START--\\?>(.*?)\\?<!--PRFTITLE-END--\\?>',
+                re.DOTALL,
+            )
+            title_arg = None
+            body_text = '\n'.join(body_lines)
+            nested_cut = re.search(r'^\s*:{3,}', body_text, re.MULTILINE)
+            region_end = nested_cut.start() if nested_cut else len(body_text)
+            tm = prftitle_re.search(body_text, 0, region_end)
+            if tm:
+                title_arg = tm.group(1).strip()
+                body_text = body_text[:tm.start()] + body_text[tm.end():]
+            body_text = prftitle_re.sub(
+                lambda m: f'**{m.group(1).strip()}**', body_text
+            )
+            body_lines = body_text.split('\n')
+
             # Extract label(s) from the body. Pandoc emits one or more
             # ``[]{#label label="label"}`` anchors anywhere on a line.
             # Multi-label LaTeX (e.g. ``\begin{Exercise}\label{a}\label{b}``)
@@ -150,6 +184,23 @@ def convert_environment_divs(text: str) -> str:
             while clean_body and clean_body[-1].strip() == '':
                 clean_body.pop()
 
+            # A title carrying a cross-reference CANNOT go in the directive
+            # argument: a role inside a prf directive argument poisons
+            # mystmd's reference resolution for the whole page ("target was
+            # not found" for unrelated same-page labels — verified against
+            # myst v1.9.1 with a 12-line repro in the dp1 build test; the
+            # plain-text control builds clean). At this point the title still
+            # holds PANDOC ref syntax (``](#…){reference-type=…``) — detect
+            # that and emit the title as a bold lead-in body line instead,
+            # where the later cross-ref pass converts it and mystmd resolves
+            # it fine. Plain titles (the common theorem-name case) keep the
+            # argument form.
+            title_in_body = bool(title_arg) and (
+                '](#' in title_arg or '{reference-type=' in title_arg
+            )
+            if title_in_body:
+                clean_body[:0] = [f'**{title_arg.rstrip(".")}.**', '']
+
             # Build the MyST directive. Size the fence to outrank any
             # code fence already in the body (issue #79 / lesson 040): a
             # ```python block inside an exercise/solution/proof would
@@ -158,19 +209,25 @@ def convert_environment_divs(text: str) -> str:
             # pass, so they are present in clean_body here.
             fence = outer_fence('\n'.join(clean_body))
             header = f'{fence}{{{myst_env}}}'
+            # Carry a plain preserved ``[title]`` as the directive argument
+            # (``{prf:theorem} Neumann Series Lemma``). For a proof, the
+            # explicit ``[Proof of …]`` becomes the heading and the inline
+            # ``*Proof.*`` is stripped below, so the heading isn't doubled.
+            if title_arg and not title_in_body:
+                header = f'{header} {title_arg}'
 
             if myst_env == 'exercise':
                 # Track exercise label for pairing with solution
                 if not label:
                     # Auto-generate label for unlabeled exercises
-                    pp._exercise_counter += 1
-                    label = f'ex-{pp._chapter_prefix}-auto-{pp._exercise_counter}'
-                pp._last_exercise_label = label
+                    counters.exercise_counter += 1
+                    label = f'ex-{counters.chapter_prefix}-auto-{counters.exercise_counter}'
+                counters.last_exercise_label = label
             elif myst_env == 'solution':
                 # Solution needs the exercise label as argument
-                if pp._last_exercise_label:
-                    header = f'{fence}{{solution}} {pp._last_exercise_label}'
-                pp._last_exercise_label = None
+                if counters.last_exercise_label:
+                    header = f'{fence}{{solution}} {counters.last_exercise_label}'
+                counters.last_exercise_label = None
 
             # Emit any extra labels as sibling ``{div}`` anchor blocks
             # ahead of the directive. Multiple consecutive ``(label)=``

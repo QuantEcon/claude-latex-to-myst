@@ -1,6 +1,20 @@
 # Phase 3 — `ConversionContext` (state threading)
 
-**Status:** proposed · **Effort:** ~3–5 days, incremental · **Risk:** medium · **Depends on:** Phase 1 gate (non-negotiable)
+**Status:** LANDED (architecture-evolution branch, commit 3/5) · **Effort:** ~3–5 days, incremental · **Risk:** medium · **Depends on:** Phase 1 gate (non-negotiable)
+
+> **Landed.** `scripts/conversion_context.py` holds `ConversionContext`
+> (+ `FileCounters`, `from_config`, `default`, and a `current_context()`
+> registry). `postprocess.apply_config` builds the ctx and registers it;
+> `process_text(…, ctx=…)` threads it; the six stateful transform families
+> (typography, refs, code, frontmatter, envs, figures/figures_from_latex)
+> read `ctx` (math/cite stayed pure). All module globals and the
+> `sys.modules` alias are gone; `grep import postprocess scripts/transforms/`
+> is clean. A backward-compat **module proxy** at the bottom of
+> `postprocess.py` keeps the legacy `postprocess.ENV_MAP` (etc.) names
+> working as views on the current context, so the ~600 unit tests were
+> unchanged. Reentrancy proof: `tests/test_conversion_context.py` (two books
+> one process, no bleed; per-file counters reset). Lesson 038 marked
+> superseded. Snapshot byte-identical ×3 throughout.
 
 ## Problem — the deepest finding of the review
 

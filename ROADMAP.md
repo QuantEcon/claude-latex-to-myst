@@ -33,103 +33,99 @@ Remaining work is dp1-side config (not tool changes):
 Handover briefing for the dp1-side agent lives in the `book-dp1`
 repo (kept book-side rather than here so it travels with the work).
 
-## Architecture evolution (long-term)
+## Architecture evolution — LANDED (PR #103)
 
 Outcome of the deep implementation review
 ([`notes/DESIGN-REVIEW.md`](notes/DESIGN-REVIEW.md) → design docs in
 [`notes/design/`](notes/design/)). Goal: support **more general
 conversion** without over-specializing on edge cases — and without
-over-generalizing into a rewrite. Five phases, priority order; each is a
-focused unit with its own design doc, scope, and exit criteria. Later
-phases assume earlier ones.
+over-generalizing into a rewrite. **All six phases landed** on one branch
+(one commit each) in PR #103; each design doc carries a "LANDED" banner with
+its result. The standing parity objective (get close to parity across
+`book-dp1`, `book-dp2`, `book-dp-deep-learning`) rode alongside, measured by
+the two-baseline harness (`scripts/validate_fixture.sh`: `--against snapshot`
+= refactor-safety byte-identity gate, default = parity gap vs the worked-on
+`mystmd/`). The bar is "close / only documented drift," not byte-equality
+(the worked-on baselines carry irreducible hand-edits).
 
-**A second, standing objective runs alongside the phases: get close to
-parity across all three real-world books** (`book-dp1`, `book-dp2`,
-`book-dp-deep-learning`). The real books are the complexity benchmark the
-synthetic tests can't match — every parity gap closed is a translation
-capability the tool gains, and each fix is captured as a `tests/golden_tex/`
-reproducer so the corpus grows with the work. Parity here is *aspirational*:
-the committed `mystmd/` on each book's `mystmd-conversion` branch is the
-human-worked-on target and carries irreducible hand-edits the deterministic
-tool won't reproduce, so the bar is "close / only documented drift," not
-byte-equality. Validation uses **two baselines** — a pinned per-book
-snapshot of current tool output proves each refactor is behavior-preserving
-(byte-identity), while the diff against the worked-on `mystmd/` measures the
-parity gap to drive down. The fixture-validation harness
-(`scripts/validate_fixture.sh`, introduced in the common-fixture-validation
-PR #101) runs both: `--against snapshot` for the safety check, the default
-for the parity gap. Because refactor-safety rides on the snapshot, reaching
-parity is *not* a precondition for starting the phases.
+| Phase | What landed | Output change |
+|------:|-------------|---------------|
+| 1 | Validation gate + CI — `.tex`-rooted `golden_tex` tier, §1b differential gate, per-book count baselines, `.github/workflows/test.yml` (pinned pandoc) | none |
+| 2 | Marker shared base (`transforms/_markers.py`) + documented pandoc/marker boundary | none |
+| 3 | `ConversionContext` — run state threaded, module globals + lesson-038 `sys.modules` alias gone, reentrant | none |
+| 4 | Surface reduction — `#94` subfigure markers, "no custom AST" record, lessons re-tagged | yes (re-pinned) |
+| 5 | Book-side `project_overrides.py` (closed surface: `EXTRA_REWRITES` + `POST_CONVERT`) + graduation rule | none |
+| 6 | Deep-Learning parity pass — tikz figure-caption math (166→20 diff lines; 7/12 chapters byte-identical) + marker-aware `validate.py` | yes (DL re-pinned) |
 
-### Phase 1 — Validation gate + CI
+The standing lesson: the architecture is **general enough for a third book**
+— DL fell into place through the intended seams (config + one tier-1 fix +
+the override tier), and the Phase-1 gates caught every output change. What's
+left is consolidation + adoption, below.
 
-**Effort:** ~1–2 days. **Risk:** low. **Urgency:** ESCALATED — guards every
-refactor below and would have caught #96 *and* the four #98 figure-marker
-regressions pre-merge. Recommend freezing further fallback→marker
-migrations (#94) until this lands.
+## What's next (post-architecture-evolution)
 
-No CI exists today (`.github/workflows/` is absent) and no end-to-end gate
-is rooted in `.tex` — the existing golden corpus starts from pandoc
-output, so the preprocess/pandoc/marker boundary (where #95/#96 and most
-lessons live) is untested e2e. Add a `.tex`-rooted golden tier
-(`tests/golden_tex/`, curated — not the gitignored consumer clones),
-seed it from the pandoc-quirk lessons, and wire `pytest` + `validate.py`
-into a CI workflow with a pinned pandoc.
-Design: [`notes/design/phase-1-validation-gate.md`](notes/design/phase-1-validation-gate.md).
+The architecture work proved the design generalizes (three books). The
+forward work splits into three themes: **pay down the shims** the phases
+deliberately left, **make the measurement honest**, and **adopt + grow**.
+Priority order within each is roughly top-down.
 
-### Phase 2 — Marker shared base + hybrid boundary
+### A. Consolidation — pay down the Phase-3/5 shims
 
-**Effort:** ~1–2 days. **Risk:** low (pure refactor, gated by Phase 1).
+These were intentional compatibility shims; retiring them is the cleanup the
+design docs anticipated. None changes conversion output.
 
-Factor the duplicated marker scaffolding (`_pandoc_batch_convert`, the
-`CELL_N` sentinel split, marker encode/decode, blank-line stream
-reassembly — currently near-identical across the figure/table
-preprocessors) into one shared base; each preprocessor keeps only its
-construct-specific parser + emitter. Plain functions, **not** a plugin
-framework. Also: write the pandoc↔marker boundary into CLAUDE.md so it
-stops moving by accretion.
-Design: [`notes/design/phase-2-marker-shared-base.md`](notes/design/phase-2-marker-shared-base.md).
+1. **Migrate the ~600 unit tests off the `postprocess` module-proxy onto
+   `ctx`, then remove the proxy.** Phase 3 kept a module-`__getattr__`/
+   `__setattr__` proxy so tests could still poke `postprocess.ENV_MAP` etc.
+   It's a clever-but-load-bearing shim; once tests configure state via an
+   explicit `ConversionContext`, delete it. **Effort:** ~1 day (mechanical,
+   golden-gated). **Risk:** low.
+2. **Expose a library entry point** `convert_book(config) -> dict[str, str]`.
+   Phase 3 made the pipeline reentrant; surfacing a clean in-process API
+   (no file I/O) unlocks programmatic conversion, batch fixture testing, and
+   a future service without re-deriving it. **Effort:** ~half a day.
+3. **Retire the `tikz_overrides.py` filename alias** after one release
+   (Phase 5 kept it for one). Books move to `project_overrides.py`.
 
-### Phase 3 — `ConversionContext` (state threading)
+### B. Measurement honesty
 
-**Effort:** ~3–5 days, incremental. **Risk:** medium. **Hard prereq:** Phase 1.
+4. **Clean up `validate.py` for `preprocess.split` books.** Phase 6 made
+   `count_latex` marker-aware as a patch; the principled fix is to count the
+   **pristine monolithic source** for split books (and/or model multi-key
+   citation expansion) so the (B) count signal is exact, not approximate.
+   The (C-parity) diff remains the authoritative fidelity measure regardless.
+   **Effort:** ~1 day. **Risk:** medium (touches the validator loop).
+5. **Wire the label-gated `fixture-counts` CI job** with the consumer-repo
+   clone secrets (`BOOK_DP*_URL`) so it actually runs on demand, and bump the
+   workflow's `actions/checkout` to a Node-24-compatible version (the runner
+   deprecation warning).
 
-The deepest generality win. Post-pandoc state lives in module-level
-mutable globals on `postprocess.py`, read by 7 transform modules via
-late-`import postprocess`. This makes the pipeline non-reentrant (can't
-convert two books in one process) and is the root cause of 🔴 lesson 038.
-Replace with a `ConversionContext` dataclass threaded as an argument;
-migrate one transform family per PR, golden gate green on each; then
-delete the globals and the `sys.modules` alias.
-Design: [`notes/design/phase-3-conversion-context.md`](notes/design/phase-3-conversion-context.md).
+### C. Adoption & parity — the real generality test
 
-### Phase 4 — Surface reduction + decision records
+6. **Finish Deep-Learning parity** (book-side, tier-2). ~20 residual diff
+   lines: `:width:` additions (favorable — converter is more source-faithful)
+   and tikz node-text labels (set via `TIKZ_FIGURE_MAP` `caption_override` if
+   wanted). Land DL's drift ledger on its `mystmd-conversion` branch.
+7. **Migrate `book-dp1` onto the pipeline** (see *In flight* above) — drops
+   ~1500 lines of dp1-side bespoke scripts; book-side config work.
+8. **Onboard a fourth book.** The strongest proof of generality is a book
+   *outside* the dp/DL family. The graduation rule predicts most of its
+   quirks land in its `project_overrides.py`; watch which graduate.
 
-**Effort:** subfigure ~2–3 days; fallback removal ~1 day. **Risk:** medium.
-**Depends on:** Phases 2–3 and GH #94.
+### D. Vigilance (ongoing, not a task)
 
-Each structural construct carries two code paths today — the marker
-resolver plus an old post-pandoc HTML fallback. Finish marker coverage
-(subfigure, #94; table-shape audit), then retire the HTML fallbacks so
-there's one path per construct. Record the "no custom AST" decision in
-CLAUDE.md, and re-tag the lesson catalogue along the quirk-vs-permanent
-axis so its growth becomes interpretable.
-Design: [`notes/design/phase-4-surface-reduction.md`](notes/design/phase-4-surface-reduction.md).
+9. **Watch the quirk-vs-permanent lesson count** (the Phase-4 axis tag in
+   LESSONS.md). A rising *quirk* count means the pandoc/marker boundary is
+   leaking and a construct should move onto the marker path; a rising
+   *permanent* count is just normal coverage. This is the early-warning
+   signal that the architecture needs attention.
+10. **Tag the first release** — held until at least one consumer book ships
+    in production on the pipeline (see CHANGELOG `[Unreleased]`); tagging
+    earlier freezes a contract consumers haven't validated.
 
-### Phase 5 — Book-side overrides + graduation rule
-
-**Effort:** ~1–2 days. **Risk:** low–medium. **Hard prereq:** Phase 3.
-
-Gives book-specific *programmatic* edge cases a home that is neither a
-re-run-fragile hand-edit nor over-specialization in `postprocess.py`.
-Generalize the existing `tikz_overrides.py` seam into a **closed**
-`project_overrides.py` surface (data maps + `EXTRA_REWRITES` + one optional
-`POST_CONVERT` hook) — not a plugin framework. The conceptual payload is
-the **graduation rule:** one book needs it → book-side override; a second
-book needs it → graduate into the generic pipeline with a lesson + golden
-case. Gated on Phase 3 because overrides must *contribute to*
-`ConversionContext`, not mutate module globals.
-Design: [`notes/design/phase-5-book-overrides.md`](notes/design/phase-5-book-overrides.md).
+Design substrate for all of the above: [`notes/design/`](notes/design/) (each
+phase doc + its LANDED banner). New large efforts get their own design doc
+there before implementation.
 
 ## Open items
 

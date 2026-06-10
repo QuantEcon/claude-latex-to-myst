@@ -1,0 +1,8 @@
+# #112: optional [title] of theorem-family envs preserved onto the {prf:*}
+# directive argument (pandoc drops it for unrecognised theorem envs).
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "PRF Optional Title" }

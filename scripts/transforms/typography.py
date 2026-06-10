@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import re
 
+from conversion_context import current_context
+
 
 def strip_pandoc_html_separators(text: str) -> str:
     r"""Strip pandoc's empty-HTML-comment lexer-defeat artifacts.
@@ -27,6 +29,31 @@ def strip_pandoc_html_separators(text: str) -> str:
     stripping it unconditionally is safe. GH #23.
     """
     return re.sub(r'`<!-- -->`\{=html\}', '', text)
+
+
+def convert_pandoc_spans(text: str) -> str:
+    """Convert pandoc bracketed spans that mystmd renders literally (#124).
+
+    Pandoc emits ``\\textsc{iid}`` as ``[iid]{.smallcaps}`` and
+    ``\\textsf{x}`` as ``[x]{.sans-serif}`` — pandoc-only span syntax that
+    mystmd does not implement, so the markup survives onto the page as raw
+    text (34 occurrences across 7 dp1 chapters after the #107 ``{\\sc}``
+    normalization; any book using native ``\\textsc`` hits the same class).
+
+    - ``[text]{.smallcaps}`` → ``TEXT`` (uppercased — visually equivalent
+      for the dominant all-lowercase-acronym use, and the editorial choice
+      book-dp1#351 settled on; a true small-caps HTML span can become an
+      opt-in config later if a book wants it).
+    - ``[text]{.sans-serif}`` → ``text`` (unwrapped — no plain-text
+      equivalent, and plain prose beats leaked markup).
+    """
+    text = re.sub(
+        r'\[([^\]\n]+)\]\{\.smallcaps\}',
+        lambda m: m.group(1).upper(),
+        text,
+    )
+    text = re.sub(r'\[([^\]\n]+)\]\{\.sans-serif\}', r'\1', text)
+    return text
 
 
 def convert_epigraphs(text: str) -> str:
@@ -72,7 +99,7 @@ def cleanup_typography(text: str) -> str:
     return text
 
 
-def compress_directive_whitespace(text: str) -> str:
+def compress_directive_whitespace(text: str, ctx=None) -> str:
     """Trim blank lines between adjacent fenced directives.
 
     A no-op when ``whitespace_compression: readable`` is configured (the
@@ -87,11 +114,11 @@ def compress_directive_whitespace(text: str) -> str:
     around ``(label)=`` anchors. Compact mode is an approximation, not a
     byte-identical reproduction of dp1's hand-tuned output.
 
-    State coupling: reads ``postprocess._WHITESPACE_STYLE``. Late-import
-    of postprocess to avoid circular import at module load (P3a).
+    Reads ``ctx.whitespace_style`` (Phase 3); falls back to the current
+    context when called without an explicit ``ctx`` (unit-test path).
     """
-    import postprocess
-    if postprocess._WHITESPACE_STYLE != 'compact':
+    ctx = ctx if ctx is not None else current_context()
+    if ctx.whitespace_style != 'compact':
         return text
 
     lines = text.split('\n')

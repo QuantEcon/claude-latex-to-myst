@@ -59,6 +59,7 @@ scope estimate, and exit criteria. Later phases assume earlier ones.
 | 3 | `ConversionContext` (state threading) | Deepest generality win — makes the pipeline reentrant and kills the lesson-038 global-state class. Risky, so it runs *after* the Phase-1 gate exists. | [phase-3](phase-3-conversion-context.md) |
 | 4 | Surface reduction (subfigure #94 → retire HTML fallbacks) | Depends on Phases 2–3 and on #94. Removes the dual code path per construct. Plus the custom-AST decision record. | [phase-4](phase-4-surface-reduction.md) |
 | 5 | Book-side overrides + graduation rule | Depends on Phase 3 (overrides feed `ConversionContext`, not globals). Gives book-specific *programmatic* edge cases a home, with a counting rule for when they graduate into the generic pipeline. | [phase-5](phase-5-book-overrides.md) |
+| 6 | Deep-Learning parity pass | Added during PR #103 to prove the architecture generalizes to a third, different book. tikz figure-caption math preservation + marker-aware `validate.py`; DL parity 166→20 diff lines. | [phase-6](phase-6-dl-parity.md) |
 
 ## What is explicitly NOT in this plan
 
@@ -71,24 +72,22 @@ scope estimate, and exit criteria. Later phases assume earlier ones.
 
 ## Status
 
-- **Phase 1 — ESCALATED to urgent (2026-05-29).** GH #98 (four
-  figure-marker regressions in a dp2/dp1 regen) is the over-specialization
-  risk *materializing*: a construct migrated to the marker pattern shipped
-  with parser-completeness gaps because there was no `.tex`-rooted
-  differential gate. Verdict from the #98 analysis: **not a redesign** —
-  the regressions are localized to the 15-commit figure-marker work, and
-  the marker architecture is sound. What's missing is its safety
-  complement (Phase 1). Recommend **freezing further fallback→marker
-  migrations until the gate lands.**
-- Phases 2–5 remain **proposed**, not started. Phase 5 (book-side
-  overrides) was added 2026-05-29 after the design discussion settled the
-  "where do book-specific edge cases live?" question — answer: a closed
-  `project_overrides.py` surface, governed by the graduation rule, built
-  on Phase 3's `ConversionContext`.
+**All six phases LANDED in PR #103** (one branch, one commit per phase, each
+validated against the pinned refactor-safety snapshot before the next). Each
+phase doc carries a "LANDED" banner with its result. Highlights: the Phase-1
+`.tex`-rooted gate + CI is in place; the marker scaffolding is shared once
+(Phase 2); run state is a threaded `ConversionContext` with no module globals
+(Phase 3); `#94` subfigure markers + the "no custom AST" record landed
+(Phase 4); the closed `project_overrides.py` surface + graduation rule landed
+(Phase 5); and the Deep-Learning parity pass (Phase 6) drove DL's diff vs the
+worked-on baseline 166→20 lines, proving the architecture generalizes to a
+third, different book.
 
-ROADMAP.md tracks them under "Architecture evolution." This directory is
-the design substrate; update the relevant doc when a phase starts or its
-design shifts.
+ROADMAP.md's "Architecture evolution — LANDED" section summarizes the phases
+and the **forward plan** (consolidation of the Phase-3/5 shims, validator
+honesty for split-source books, adoption + parity). This directory is the
+design substrate; new large efforts get a design doc here before
+implementation.
 
 ### Diagnostic principle (from #98)
 

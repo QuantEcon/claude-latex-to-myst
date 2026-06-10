@@ -1,0 +1,109 @@
+name: test
+
+# Phase 1 keystone gate (notes/design/phase-1-validation-gate.md).
+#
+# Triggers on BOTH push and pull_request deliberately: the architecture
+# evolution lands as one PR after five phase commits, so a pull_request-only
+# trigger would leave commits 2–5 unguarded on the branch. push coverage means
+# every phase commit is CI-checked the moment it is pushed.
+on:
+  push:
+  pull_request:
+
+env:
+  # Pandoc output is version-sensitive — pin it so golden_tex / differential
+  # fixtures don't churn on runner upgrades. Bump deliberately, regenerating
+  # the golden corpus in the same commit. Keep in lock-step with the version
+  # the maintainers run locally.
+  PANDOC_VERSION: "3.8"
+
+jobs:
+  # Job 1 — the merge blocker. Unit suite + both golden tiers
+  # (tests/golden, tests/golden_tex) + the §1b differential gate. Pandoc
+  # pinned. Self-contained: no external fixtures, runs on every push & PR.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned pandoc ${{ env.PANDOC_VERSION }}
+        run: |
+          set -euo pipefail
+          deb="pandoc-${PANDOC_VERSION}-1-amd64.deb"
+          url="https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/${deb}"
+          curl -fsSL -o "$deb" "$url"
+          sudo dpkg -i "$deb"
+          got="$(pandoc --version | head -1 | awk '{print $2}')"
+          echo "pandoc $got"
+          test "$got" = "${PANDOC_VERSION}" || { echo "pandoc version mismatch: $got != ${PANDOC_VERSION}"; exit 1; }
+
+      - name: Install uv
+        run: |
+          set -euo pipefail
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Run test suite (unit + golden + golden_tex + differential)
+        run: uv run pytest -q
+
+  # Job 2 — deeper, label-gated, allowed-to-be-flaky (NOT a merge blocker).
+  # Clones the real consumer books and diffs validate.py counts against the
+  # committed tests/baselines/*.json (Phase 1 §2b). It needs fixture access
+  # (private repos) supplied via secrets, so it is skipped unless the
+  # `fixture-check` label is present AND the secrets are configured. The
+  # curated golden corpus in Job 1 is the real blocker; this job documents
+  # the per-book count surface and catches whole-book drops.
+  fixture-counts:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'fixture-check')
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned pandoc ${{ env.PANDOC_VERSION }}
+        run: |
+          set -euo pipefail
+          deb="pandoc-${PANDOC_VERSION}-1-amd64.deb"
+          url="https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/${deb}"
+          curl -fsSL -o "$deb" "$url"
+          sudo dpkg -i "$deb"
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Clone fixtures + diff counts vs committed baselines
+        env:
+          # GitHub clone URLs (with embedded token) for the consumer books.
+          # Unset ⇒ this job no-ops (it cannot clone private repos without them).
+          BOOK_DP1_SRC: ${{ secrets.BOOK_DP1_URL }}
+          BOOK_DP2_SRC: ${{ secrets.BOOK_DP2_URL }}
+          BOOK_DL_SRC: ${{ secrets.BOOK_DL_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BOOK_DP1_SRC:-}" ]; then
+            echo "fixture clone URLs not configured (secrets unset) — skipping."
+            exit 0
+          fi
+          bash scripts/setup_fixtures.sh
+          fail=0
+          for b in dp1 dp2 deep-learning; do
+            case "$b" in
+              dp1) d=book-dp1 ;;
+              dp2) d=book-dp2 ;;
+              deep-learning) d=book-dp-deep-learning ;;
+            esac
+            bash scripts/convert.sh --config "fixtures/$d/regen/config.yaml" >/dev/null 2>&1 || true
+            uv run python scripts/count_baseline.py \
+              --config "fixtures/$d/regen/config.yaml" --book "$b" \
+              --check "tests/baselines/$b.json" || fail=1
+          done
+          exit "$fail"

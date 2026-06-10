@@ -1,0 +1,7 @@
+# Seeded from lesson 039: fully-labelled enumerate becomes {exercise} directives
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Enumerate Exercises" }

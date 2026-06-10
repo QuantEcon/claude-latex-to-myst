@@ -15,6 +15,278 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — blockify tail re-scan + `{math}`-aware counting (parity-run findings)
+
+Found by the post-merge dp1/dp2/DL parity run over #114–#120:
+
+- **`_blockify_math_directives` re-scans closer tails** (#113 follow-up). Two
+  starred displays with prose between, glued onto one pandoc line
+  (`--wrap=none` + LaTeX `%` continuation), left the second block's opening
+  fence mid-line — broken MyST (3 instances in dp1 ch_intro, 4 in appB). The
+  tail after a closing fence is now re-scanned for the next opener.
+- **`validate.py` counts `{math}` directives as equations.** Starred envs no
+  longer emit `$$` pairs, so the count gate read every one as a drop.
+- **Baselines refreshed**: 6 entries improved toward parity (dp1 ch_fps
+  equations/figures now exact; dp2 ch_approx_learning + ch_math_foundations
+  exact, ch_transforms −2→−1; DL ch06 +2 cross-refs = the two ch06
+  algorithm-box `\eqref`s from #106 now converting).
+
+### Fixed — algorithm2e rendering + inline-macro leaks (book-dp1 audit, #109 / #106)
+
+- **Uncaptioned algorithm2e floats render unnumbered** (#109). algorithm2e
+  numbers only captioned floats; the converter auto-labelled every block, so
+  the two uncaptioned blocks in dp1 ch_intro took numbers and pushed the one
+  real algorithm from 1.1 to 1.3. The marker now carries a `numbered` flag and
+  `resolve_algorithms` emits `:nonumber:` for uncaptioned blocks and stops
+  minting an *auto*-label for them (an explicit `\label{}`, if the author wrote
+  one, is still preserved as a target).
+- **Loops emit `do … end`** (#109). `\While{C}{B}` / `\For{…}{…}` (both the
+  algorithm2e braced form and the algpseudocode `\WHILE…\ENDWHILE` form) now
+  render `while C do … end` instead of `while C:` with no terminator.
+- **Soft-wrapped steps stay one bullet** (#109). A single `\;`-terminated step
+  split across source lines was emitted as two bullets; the line-join now keeps
+  it one, while `\KwIn`/`\KwOut`/`\Return` (no `\;`) stay separate.
+- **`\tcp{…}` comments converted** (#109) to `(-- …)` instead of leaking; stray
+  `%` line-comments dropped.
+- **Inline `\eqref` / `\texttt` no longer leak** inside algorithm bodies (#106).
+  The body is base64'd pre-pandoc so it never reached the prose cross-ref/code
+  passes — both dialects now convert `\eqref{eq:x}` → `` {eq}`eq-x` `` and
+  `\texttt{x}` → `` `x` `` in-place.
+
+  *Known limitation:* algorithm lines render as a bullet list, not the PDF's
+  continuous line numbers (#109 item 3) — MyST nested ordered lists restart
+  numbering per level, so cross-level line numbering isn't expressible; left as
+  a rendering gap.
+
+### Fixed — starred display equations stay unnumbered (book-dp1 audit, #113)
+
+Starred LaTeX envs (`equation*` / `align*` / `gather*` / `multline*`) are
+unnumbered, but the converter emitted a bare `$$…$$` which mystmd **numbers**
+under book-wide numbering (`numbering: book: true`) — confirmed against myst
+v1.9.1: a label-less `$$` is assigned an `enumerator`. In book-dp1 ch_intro
+this turned the final equation number from the PDF's (1.34) into (1.61).
+`convert_equations` now emits starred envs as a `{math}` directive with
+`:enumerated: false` (no number, no counter advance); non-starred `equation`
+keeps the bare `$$` form (numbered, matching LaTeX). A block-separation pass
+hoists the directive onto its own block when pandoc's `--wrap=none` abuts it
+to surrounding prose. **Output change**: every starred display equation across
+consuming books re-emits as a `{math}` directive — re-pin fixture snapshots
+after a reviewed diff.
+
+### Fixed — theorem/proof optional `[title]` (book-dp1 audit, #112)
+
+Pandoc **drops** the optional argument of a `\begin{theorem}[Title]` it can't
+resolve (no matching `\newtheorem`), and renders `\begin{proof}[Proof of …]`
+*inline* — which then duplicates sphinx-proof's auto heading. New pre-pandoc
+pass `_apply_prf_title_markers.py` moves the optional title into a
+`<!--PRFTITLE-START-->…<!--PRFTITLE-END-->` marker (the title text between the
+delimiters is still pandoc-converted, so `\ref`/math in a title survive);
+`transforms.envs.convert_environment_divs` lifts it onto the `{prf:*}`
+directive argument. Removing the `[...]` also stops the proof title rendering
+inline, so the heading is no longer doubled.
+
+### Fixed — multicols count leak; tabular-cell refs confirmed (book-dp1 audit, #111 / #107 gap 2)
+
+- **`multicols` column count no longer leaks** (#111). `\begin{multicols}{2}`
+  had pandoc render the mandatory `{2}` argument as a stray `2` paragraph at
+  the top of the (column-less) MyST output. The count is stripped pre-pandoc
+  (`multicols` is already skipped post-pandoc); MyST has no multi-column
+  primitive so the count carries no downstream meaning.
+- **Cross-refs inside `tabular` cells convert correctly** (#107 gap 2) — both
+  the `\begin{table}` marker path and a bare `tabular` emit `{ref}` /
+  `{prf:ref}` roles for `\ref` / `\S\ref` in cells. Verified already-correct
+  against the current pipeline and locked with a regression golden.
+
+  *Not addressed (MyST/CommonMark limitations, tier-3 candidates):* custom
+  `\item[(a)]` enumerate labels (pandoc drops the optional label; MyST has no
+  custom ordered-list marker) and the `enumitem` `\setlist[…]{label=(\roman*)}`
+  roman style (CommonMark ordered lists can't carry roman markers). #111 stays
+  open for these.
+
+### Fixed — legacy font declarations + `\texttt{{@}…}` (book-dp1 audit, #107 / #105)
+
+Two pre-pandoc normalisations in `_apply_rewrites.py`:
+- **Legacy declaration font forms** `{\sc …}` / `{\sf …}` (and `{\bf}` / `{\it}`
+  / `{\tt}`) → `\textsc{…}` etc. (#107 gap 1). Pandoc handles the command form
+  natively but silently drops the formatting from the declaration form, so
+  `{\sc iid}` emerged as lowercase `iid`. Balanced-brace rewrite preserves
+  nested markup.
+- **`\texttt{{@}foo}` → `\texttt{@foo}`** (#105). The `{@}` brace group (an
+  author idiom to stop `@` reading as a citation key) made pandoc emit two
+  adjacent code spans (`` `@``foo` ``). Flattens non-command grouping braces
+  inside a `\texttt` argument; a real command argument (`\textbf{keep}`) is
+  left intact.
+
+### Fixed — extensionless `\includegraphics` resolves to the copied raster (#104)
+
+`\includegraphics{fig/foo}` with **no extension** (valid LaTeX — graphicx
+probes extensions) emitted an unresolvable `{figure} fig/foo` even though the
+copy step wrote `figures/foo.png`. `ConversionContext.from_config` now scans
+the source `figures_dir` into a stem→filename map (`figure_ext_map`, prefers
+web-renderable formats, pdf last); the new `_helpers.complete_image_path`
+completes an extensionless include to `figures/foo.png`. Paths that already
+carry an extension, or have no matching source file, are untouched.
+
+### Fixed — cross-reference parity (book-dp1 audit, #108 / #110)
+
+- **Multiple consecutive `\label{}` on a heading no longer orphans the
+  secondary labels** (#108). `\subsection{T}\label{ss:a}\label{sss:b}` had
+  pandoc fold only the first label into the heading id and emit the rest as a
+  leading span on the next paragraph, which the strip path dropped — a
+  `{ref}` to the orphan resolved to a paragraph node and rendered
+  "Paragraph". New `hoist_consecutive_heading_labels` transform stacks every
+  label as a `(name)=` anchor above the heading so all resolve to the section
+  number.
+- **Doubled noun stripped for `{numref}`-routed figure refs and `\S\ref`
+  appendix refs** (#110). `Figure~\ref{f:x}` rendered "Figure Figure N" (the
+  prose noun plus the `{numref}` auto-noun); `Appendix~\S\ref{c:areal}`
+  rendered "Appendix §Appendix A". `strip_doubled_noun_refs` now covers
+  Figure/Figures (`f-`/`fig-`) and Appendix/Appendices (`c-`), and swallows
+  an optional intervening `§`.
+
+### Changed — Phase 6: Deep-Learning parity pass — tikz figure-caption math (architecture evolution 6/6)
+
+Exercises the new architecture on the book furthest from parity, to prove it
+generalizes across all three books. Intentionally changes DL output (snapshot
+re-pinned after a reviewed equal-or-better diff); dp1/dp2 byte-identical.
+
+- **Figure-caption math preserved for `tikzpicture` figures** (lesson 045).
+  DL's 78 inline-tikz figures bail the marker path (so the `TIKZ_FIGURE_MAP`
+  SVG applies), which sent the caption through pandoc's HTML figcaption —
+  flattening `$\theta_0$` → unicode `θ0`. Now the float is marker-ized
+  *caption-only*: the `\begin{tikzpicture}…\end{tikzpicture}` region is
+  stripped first (no node-text scoop — #98 #3 holds), the caption + label +
+  legitimate `{\footnotesize}` sub-panel captions are extracted and
+  batch-converted (math intact), and `_emit_figure` resolves the SVG via the
+  override path. Locked by `golden_tex/tikz_figure_caption_math`.
+- **Result:** DL parity diff vs the worked-on baseline fell **166 → 20 lines**
+  (7 of 12 chapters now byte-identical). Remaining lines are documented drift
+  (`:width:` additions that are *more* source-faithful; tikz node-text labels
+  that belong in the SVG).
+- **`validate.py` is now marker-aware** (`count_latex` counts `<!--FIGURE-->`
+  markers — decoded for subfigure panels — and `[[CITE…]]` natbib markers).
+  The apparent DL citation (`61/130`) / figure (`10/11`) "gaps" were
+  *measurement artifacts*: for `preprocess.split` books validate reads the
+  preprocessed tmp file where those constructs are already markers. After the
+  fix appA_glossary citations go `1/20 → 20/20`, ch02 figures `10/11 → 11/11`,
+  ch01 citations `61 → 111` (residual = multi-key `\citet{a,b}` → 2 roles,
+  inherent). dp1/dp2 read pristine source (no markers) → counts unchanged.
+  See `notes/design/phase-6-dl-parity.md`.
+
+### Added — Phase 5: book-side project_overrides + graduation rule (architecture evolution 5/5)
+
+Behavior-preserving (snapshot byte-identical ×3) — gives book-specific
+*programmatic* edge cases a home that is neither a re-run-fragile hand-edit
+nor over-specialization in `postprocess.py`.
+
+- **`load_overrides` reads a closed `project_overrides.py` surface** into the
+  `ConversionContext`: `TIKZ_FIGURE_MAP` / `TIKZCD_INLINE_MAP` (as before),
+  `EXTRA_REWRITES` (`[(pattern, repl) | (pattern, repl, stems), …]`, compiled
+  and appended to `ctx.postprocess_rewrites`), and one optional
+  `POST_CONVERT(text, stem, ctx)` hook (held on `ctx.post_convert`, run once
+  at a single documented point at the end of `process_text`). Reads present
+  attributes, ignores the rest — **not** a plugin framework (no registration,
+  no ordering, one named hook).
+- **`project_overrides:` config key** (preferred); `tikz_overrides:` retained
+  as an alias for one release (same filename-agnostic loader).
+- Overrides **contribute** to the context; they never mutate module globals
+  (the Phase-3 invariant). `POST_CONVERT` must be fence-aware/conservative —
+  golden case `post_convert_fence_aware` + `tests/test_project_overrides.py`
+  prove it runs and leaves a fenced code block untouched.
+- Graduation rule (one book → override; second book → pipeline + lesson +
+  golden case) already documented in CLAUDE.md.
+
+### Changed — Phase 4: surface reduction + subfigure markers + decision records (architecture evolution 4/5)
+
+The one phase that intentionally changes output (snapshot re-pinned after a
+reviewed, equal-or-better diff via the §1b differential gate).
+
+- **#94 subfigure markers** — a `\begin{figure}` whose every
+  `\begin{subfigure}` panel is a plain `\includegraphics` is now marker-ized
+  (one `{figure}` per panel; outer label → first panel, `-b`/`-c` suffix for
+  later unlabelled panels). Panels that aren't plain `\includegraphics`
+  (e.g. dp1's `\scalebox{\input{…pdf_t}}`) bail to the HTML path
+  (conservatism). An outer-label `TIKZ_FIGURE_MAP` override still wins
+  (composite-image case, dp1 `f-du` → `du.svg`) — the check moved
+  post-pandoc into `_emit_figure`, where the map is visible. Fidelity win:
+  panel-caption math (`$\alpha=0.7$`) is preserved, vs the old fallback
+  flattening it to unicode. Locked by `golden_tex/subfigure_includegraphics`.
+- **No custom AST decision record** + **HTML-fallback reassessment** in
+  CLAUDE.md: `convert_html_figures` is *retained* (not removed) because the
+  `\begin{tikzpicture}` (#98 #3) and scalebox/input-subfigure bails route
+  through it for the post-pandoc override. Revised goal: one path per
+  *fully-modelled* construct, fallback kept for the bail set.
+- **Lessons re-tagged** quirk-vs-permanent (LESSONS.md "By axis").
+
+### Changed — Phase 3: ConversionContext state threading (architecture evolution 3/5)
+
+Behavior-preserving (snapshot byte-identical ×3) removal of the module-level
+mutable globals that made the post-pandoc pipeline non-reentrant and were the
+root cause of lesson 038.
+
+- **`scripts/conversion_context.py`** — `ConversionContext` (config-derived
+  run state) + `FileCounters` (per-file exercise numbering) + `from_config`
+  (the pure-constructor successor to the old `apply_config` parsing) +
+  `default` + a `current_context()` / `set_current_context()` registry.
+- **`postprocess.apply_config`** is now a thin wrapper: validate → build ctx
+  → register → return it. `process_text(…, ctx=…)` threads the context; the
+  six stateful transform families (typography, refs, code, frontmatter,
+  envs, figures/figures_from_latex) read `ctx` instead of `import
+  postprocess`. `math`/`cite` stayed pure.
+- **Module globals + the lesson-038 `sys.modules` alias are gone.** A
+  backward-compat module proxy at the bottom of `postprocess.py` forwards the
+  legacy `postprocess.ENV_MAP` / `TIKZ_FIGURE_MAP` / … names to the current
+  context (test-compat shim) so the ~600 unit tests were untouched.
+- **Reentrant:** `tests/test_conversion_context.py` converts two books (two
+  contexts) in one process with no bleed and proves per-file counters reset.
+  Lesson 038 marked `superseded`.
+
+### Changed — Phase 2: marker shared base + hybrid boundary (architecture evolution 2/5)
+
+Pure refactor (snapshot byte-identical ×3) consolidating the duplicated
+marker scaffolding the figure and table preprocessors re-implemented.
+
+- **`scripts/transforms/_markers.py`** — the shared base, once:
+  `pandoc_batch_convert` (the single `<!--CELL_N-->`-sentinel batch pandoc
+  call, with an optional `paren_guard` for figure sub-captions and the
+  `` `<!-- -->`{=html} `` adjacency scrub), `encode_payload`/`decode_payload`
+  (the base64+JSON marker codec), and `reassemble` (blank-line-wrapped,
+  source-order stream rebuild). **Plain functions, no `MarkerPlugin` class.**
+- `_apply_figure_markers.py` and `_apply_table_markers.py` now import the
+  base; `figures_from_latex`/`tables_from_latex` `encode_marker`/`decode_marker`
+  delegate to the shared codec.
+- **Bail-predicate audit** documented at the top of `_markers.py`
+  (figure: subfigure / raw tikzpicture / multi-image; table: longtable
+  routing + fall-through). Default stance: bail unless fully modelled.
+- **CLAUDE.md** now states the pandoc/marker boundary explicitly (a
+  "Settled architectural decisions" entry) so it stops moving by accretion;
+  retiring the HTML fallbacks is the Phase-4 payoff.
+
+### Added — Phase 1: validation gate + CI (architecture evolution 1/5)
+
+The keystone safety net for the architecture-evolution work. A `.tex`-rooted
+gate that would have caught #96 and the four #98 regressions pre-merge.
+
+- **CI workflow** (`.github/workflows/test.yml`) — runs on every push *and*
+  PR (push coverage guards the phase commits before the single end-PR
+  exists), pins pandoc to the exact local version, runs the full suite
+  (unit + `tests/golden` + `tests/golden_tex` + the §1b differential gate).
+  A second, label-gated, non-blocking job (`fixture-check`) clones the
+  consumer books and diffs `validate.py` counts against committed baselines.
+- **`tests/golden_tex/` seeded from the lesson catalogue** — 16 new
+  `.tex → .md` reproducers covering the codified pandoc-quirk lessons
+  (tables/figures/citations/refs/math/algorithms/listings); coverage map in
+  `tests/golden_tex/LESSON_COVERAGE.md`, locked by `test_golden_tex_seeded`.
+- **§1b differential migration gate** (`tests/test_marker_differential.py`)
+  — runs *both* the fallback (HTML) and marker paths over a corpus of real
+  figure blocks and asserts the marker path is equal-or-better (feature-based,
+  not byte-based). The scaffold Phase 4 uses to prove the subfigure migration
+  before retiring the fallback. (Lesson 044.)
+- **Per-book count baseline** (`scripts/count_baseline.py`,
+  `tests/baselines/*.json`) — reuses `validate.py`'s counting primitives to
+  emit/check a tiny committed JSON of per-chapter counts + resolution totals
+  per fixture; catches whole-book *drops* the byte-diff tiers don't.
+
 ### Fixed — figure-marker parser completeness ([#98])
 
 A regen of all three consumer books against the figure-marker work

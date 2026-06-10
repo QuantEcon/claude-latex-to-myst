@@ -2,7 +2,44 @@
 
 from __future__ import annotations
 
+import os
 import re
+
+
+def complete_image_path(path: str, figure_ext_map: dict | None = None) -> str:
+    """Normalise a figure source path to the ``figures/`` output tree, adding
+    a resolved extension for an extensionless include (#104).
+
+    ``\\includegraphics{fig/foo}`` with no extension is valid LaTeX (graphicx
+    probes extensions), but the emitted ``{figure}`` then points at a path
+    MyST can't resolve even though the copy step wrote ``figures/foo.png``.
+
+    Behaviour:
+    - **Extensionless basename with a ``figure_ext_map`` hit** → rewrite to
+      ``figures/<resolved-filename>`` (e.g. ``fig/foo`` → ``figures/foo.png``),
+      *regardless of any directory component* on the source path. This is the
+      #104 fix.
+    - **Directory-qualified basename WITH an extension whose stem is in the
+      map** → relocate to ``figures/<basename>``, keeping the author-chosen
+      extension (``fig/foo.pdf`` → ``figures/foo.pdf``). convert.sh flattens
+      copied assets into ``output/figures/<basename>``, so a source directory
+      prefix always dangles in the output tree (Copilot review on PR #103 —
+      the pre-existing ``Cannot find image "fig/…"`` class in the dp1/DL
+      build profiles).
+    - **Otherwise** → the prior behaviour: prepend ``figures/`` only when the
+      path has no directory component. An extension-carrying path with an
+      unknown stem, or an extensionless one with no matching source file, is
+      returned unchanged.
+    """
+    base = path.rsplit('/', 1)[-1]
+    root, ext = os.path.splitext(base)
+    if figure_ext_map and root in figure_ext_map:
+        if not ext:
+            return 'figures/' + figure_ext_map[root]
+        return 'figures/' + base
+    if '/' not in path:
+        return 'figures/' + path
+    return path
 
 
 def convert_label_colons(label: str) -> str:

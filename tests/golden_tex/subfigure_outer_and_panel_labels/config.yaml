@@ -1,0 +1,11 @@
+# Copilot review fix: a subfigure float with BOTH an outer \label AND per-panel
+# \labels must not drop the outer label. Each panel keeps its own :name:, and
+# the outer label is emitted as a (fig-both)= target anchor before the first
+# panel (lesson-021 "parent takes first child slot") so {numref}`fig-both`
+# still resolves.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Panels with their own labels" }
