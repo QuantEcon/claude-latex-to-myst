@@ -2727,6 +2727,30 @@ def test_hoist_heading_labels_leaves_non_heading_orphan():
     assert out == body
 
 
+def test_hoist_heading_labels_leaves_chapter_h1_explicit_label():
+    """A ``# Chapter`` H1 with an explicit following ``[]{#c:...}`` label must
+    NOT be hoisted — that label is consumed later by ``add_frontmatter``'s
+    "prefer explicit chapter label" path (lesson 017). Stacking the label
+    above the H1 would stop ``add_frontmatter`` from matching/absorbing the
+    heading. Only section-level (H2+) headings are hoist targets, so the H1
+    case is left untouched (both the own-line and mid-line label shapes)."""
+    own_line = (
+        '(c-intro-auto)=\n'
+        '# The Introduction\n'
+        '\n'
+        '[]{#c:climate label="c:climate"}\n'
+        'This chapter studies climate.\n'
+    )
+    mid_line = (
+        '(c-intro-auto)=\n'
+        '# The Introduction\n'
+        '\n'
+        '[]{#c:climate label="c:climate"} This chapter studies climate.\n'
+    )
+    assert postprocess.hoist_consecutive_heading_labels(own_line) == own_line
+    assert postprocess.hoist_consecutive_heading_labels(mid_line) == mid_line
+
+
 def test_standalone_labels_strips_midline_footnote_orphan():
     """`\\footnote{\\label{fn:hcon}...}` produces a markdown footnote body
     `[^1]: []{#fn:hcon label="fn:hcon"}body…`. The mid-line anchor has

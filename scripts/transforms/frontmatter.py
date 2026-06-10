@@ -87,6 +87,13 @@ def hoist_consecutive_heading_labels(text: str) -> str:
     """
     anchor_re = re.compile(r'^\(([^)]+)\)=\s*$')
     heading_re = re.compile(r'^#{1,6}\s+\S')
+    # Only hoist for section-level headings (``##``+). An H1 (``# ``) is the
+    # chapter heading ``add_frontmatter`` absorbs, and it relies on exactly one
+    # ``(label)=`` line before ``# Title`` plus a *following* explicit anchor
+    # (the lesson-017 "prefer explicit chapter label" path). Stacking a second
+    # anchor above the H1 would break that match — so leave H1 alone. Every
+    # #108 case is a subsection/subsubsection (H2+), so this loses nothing.
+    section_heading_re = re.compile(r'^#{2,6}\s+\S')
     # A run of one or more leading ``[]{#label}`` spans, then the rest.
     lead_re = re.compile(
         r'^((?:\[\]\{#[^\s}]+(?:\s+label="[^"]*")?\}[ \t]*)+)(.*)$'
@@ -103,7 +110,7 @@ def hoist_consecutive_heading_labels(text: str) -> str:
             k = i
             while k < n and anchor_re.match(lines[k]):
                 k += 1
-            if k < n and heading_re.match(lines[k]):
+            if k < n and section_heading_re.match(lines[k]):
                 anchor_block = lines[i:k]
                 heading = lines[k]
                 # First non-blank line after the heading.
