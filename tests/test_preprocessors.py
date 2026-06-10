@@ -1143,9 +1143,11 @@ def test_multicols_count_argument_stripped():
     assert rew._MULTICOLS_COUNT_STRIP.sub(r"\1", r"\begin{multicols}{2}") == r"\begin{multicols}"
 
 
-def test_multicols_star_count_and_pretext_stripped():
-    out = rew._MULTICOLS_COUNT_STRIP.sub(r"\1", r"\begin{multicols*}{3}[Intro]")
-    assert out == r"\begin{multicols*}"
+def test_multicols_star_count_stripped_pretext_preserved():
+    """Only the ``{N}`` count is removed; the optional ``[pre-text]`` is real
+    spanning content and must survive (Copilot review)."""
+    out = rew._MULTICOLS_COUNT_STRIP.sub(r"\1", r"\begin{multicols*}{3}[Intro text]")
+    assert out == r"\begin{multicols*}[Intro text]"
 
 
 def test_multicols_count_strip_keeps_following_content():

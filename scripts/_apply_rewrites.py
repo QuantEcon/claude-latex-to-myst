@@ -48,10 +48,11 @@ _ITEMSEP_STRIP = re.compile(
 # is skipped post-pandoc (the wrapper is dropped, content kept), but pandoc
 # renders the ``{N}`` arg as a stray ``N`` paragraph at the top of the div,
 # which then leaks into the body (#111). MyST has no multi-column primitive,
-# so the count carries no meaning downstream — strip it (and the optional
-# pre-text arg of ``multicols*``) pre-pandoc.
+# so the count carries no meaning downstream — strip ONLY the ``{N}`` count.
+# The optional ``[pre-text]`` that may follow is real spanning content, not
+# the count, so it is left in place (Copilot review).
 _MULTICOLS_COUNT_STRIP = re.compile(
-    r'(\\begin\{multicols\*?\})\s*\{[^}]*\}(?:\s*\[[^\]]*\])?'
+    r'(\\begin\{multicols\*?\})\s*\{[^}]*\}'
 )
 
 _NATBIB_OPT = r'(?:\s*\[[^\]]*\]){0,2}'
