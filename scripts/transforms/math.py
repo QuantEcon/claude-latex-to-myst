@@ -364,14 +364,22 @@ def convert_equations(text: str) -> str:
             rows.append((row, labels))
         return rows
 
-    def _emit_split_align(body: str, leading_label: str | None = None) -> str:
-        """Emit one ``$$...$$`` block per row, each with its own
-        trailing label (when present). A leading ``\\begin{align}\\label{}``
-        becomes a ``(name)=`` anchor above the first row block."""
+    def _emit_split_align(body: str, leading_label: str | None = None,
+                          starred: bool = False) -> str:
+        """Emit one block per row, each with its own label (when present). A
+        leading ``\\begin{align}\\label{}`` becomes a ``(name)=`` anchor above
+        the first row block. When ``starred`` (an ``align*`` that hit the split
+        path), each row is a forced-unnumbered ``{math}`` directive so the rows
+        don't consume equation numbers under book-wide numbering (#113)."""
         rows = _split_align_rows(body)
         out_blocks: list[str] = []
         for i, (content, labels) in enumerate(rows):
-            if labels:
+            if starred:
+                primary = convert_label_colons(labels[0]) if labels else None
+                block = _emit_unnumbered_math(content, primary)
+                for extra in labels[1:]:
+                    block = f'({convert_label_colons(extra)})=\n\n{block}'
+            elif labels:
                 primary = convert_label_colons(labels[0])
                 block = f'$$\n{content}\n$$ ({primary})'
                 # Multiple labels on the same row are rare but legal —
@@ -428,7 +436,7 @@ def convert_equations(text: str) -> str:
         star = m.group(1)
         body = m.group(2)
         if _align_needs_split(body):
-            return _emit_split_align(body)
+            return _emit_split_align(body, starred=bool(star))
         content, labels = _extract_math_labels(body.strip())
         aligned = f'\\begin{{aligned}}\n{content}\n\\end{{aligned}}'
         # ``align*`` is unnumbered in LaTeX; emit a forced-unnumbered block
@@ -462,9 +470,18 @@ def convert_equations(text: str) -> str:
     def replace_math_block(m):
         star = m.group(1)
         content, labels = _extract_math_labels(m.group(2).strip())
-        # Starred multline*/gather* with no label is unnumbered in LaTeX (#113).
-        if star and not labels:
-            return _emit_unnumbered_math(content)
+        # Starred multline*/gather* is unnumbered in LaTeX (#113) — emit a
+        # forced-unnumbered {math} directive REGARDLESS of label presence (a
+        # stray \label in a starred env still must not consume a number). The
+        # first label becomes :label:, any extras stack as anchors above.
+        if star:
+            primary = convert_label_colons(labels[0]) if labels else None
+            block = _emit_unnumbered_math(content, primary)
+            extra = labels[1:]
+            if extra:
+                anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in extra)
+                return f'\n\n{anchors}\n\n{block}'
+            return block
         block = f'$$\n{content}\n$$'
         if not labels:
             return block

@@ -3131,6 +3131,33 @@ def test_convert_equations_starred_align_unnumbered():
     assert '\\begin{aligned}' in out
 
 
+def test_convert_equations_starred_align_split_rows_stay_unnumbered():
+    """An ``align*`` with 2+ per-row labels hits the split path; each row must
+    still be a forced-unnumbered ``{math}`` directive (not a bare numbered
+    ``$$``) so it doesn't consume an equation number (#113, Copilot review)."""
+    text = ("$$\\begin{align*}\n"
+            "a &= 1 \\label{eq:a} \\\\\n"
+            "b &= 2 \\label{eq:b}\n"
+            "\\end{align*}$$\n")
+    out = postprocess.convert_equations(text)
+    assert out.count('```{math}') == 2
+    assert out.count(':enumerated: false') == 2
+    assert ':label: eq-a' in out and ':label: eq-b' in out
+    # No bare ``$$ (label)`` rows leaked through (those would be numbered).
+    assert '$$ (eq-' not in out
+
+
+def test_convert_equations_starred_gather_with_label_unnumbered():
+    """A starred ``gather*`` carrying a ``\\label`` must stay unnumbered while
+    keeping the label referenceable (#113, Copilot review)."""
+    text = "$$\\begin{gather*}\nx = 1 \\label{eq:x}\n\\end{gather*}$$\n"
+    out = postprocess.convert_equations(text)
+    assert '```{math}' in out
+    assert ':enumerated: false' in out
+    assert ':label: eq-x' in out
+    assert '$$ (eq-x)' not in out
+
+
 def test_convert_equations_plain_equation_still_numbered_bare():
     """A non-starred ``equation`` (numbered in LaTeX) keeps the bare ``$$``
     form (mystmd numbers it under book-wide numbering)."""
