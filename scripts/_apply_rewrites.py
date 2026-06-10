@@ -124,17 +124,48 @@ def normalize_declaration_forms(text: str) -> str:
     return ''.join(out)
 
 
+def _flatten_grouping_braces(arg: str) -> str:
+    """Flatten *grouping* brace groups inside a ``\\texttt`` argument, leaving
+    command arguments intact. A ``{...}`` is a command argument when the text
+    before it — **after skipping whitespace** — ends in a letter (the tail of a
+    command name like ``\\textbf``), so both ``\\textbf{keep}`` and the valid
+    ``\\textbf {keep}`` (whitespace before the brace) are preserved. Only a
+    group whose inner text has no nested braces / backslash is flattened (e.g.
+    the ``{@}`` citation-suppression idiom → ``@``)."""
+    out = ''
+    i = 0
+    while i < len(arg):
+        c = arg[i]
+        if c == '\\' and i + 1 < len(arg):
+            out += arg[i:i + 2]      # escaped char / command token — emit as-is
+            i += 2
+            continue
+        if c == '{':
+            j = _find_matching_brace(arg, i)
+            if j >= 0:
+                inner = arg[i + 1:j]
+                prev = out.rstrip()
+                is_command_arg = bool(prev) and prev[-1].isalpha()
+                if not is_command_arg and '{' not in inner and '\\' not in inner:
+                    out += inner            # grouping braces → flatten
+                else:
+                    out += arg[i:j + 1]     # command arg / nested → keep
+                i = j + 1
+                continue
+        out += c
+        i += 1
+    return out
+
+
 def flatten_texttt_brace_groups(text: str) -> str:
     """``\\texttt{{@}foo}`` → ``\\texttt{@foo}`` (#105).
 
     Authors wrap ``@`` in a brace group (``{@}``) to stop it being read as a
     citation key, but inside ``\\texttt`` pandoc turns the group into a second
     code span, emitting the broken ``` `@``foo` ```. The braces are invisible
-    grouping in LaTeX, so flatten any non-command (``\\``-free, brace-free)
-    group inside a ``\\texttt`` argument. The negative lookbehind keeps a real
-    command argument (the ``{keep}`` in ``\\texttt{\\textbf{keep}}``) intact —
-    only grouping braces not preceded by a command name are flattened."""
-    inner_re = re.compile(r'(?<![A-Za-z])\{([^{}\\]+)\}')
+    grouping in LaTeX, so flatten such grouping braces inside a ``\\texttt``
+    argument while preserving real command arguments (``\\textbf{keep}`` and the
+    whitespace form ``\\textbf {keep}``) — see ``_flatten_grouping_braces``."""
     out = []
     pos = 0
     for m in re.finditer(r'\\texttt\{', text):
@@ -144,7 +175,7 @@ def flatten_texttt_brace_groups(text: str) -> str:
             continue
         arg = text[open_brace + 1:close]
         out.append(text[pos:open_brace + 1])
-        out.append(inner_re.sub(r'\1', arg))
+        out.append(_flatten_grouping_braces(arg))
         pos = close
     out.append(text[pos:])
     return ''.join(out)

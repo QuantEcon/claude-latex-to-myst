@@ -1119,5 +1119,18 @@ def test_texttt_preserves_command_argument():
     assert rew.flatten_texttt_brace_groups(r'\texttt{\textbf{keep}}') == r'\texttt{\textbf{keep}}'
 
 
+def test_texttt_preserves_command_argument_with_whitespace():
+    """Valid LaTeX puts whitespace between a command and its argument
+    (``\\textbf {keep}``); that brace group is still a command argument and
+    must NOT be flattened (Copilot review)."""
+    assert (rew.flatten_texttt_brace_groups(r'\texttt{\textbf {keep}}')
+            == r'\texttt{\textbf {keep}}')
+
+
+def test_texttt_preserves_nested_math_command_argument():
+    src = r'\texttt{\textbf{$\mathcal{Q}$ x}}'
+    assert rew.flatten_texttt_brace_groups(src) == src
+
+
 def test_texttt_plain_arg_unchanged():
     assert rew.flatten_texttt_brace_groups(r'\texttt{@plain}') == r'\texttt{@plain}'
