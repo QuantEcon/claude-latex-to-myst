@@ -621,3 +621,15 @@ def test_count_myst_equations_math_directive():
         "$$\ny = 2\n$$\n"
     )
     assert v.count_myst(md)['equations'] == 2
+
+
+def test_backtick_in_fence_info_string_flagged():
+    """#122: CommonMark forbids backticks in a backtick-fence info string —
+    the directive never opens and its closer swallows following content.
+    validate must flag the emission so the class is caught in CI."""
+    md = "```{prf:proof} Proof of {prf:ref}`p-x`\nBody.\n```\n"
+    diags = v.check_resolution(md, 'f.md', bib_keys=None)
+    assert any('backtick in backtick-fence info string' in d for d in diags)
+    clean = "```{prf:proof} Proof of the main result\nBody.\n```\n"
+    assert not any('info string' in d
+                   for d in v.check_resolution(clean, 'f.md', bib_keys=None))

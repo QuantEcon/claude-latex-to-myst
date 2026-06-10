@@ -318,6 +318,22 @@ def check_resolution(text: str, filename: str,
                 f'{{cite*}}`{key}`'
             )
 
+    # Pass 3 — backtick inside a backtick-fence info string (#122).
+    # CommonMark forbids backticks in the info string of a backtick fence
+    # (spec §4.5), so markdown-it/mystmd rejects the line as a fence opener,
+    # the directive never opens, and its CLOSING fence then opens a literal
+    # code block that swallows everything to the next fence — anchors and
+    # equations inside vanish from the built AST. This is exactly the
+    # blast pattern of an inline role emitted into a directive argument.
+    for i, line in enumerate(text.split('\n'), 1):
+        m = re.match(r'^`{3,}\{[^}]+\}([^\n]*)$', line)
+        if m and '`' in m.group(1):
+            diagnostics.append(
+                f'{filename}:{i}: backtick in backtick-fence info string '
+                f'(CommonMark rejects the fence; the directive will not '
+                f'open): {line[:80]}'
+            )
+
     return diagnostics
 
 
