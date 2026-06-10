@@ -603,6 +603,26 @@ def test_strip_doubled_noun_refs_listing_plural():
     assert out == "See {numref}`list-a` and {numref}`list-b`."
 
 
+def test_strip_doubled_noun_refs_table_singular():
+    """Tables route to ``{numref}`` (renders "Table N"), so prose
+    "Table {numref}`tab-…`" doubles to "Table Table N" (#131)."""
+    text = "Table {numref}`tab-olg_6_vs_56` above previewed the gap."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "{numref}`tab-olg_6_vs_56` above previewed the gap."
+
+
+def test_strip_doubled_noun_refs_table_plural_and_tbl_prefix():
+    text = "See Tables {numref}`tab-a` and {numref}`tbl-b`."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "See {numref}`tab-a` and {numref}`tbl-b`."
+
+
+def test_strip_doubled_noun_refs_table_nbsp_tie():
+    text = "Table\xa0{numref}`tbl-rates` summarises the results."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "{numref}`tbl-rates` summarises the results."
+
+
 def test_strip_doubled_noun_refs_program_alternate_noun():
     """Some books use the noun MyST renders by default — 'Program' —
     instead of 'Listing'. Strip both."""
