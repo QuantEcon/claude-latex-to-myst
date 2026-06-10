@@ -15,6 +15,17 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — display equation inside an algorithm2e line block-lifted (#130)
+
+A `\begin{equation*}…\end{equation*}` (or `align*`/`gather*`) sitting inside
+an algorithm2e statement was whitespace-flattened mid-line into the bullet,
+where mystmd renders it as literal prose (amsmath support is block-level
+only). `_algo_convert_body` now stashes display environments behind
+placeholder tokens — which also shields math-mode `\;` thin spaces from
+the statement split — and block-lifts each as an indented `$$` block under
+its bullet. Retires dp2's `ALGO_HPOWB_INLINE_PATTERN` workaround in
+`local-cleanup.py`.
+
 ### Fixed — "Table Table N" doubled-noun refs (#131)
 
 `strip_doubled_noun_refs` now ships `Table`/`Tables` defaults for the

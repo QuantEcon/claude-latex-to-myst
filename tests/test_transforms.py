@@ -171,6 +171,79 @@ def test_resolve_algorithms_softwrapped_step_stays_one_bullet():
     assert bullets == ["- the controller receives a reward $R_t$ that depends on the action"]
 
 
+def test_resolve_algorithms_inline_equation_block_lifted():
+    """A display equation inside an algorithm2e line is block-lifted under
+    its bullet as an indented ``$$`` block, not whitespace-flattened into
+    mid-line position (mystmd's amsmath support is block-level only, #130).
+    Shape from dp2's algo:hpowb."""
+    body = (
+        "\\While{$\\epsilon > 0$}\n"
+        "{\n"
+        "    $\\sigma_{k+1} \\leftarrow$ a policy satisfying\n"
+        "    %\n"
+        "    \\begin{equation*}\n"
+        "        \\sigma_{k+1}(w) \\in \\argmax_{w' \\in \\Gamma(w)}\n"
+        "        \\left\\{ r(w, w') \\right\\}\n"
+        "    \\end{equation*}\n"
+        "    %\n"
+        "    \\;\n"
+        "    $k \\leftarrow k + 1$ \\;\n"
+        "}\n"
+    )
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    assert "\\begin{equation*}" not in out
+    # Blank-line-separated $$ block at list-item continuation indent.
+    assert (
+        "  - $\\sigma_{k+1} \\leftarrow$ a policy satisfying\n"
+        "\n"
+        "    $$\n"
+        "    \\sigma_{k+1}(w) \\in \\argmax_{w' \\in \\Gamma(w)}"
+        " \\left\\{ r(w, w') \\right\\}\n"
+        "    $$\n"
+        "\n"
+        "  - $k \\leftarrow k + 1$" in out
+    )
+
+
+def test_resolve_algorithms_inline_align_star_uses_aligned():
+    """``align*`` inside an algorithm line lifts as a ``$$`` block with the
+    rows wrapped in ``aligned`` (the convert_equations translation)."""
+    body = (
+        "update via\n"
+        "\\begin{align*}\n"
+        "x &= 1 \\\\\n"
+        "y &= 2\n"
+        "\\end{align*}\n"
+        "\\;\n"
+    )
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    assert "\\begin{align*}" not in out
+    assert "\\begin{aligned} x &= 1 \\\\ y &= 2 \\end{aligned}" in out
+
+
+def test_resolve_algorithms_inline_equation_with_label():
+    """A ``\\label`` inside the lifted equation becomes the
+    ``$$ … $$ (label)`` suffix form, colons converted."""
+    body = "satisfying \\begin{equation}\\label{eq:foo} x = 1 \\end{equation} \\;"
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    assert "\\label" not in out
+    assert "$$ (eq-foo)" in out
+    assert "x = 1" in out
+
+
+def test_resolve_algorithms_math_thin_space_not_a_terminator():
+    """``\\;`` inside a stashed display environment is a thin space, not a
+    statement terminator — the equation must stay one block."""
+    body = (
+        "satisfying \\begin{equation*} x \\; = \\; 1 \\end{equation*} \\;\n"
+        "$k \\leftarrow k + 1$ \\;"
+    )
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    assert "x \\; = \\; 1" in out
+    bullets = [ln for ln in out.split("\n") if ln.lstrip().startswith("- ")]
+    assert len(bullets) == 2  # "satisfying" + the k-update
+
+
 # ── Exercise markers (#69) ───────────────────────────────────────────────────
 
 
