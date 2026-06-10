@@ -630,6 +630,12 @@ def resolve_algorithms(text: str) -> str:
             out.append(f'{fence}{{prf:algorithm}}')
         if not numbered:
             out.append(':nonumber:')
+        # Emit a ``:label:`` whenever the source carried one (``name`` is
+        # ``NOLABEL`` only when uncaptioned AND unlabelled — see
+        # ``_apply_algorithm_markers.rewrite_algorithm``). An uncaptioned block
+        # the author *explicitly* ``\label``'d keeps its anchor (harmless under
+        # ``:nonumber:`` — no number to shift); only the auto-label is dropped
+        # for uncaptioned blocks.
         if name and name != 'NOLABEL':
             out.append(f':label: {name}')
         out.append('')

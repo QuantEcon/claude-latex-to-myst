@@ -21,7 +21,9 @@ haven't validated. Everything below is on `main` and available now.
   numbers only captioned floats; the converter auto-labelled every block, so
   the two uncaptioned blocks in dp1 ch_intro took numbers and pushed the one
   real algorithm from 1.1 to 1.3. The marker now carries a `numbered` flag and
-  `resolve_algorithms` emits `:nonumber:` (no label) for uncaptioned blocks.
+  `resolve_algorithms` emits `:nonumber:` for uncaptioned blocks and stops
+  minting an *auto*-label for them (an explicit `\label{}`, if the author wrote
+  one, is still preserved as a target).
 - **Loops emit `do … end`** (#109). `\While{C}{B}` / `\For{…}{…}` (both the
   algorithm2e braced form and the algpseudocode `\WHILE…\ENDWHILE` form) now
   render `while C do … end` instead of `while C:` with no terminator.
