@@ -15,6 +15,22 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — blockify tail re-scan + `{math}`-aware counting (parity-run findings)
+
+Found by the post-merge dp1/dp2/DL parity run over #114–#120:
+
+- **`_blockify_math_directives` re-scans closer tails** (#113 follow-up). Two
+  starred displays with prose between, glued onto one pandoc line
+  (`--wrap=none` + LaTeX `%` continuation), left the second block's opening
+  fence mid-line — broken MyST (3 instances in dp1 ch_intro, 4 in appB). The
+  tail after a closing fence is now re-scanned for the next opener.
+- **`validate.py` counts `{math}` directives as equations.** Starred envs no
+  longer emit `$$` pairs, so the count gate read every one as a drop.
+- **Baselines refreshed**: 6 entries improved toward parity (dp1 ch_fps
+  equations/figures now exact; dp2 ch_approx_learning + ch_math_foundations
+  exact, ch_transforms −2→−1; DL ch06 +2 cross-refs = the two ch06
+  algorithm-box `\eqref`s from #106 now converting).
+
 ### Fixed — algorithm2e rendering + inline-macro leaks (book-dp1 audit, #109 / #106)
 
 - **Uncaptioned algorithm2e floats render unnumbered** (#109). algorithm2e

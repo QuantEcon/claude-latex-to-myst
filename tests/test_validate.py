@@ -611,3 +611,13 @@ def test_validate_vacuous_pass_guard_exits_nonzero(tmp_path):
     )
     assert "no chapters were validated" in result.stderr
     assert "All counts match" not in result.stdout
+
+
+def test_count_myst_equations_math_directive():
+    """Starred displays emit ```{math} directives (#113) — count them as
+    equations so a starred env doesn't read as a drop (dp1 parity run)."""
+    md = (
+        "```{math}\n:enumerated: false\n\nx = 1\n```\n\n"
+        "$$\ny = 2\n$$\n"
+    )
+    assert v.count_myst(md)['equations'] == 2

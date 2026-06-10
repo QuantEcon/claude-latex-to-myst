@@ -4036,3 +4036,27 @@ def test_nested_subfigures_without_embed_keeps_admonition_path():
     out = postprocess.convert_html_figures(pandoc_out)
     assert '{admonition} Figure (TikZ' in out
     assert 'f-bar_a' in out and 'f-bar_b' in out
+
+
+def test_blockify_rescans_tail_for_next_opener():
+    """Two starred displays with prose between, glued onto ONE pandoc line
+    (--wrap=none + LaTeX % line-continuation): the prose tail after the first
+    block's closer contains the SECOND block's opener and must be re-scanned,
+    not appended blindly — else that opener leaks mid-line as broken MyST
+    (found in the dp1 parity run after #113 merged)."""
+    text = (
+        "Take any $f$. Then $$\\begin{align*}\n"
+        "|Tf - Tg| &\\leq \\beta\n"
+        "\\end{align*}$$ Apply the triangle inequality to obtain "
+        "$$\\begin{align*}\n"
+        "|Tf - Tg| \\leq \\beta \\|f - g\\|\n"
+        "\\end{align*}$$ Taking the supremum completes the proof.\n"
+    )
+    out = postprocess.convert_equations(text)
+    import re as _re
+    total = out.count('```{math}')
+    at_start = len(_re.findall(r'^`{3,}\{math\}', out, flags=_re.MULTILINE))
+    assert total == 2
+    assert at_start == 2          # no mid-line fence leaked
+    assert 'Apply the triangle inequality to obtain' in out
+    assert 'Taking the supremum completes the proof.' in out
