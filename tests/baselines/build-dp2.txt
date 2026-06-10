@@ -1,0 +1,3 @@
+_build/site/public/nrm_sdd_sim-HASH.png Image is too large (N.N MB) to convert to webp (build will be slow).
+_build/site/public/nrm_sk-HASH.png Image is too large (N.N MB) to convert to webp (build will be slow).
+ch_solutions.md:N unknown directive: exerciselist

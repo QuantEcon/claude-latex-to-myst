@@ -55,6 +55,8 @@ bash scripts/validate_fixture.sh all --against snapshot  # refactor-safety:
                                                           # regen must be byte-identical
                                                           # to the pinned _snapshot/ (gate)
 bash scripts/validate_fixture.sh all --pin               # (re)pin the snapshot
+bash scripts/validate_fixture.sh all --build           # + render gate: myst build
+                                                          # vs tests/baselines/build-*.txt (lesson 046)
 ```
 
 `--against snapshot` is the hard gate for a behavior-preserving change
