@@ -15,6 +15,21 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — starred display equations stay unnumbered (book-dp1 audit, #113)
+
+Starred LaTeX envs (`equation*` / `align*` / `gather*` / `multline*`) are
+unnumbered, but the converter emitted a bare `$$…$$` which mystmd **numbers**
+under book-wide numbering (`numbering: book: true`) — confirmed against myst
+v1.9.1: a label-less `$$` is assigned an `enumerator`. In book-dp1 ch_intro
+this turned the final equation number from the PDF's (1.34) into (1.61).
+`convert_equations` now emits starred envs as a `{math}` directive with
+`:enumerated: false` (no number, no counter advance); non-starred `equation`
+keeps the bare `$$` form (numbered, matching LaTeX). A block-separation pass
+hoists the directive onto its own block when pandoc's `--wrap=none` abuts it
+to surrounding prose. **Output change**: every starred display equation across
+consuming books re-emits as a `{math}` directive — re-pin fixture snapshots
+after a reviewed diff.
+
 ### Fixed — theorem/proof optional `[title]` (book-dp1 audit, #112)
 
 Pandoc **drops** the optional argument of a `\begin{theorem}[Title]` it can't

@@ -3095,11 +3095,14 @@ def test_convert_equations_separates_inline_close_from_display_open():
     """The infamous `$\\Xsf$ $$` case: pandoc emits an inline-math close
     immediately followed by a display-math open on the same line.
     Without the [^\\n] fix to `convert_equations`, MyST swallows everything
-    as inline math and the rest of the file gets blank-line-stripped."""
+    as inline math and the rest of the file gets blank-line-stripped.
+
+    Uses a numbered ``equation`` (the bare-``$$`` path); the starred form is
+    covered by ``test_convert_equations_starred_midline_blockified``."""
     text = (
-        "Let $\\sigma$ be $g_k$-greedy. Then $$\\begin{equation*}\n"
+        "Let $\\sigma$ be $g_k$-greedy. Then $$\\begin{equation}\n"
         "    \\sigma(x) = 1\n"
-        "\\end{equation*}$$ where things happen.\n"
+        "\\end{equation}$$ where things happen.\n"
     )
     out = postprocess.convert_equations(text)
     lines = out.split("\n")
@@ -3107,6 +3110,104 @@ def test_convert_equations_separates_inline_close_from_display_open():
     open_idx = next(i for i, l in enumerate(lines) if l.strip() == "$$" and i > 0)
     # The line above the opener should be blank (separator)
     assert lines[open_idx - 1] == ""
+
+
+def test_convert_equations_starred_equation_unnumbered():
+    """``equation*`` is unnumbered in LaTeX — emit a forced-unnumbered
+    ``{math}`` directive so book-wide numbering doesn't number it (#113)."""
+    text = "$$\\begin{equation*}\ny = 2\n\\end{equation*}$$\n"
+    out = postprocess.convert_equations(text)
+    assert '```{math}' in out
+    assert ':enumerated: false' in out
+    assert 'y = 2' in out
+    assert '(eq-' not in out
+
+
+def test_convert_equations_starred_align_unnumbered():
+    text = "$$\\begin{align*}\nz &= 3 \\\\\nw &= 4\n\\end{align*}$$\n"
+    out = postprocess.convert_equations(text)
+    assert '```{math}' in out
+    assert ':enumerated: false' in out
+    assert '\\begin{aligned}' in out
+
+
+def test_convert_equations_starred_align_split_rows_stay_unnumbered():
+    """An ``align*`` with 2+ per-row labels hits the split path; each row must
+    still be a forced-unnumbered ``{math}`` directive (not a bare numbered
+    ``$$``) so it doesn't consume an equation number (#113, Copilot review)."""
+    text = ("$$\\begin{align*}\n"
+            "a &= 1 \\label{eq:a} \\\\\n"
+            "b &= 2 \\label{eq:b}\n"
+            "\\end{align*}$$\n")
+    out = postprocess.convert_equations(text)
+    assert out.count('```{math}') == 2
+    assert out.count(':enumerated: false') == 2
+    assert ':label: eq-a' in out and ':label: eq-b' in out
+    # No bare ``$$ (label)`` rows leaked through (those would be numbered).
+    assert '$$ (eq-' not in out
+
+
+def test_convert_equations_starred_gather_with_label_unnumbered():
+    """A starred ``gather*`` carrying a ``\\label`` must stay unnumbered while
+    keeping the label referenceable (#113, Copilot review)."""
+    text = "$$\\begin{gather*}\nx = 1 \\label{eq:x}\n\\end{gather*}$$\n"
+    out = postprocess.convert_equations(text)
+    assert '```{math}' in out
+    assert ':enumerated: false' in out
+    assert ':label: eq-x' in out
+    assert '$$ (eq-x)' not in out
+
+
+def test_convert_equations_plain_equation_still_numbered_bare():
+    """A non-starred ``equation`` (numbered in LaTeX) keeps the bare ``$$``
+    form (mystmd numbers it under book-wide numbering)."""
+    text = "$$\\begin{equation}\nx = 1\n\\end{equation}$$\n"
+    out = postprocess.convert_equations(text)
+    assert '```{math}' not in out
+    assert out.strip().startswith('$$')
+
+
+def test_convert_equations_starred_midline_blockified():
+    """A starred env abutting prose mid-line must be hoisted to its own block
+    (a ``{math}`` directive can't share a line with prose)."""
+    text = (
+        "Let $\\sigma$ be greedy. Then $$\\begin{equation*}\n"
+        "    \\sigma(x) = 1\n"
+        "\\end{equation*}$$ where things happen.\n"
+    )
+    out = postprocess.convert_equations(text)
+    lines = out.split("\n")
+    open_idx = next(i for i, l in enumerate(lines) if l.strip() == "```{math}")
+    assert lines[open_idx - 1] == ""          # blank line before the fence
+    close_idx = next(i for i in range(open_idx + 1, len(lines))
+                     if lines[i].strip() == "```")
+    assert lines[close_idx + 1] == ""         # blank line after the fence
+    assert "where things happen." in out
+
+
+def test_starred_equation_inside_theorem_fence_sized():
+    """A starred display inside a theorem env: the enclosing directive's fence
+    must outrank the nested ```{math} fence, else the math closer terminates
+    the theorem early (#113 review — the issue-#79 ordering class). Requires
+    convert_equations to run BEFORE convert_environment_divs in the pipeline,
+    so this test goes through process_text."""
+    pandoc_out = (
+        '::: theorem\n'
+        '[]{#t:embed label="t:embed"} The bound holds:\n'
+        '\n'
+        '$$\\begin{equation*}\n'
+        '\\|u\\| \\leq C\n'
+        '\\end{equation*}$$\n'
+        '\n'
+        'for all $u$.\n'
+        ':::\n'
+    )
+    out = postprocess.process_text(pandoc_out, stem='t', title='T')
+    assert '````{prf:theorem}' in out        # 4-tick outer fence
+    assert '```{math}' in out                # 3-tick nested math
+    assert ':enumerated: false' in out
+    # The theorem's closer is the LAST fence — body content stays inside.
+    assert out.rstrip().endswith('````')
 
 
 def test_convert_equations_label_after_body_in_equation_env():

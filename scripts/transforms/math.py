@@ -195,6 +195,66 @@ def fix_spacing_superscript(text: str) -> str:
     return '\n'.join(out)
 
 
+def _blockify_math_directives(text: str) -> str:
+    """Ensure the ``{math}`` directives emitted for starred envs (#113) sit on
+    their own block. A directive is block-level — it cannot share a line with
+    prose — but pandoc's ``--wrap=none`` can abut the opening fence to
+    preceding prose (the inline-close/display-open ``$\\Xsf$ $$`` case) or
+    leave trailing prose after the closing fence. Split both so MyST parses
+    the directive. Only ``` ```{math} ``` blocks are touched (the only fenced
+    directive ``convert_equations`` emits)."""
+    if '```{math}' not in text:
+        return text
+    out: list[str] = []
+    in_math = False
+    for line in text.split('\n'):
+        if not in_math:
+            idx = line.find('```{math}')
+            if idx != -1:
+                before = line[:idx].rstrip()
+                if before:
+                    out.append(before)
+                    out.append('')
+                out.append(line[idx:])
+                in_math = True
+            else:
+                out.append(line)
+        else:
+            stripped = line.lstrip()
+            if stripped.startswith('```'):
+                # Closing fence; capture any trailing prose on the same line.
+                fence_end = len(line) - len(stripped) + 3
+                tail = line[fence_end:].lstrip()
+                out.append(line[:fence_end])
+                if tail:
+                    out.append('')
+                    out.append(tail)
+                in_math = False
+            else:
+                out.append(line)
+    return '\n'.join(out)
+
+
+def _emit_unnumbered_math(content: str, label: str | None = None) -> str:
+    """Emit an explicitly *unnumbered* display-math block (issue #113).
+
+    A starred LaTeX env (``equation*`` / ``align*`` / ``gather*`` /
+    ``multline*``) is unnumbered, but a bare ``$$…$$`` is still assigned a
+    number by mystmd under book-wide numbering (``numbering: book: true``).
+    Confirmed against myst v1.9.1: a label-less ``$$`` gets an ``enumerator``,
+    while a ``{math}`` directive with ``:enumerated: false`` does not (and
+    doesn't advance the counter). So starred envs round-trip as a ``{math}``
+    directive forced unnumbered — preserving LaTeX's numbering exactly."""
+    lines = ['```{math}']
+    if label:
+        lines.append(f':label: {label}')
+    lines.append(':enumerated: false')
+    lines.append('')
+    lines.append(content)
+    lines.append('```')
+    return '\n'.join(lines)
+
+
 def convert_equations(text: str) -> str:
     """Convert pandoc equation blocks to MyST format.
 
@@ -202,9 +262,11 @@ def convert_equations(text: str) -> str:
     - $$\\begin{equation}\\label{eq:foo} ... \\end{equation}$$
       → $$ ... $$ (eq-foo)
     - $$\\begin{equation*} ... \\end{equation*}$$
-      → $$ ... $$
+      → ```{math} :enumerated: false … ``` (unnumbered, #113)
     - $$\\begin{align} ... \\end{align}$$
       → $$ \\begin{aligned} ... \\end{aligned} $$ (label)
+    - $$\\begin{align*} ... \\end{align*}$$
+      → ```{math} :enumerated: false \\begin{aligned} … ``` (unnumbered, #113)
     """
     # Pattern: $$\begin{equation} ... \end{equation}$$ with optional \label.
     # The label may appear before, after, or interleaved with the body —
@@ -213,15 +275,25 @@ def convert_equations(text: str) -> str:
     # the document body, where the catch-all standalone-label regex
     # (further down) could otherwise span paragraphs and swallow content.
     def replace_equation(m):
-        body = m.group(1).strip()
+        star = m.group(1)
+        body = m.group(2).strip()
         lbl = re.search(r'\\label\{([^}]+)\}', body)
+        label = None
         if lbl:
             body = (body[:lbl.start()] + body[lbl.end():]).strip()
-            return f'$$\n{body}\n$$ ({convert_label_colons(lbl.group(1))})'
+            label = convert_label_colons(lbl.group(1))
+        # ``equation*`` is unnumbered in LaTeX — emit a forced-unnumbered
+        # block so book-wide numbering doesn't number it (#113). A plain
+        # ``equation`` (numbered in LaTeX) keeps the bare ``$$`` form, which
+        # mystmd numbers — matching LaTeX whether or not it carries a label.
+        if star:
+            return _emit_unnumbered_math(body, label)
+        if label:
+            return f'$$\n{body}\n$$ ({label})'
         return f'$$\n{body}\n$$'
 
     text = re.sub(
-        r'\$\$\\begin\{equation\*?\}\s*(.*?)\\end\{equation\*?\}\$\$',
+        r'\$\$\\begin\{equation(\*?)\}\s*(.*?)\\end\{equation\*?\}\$\$',
         replace_equation,
         text,
         flags=re.DOTALL
@@ -292,14 +364,22 @@ def convert_equations(text: str) -> str:
             rows.append((row, labels))
         return rows
 
-    def _emit_split_align(body: str, leading_label: str | None = None) -> str:
-        """Emit one ``$$...$$`` block per row, each with its own
-        trailing label (when present). A leading ``\\begin{align}\\label{}``
-        becomes a ``(name)=`` anchor above the first row block."""
+    def _emit_split_align(body: str, leading_label: str | None = None,
+                          starred: bool = False) -> str:
+        """Emit one block per row, each with its own label (when present). A
+        leading ``\\begin{align}\\label{}`` becomes a ``(name)=`` anchor above
+        the first row block. When ``starred`` (an ``align*`` that hit the split
+        path), each row is a forced-unnumbered ``{math}`` directive so the rows
+        don't consume equation numbers under book-wide numbering (#113)."""
         rows = _split_align_rows(body)
         out_blocks: list[str] = []
         for i, (content, labels) in enumerate(rows):
-            if labels:
+            if starred:
+                primary = convert_label_colons(labels[0]) if labels else None
+                block = _emit_unnumbered_math(content, primary)
+                for extra in labels[1:]:
+                    block = f'({convert_label_colons(extra)})=\n\n{block}'
+            elif labels:
                 primary = convert_label_colons(labels[0])
                 block = f'$$\n{content}\n$$ ({primary})'
                 # Multiple labels on the same row are rare but legal —
@@ -353,18 +433,26 @@ def convert_equations(text: str) -> str:
     # anchor rather than fusing it into the preceding prose paragraph).
     # The split path takes over when the body has 2+ labels or 2+ tags (#70 / #46).
     def replace_unlabeled_align(m):
-        body = m.group(1)
+        star = m.group(1)
+        body = m.group(2)
         if _align_needs_split(body):
-            return _emit_split_align(body)
+            return _emit_split_align(body, starred=bool(star))
         content, labels = _extract_math_labels(body.strip())
-        block = f'$$\n\\begin{{aligned}}\n{content}\n\\end{{aligned}}\n$$'
+        aligned = f'\\begin{{aligned}}\n{content}\n\\end{{aligned}}'
+        # ``align*`` is unnumbered in LaTeX; emit a forced-unnumbered block
+        # (#113). A plain ``align`` (numbered in LaTeX) keeps the bare ``$$``
+        # form so book-wide numbering numbers it.
+        if star:
+            block = _emit_unnumbered_math(aligned)
+        else:
+            block = f'$$\n{aligned}\n$$'
         if labels:
             anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in labels)
             return f'\n\n{anchors}\n\n{block}'
         return block
 
     text = re.sub(
-        r'\$\$\\begin\{align\*?\}\s*(.*?)\\end\{align\*?\}\$\$',
+        r'\$\$\\begin\{align(\*?)\}\s*(.*?)\\end\{align\*?\}\$\$',
         replace_unlabeled_align,
         text,
         flags=re.DOTALL
@@ -380,7 +468,20 @@ def convert_equations(text: str) -> str:
     # any additional labels (legitimate per-row in ``gather``) stack
     # as anchors above.
     def replace_math_block(m):
-        content, labels = _extract_math_labels(m.group(1).strip())
+        star = m.group(1)
+        content, labels = _extract_math_labels(m.group(2).strip())
+        # Starred multline*/gather* is unnumbered in LaTeX (#113) — emit a
+        # forced-unnumbered {math} directive REGARDLESS of label presence (a
+        # stray \label in a starred env still must not consume a number). The
+        # first label becomes :label:, any extras stack as anchors above.
+        if star:
+            primary = convert_label_colons(labels[0]) if labels else None
+            block = _emit_unnumbered_math(content, primary)
+            extra = labels[1:]
+            if extra:
+                anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in extra)
+                return f'\n\n{anchors}\n\n{block}'
+            return block
         block = f'$$\n{content}\n$$'
         if not labels:
             return block
@@ -393,14 +494,14 @@ def convert_equations(text: str) -> str:
         return block
 
     text = re.sub(
-        r'\$\$\\begin\{multline\*?\}\s*(.*?)\\end\{multline\*?\}\$\$',
+        r'\$\$\\begin\{multline(\*?)\}\s*(.*?)\\end\{multline\*?\}\$\$',
         replace_math_block,
         text,
         flags=re.DOTALL
     )
 
     text = re.sub(
-        r'\$\$\\begin\{gather\*?\}\s*(.*?)\\end\{gather\*?\}\$\$',
+        r'\$\$\\begin\{gather(\*?)\}\s*(.*?)\\end\{gather\*?\}\$\$',
         replace_math_block,
         text,
         flags=re.DOTALL
@@ -447,6 +548,10 @@ def convert_equations(text: str) -> str:
         r'\1\n\n$$\n',
         text
     )
+
+    # Hoist any ```{math} directive (starred env, #113) that ended up abutting
+    # prose onto its own block.
+    text = _blockify_math_directives(text)
 
     # Remove blank lines inside $$ blocks.
     # MyST treats blank lines as ending a math block, so:
