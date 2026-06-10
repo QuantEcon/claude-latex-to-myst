@@ -66,6 +66,14 @@ _DOUBLED_NOUN_REFS = [
     ('Programs',     'list-'),
     ('Proposition',  'p-'),
     ('Propositions', 'p-'),
+    # Tables route to ``{numref}`` (renders "Table N") just like figures,
+    # so prose "Table~\ref{tab:…}" doubles to "Table Table N" (#131).
+    # Both default table prefixes (``tab-``/``tbl-``) are covered,
+    # mirroring the Figure ``f-``/``fig-`` pair.
+    ('Table',        'tab-'),
+    ('Tables',       'tab-'),
+    ('Table',        'tbl-'),
+    ('Tables',       'tbl-'),
     ('Remark',       'r-'),
     ('Remarks',      'r-'),
     ('Theorem',      't-'),

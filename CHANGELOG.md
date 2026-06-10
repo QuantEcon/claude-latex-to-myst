@@ -15,6 +15,14 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — "Table Table N" doubled-noun refs (#131)
+
+`strip_doubled_noun_refs` now ships `Table`/`Tables` defaults for the
+`tab-` and `tbl-` label prefixes (mirroring the Figure `f-`/`fig-` pair),
+so prose like `Table~\ref{tab:…}` no longer renders as "Table Table N".
+Previously this required a per-book `doubled_noun_refs:` config entry
+(62 sites in the Deep-Learning book).
+
 ### Added — render-gate build smoke test (lesson 046)
 
 Five PR #103-series bugs were invisible to every structural gate and only
