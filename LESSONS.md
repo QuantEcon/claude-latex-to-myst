@@ -52,6 +52,7 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 043 | [Pandoc figure-caption emit drops citations and minipage sub-captions — recover from HTML attributes and sibling divs](lessons/043-pandoc-figure-caption-content-loss.md) | post-processing | 🟡 | codified |
 | 044 | [Migrating a construct fallback→marker re-implements a parser that starts incomplete — lock it with a .tex-rooted differential gate, not counts](lessons/044-marker-migration-needs-differential-tex-gate.md) | preprocess | 🔴 | codified |
 | 045 | [Pandoc's HTML figcaption flattens caption math for tikzpicture figures — extract the caption from source instead](lessons/045-tikzpicture-figcaption-math-flattened-by-pandoc-html.md) | post-processing | 🔴 | codified |
+| 046 | [Structural parity is not render parity — only a real `myst build` catches emission bugs the text can't show](lessons/046-structural-parity-is-not-render-parity.md) | validation | 🔴 | codified |
 
 ## By category
 
@@ -62,6 +63,7 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 - **katex:** 003, 006, 042
 - **myst:** 013, 040, 041
 - **tooling:** 009, 010, 038
+- **validation:** 046
 
 ## By axis: pandoc-quirk vs permanent (Phase 4 re-tagging)
 
@@ -79,7 +81,7 @@ coverage.**
   property of our own transforms/architecture, or tooling. Not pandoc's
   fault; won't disappear by marker-izing anything: 001, 002, 003, 004, 005,
   006, 008, 009, 010, 011, 012, 013, 018, 024, 025, 038 (superseded), 039,
-  040, 041, 042, 044.
+  040, 041, 042, 044, 046.
 
 ## Open (gaps to close on the next book)
 

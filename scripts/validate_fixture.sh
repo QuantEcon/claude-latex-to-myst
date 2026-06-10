@@ -52,6 +52,7 @@ FIXTURES_DIR="$PROJECT_DIR/fixtures"
 
 AGAINST="baseline"   # baseline (worked-on mystmd/) | snapshot (_snapshot/)
 PIN=0
+BUILD=0             # --build: render-gate smoke test (build_smoke.py, signal D)
 
 fixture_dir_for() {
   case "$1" in
@@ -198,16 +199,33 @@ validate_one() {
     fi
   fi
 
+  # --- signal D (opt-in): render-gate build smoke test ---------------------
+  # Lesson 046: structural parity is not render parity — five #103-series
+  # bugs were invisible to B and C and only surfaced in a real myst build.
+  local dfail=0
+  if [[ "$BUILD" -eq 1 ]]; then
+    echo "-- (D) build smoke test (myst build vs committed baseline) ..."
+    if python3 "$SCRIPT_DIR/build_smoke.py" --fixture "$fixture" \
+        --check "$PROJECT_DIR/tests/baselines/build-$book.txt"; then
+      echo "  (D) PASS"
+    else
+      echo "  (D) FAIL — new build warnings/errors vs tests/baselines/build-$book.txt"
+      dfail=1
+    fi
+  fi
+
   echo ""
-  # Verdict: snapshot mode is gated on byte-identity (C) alone — identical
-  # output implies identical validate.py, so B is informational there.
-  # Baseline (parity) mode reports B + the parity gap; B is the status signal.
+  # Verdict: snapshot mode is gated on byte-identity (C) — identical output
+  # implies identical validate.py, so B is informational there — plus the
+  # opt-in build smoke (D) when --build is given. Baseline (parity) mode
+  # reports B (+ D when --build) and the parity gap; B/D are the status
+  # signals.
   if [[ "$AGAINST" == snapshot ]]; then
-    [[ "$cfail" -eq 0 ]] && echo "  RESULT: $book behavior-preserved" || echo "  RESULT: $book REGRESSED vs snapshot"
-    return "$cfail"
+    [[ "$cfail" -eq 0 && "$dfail" -eq 0 ]] && echo "  RESULT: $book behavior-preserved" || echo "  RESULT: $book REGRESSED vs snapshot"
+    return $(( cfail || dfail ))
   else
-    echo "  RESULT: $book validate=$([[ "$bfail" -eq 0 ]] && echo ok || echo FAIL), parity gap above"
-    return "$bfail"
+    echo "  RESULT: $book validate=$([[ "$bfail" -eq 0 ]] && echo ok || echo FAIL)$([[ "$BUILD" -eq 1 ]] && { [[ "$dfail" -eq 0 ]] && echo ", build=ok" || echo ", build=FAIL"; }), parity gap above"
+    return $(( bfail || dfail ))
   fi
 }
 
@@ -221,6 +239,7 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { echo "ERROR: --against needs a value (baseline|snapshot)" >&2; exit 2; }
       AGAINST="$2"; shift ;;
     --pin) PIN=1 ;;
+    --build) BUILD=1 ;;
     -h|--help) awk 'NR==1 && /^#!/ {next} /^#/ {sub(/^# ?/,""); print; next} {exit}' "$0"; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; exit 2 ;;
   esac
@@ -230,7 +249,7 @@ case "$AGAINST" in
   baseline|snapshot) ;;
   *) echo "ERROR: invalid --against '$AGAINST' (use baseline|snapshot)" >&2; exit 2 ;;
 esac
-[[ ${#TARGETS[@]} -eq 0 ]] && { echo "Usage: validate_fixture.sh <dp1|dp2|deep-learning|all> [--against baseline|snapshot] [--pin]" >&2; exit 2; }
+[[ ${#TARGETS[@]} -eq 0 ]] && { echo "Usage: validate_fixture.sh <dp1|dp2|deep-learning|all> [--against baseline|snapshot] [--pin] [--build]" >&2; exit 2; }
 
 overall=0
 for t in "${TARGETS[@]}"; do

@@ -641,3 +641,35 @@ def test_backtick_in_indented_fence_info_string_flagged():
     md = "- item\n\n  ```{prf:proof} Proof of {prf:ref}`p-x`\n  Body.\n  ```\n"
     diags = v.check_resolution(md, 'f.md', bib_keys=None)
     assert any('backtick in backtick-fence info string' in d for d in diags)
+
+
+def test_build_smoke_normalize():
+    """build_smoke normalization folds run-specific noise (hashes, temp
+    dirs, numbers) so two builds of identical content compare equal."""
+    import build_smoke as bs
+    log = (
+        "📖 Built ch_intro.md in 3.33 s.\n"
+        "⚠️  ch_mdps.md:10 label \"sss-fsmdp\" replaced with \"ss-gfsmdp\"\n"
+        "⛔️ ch_x.md Cannot find image \"fig/foo_12.pdf\" in /private/tmp/build-xyz\n"
+        "⚠️  _build/site/public/nrm_sk-ae78155e96e799fa.png Image is too large (2.29 MB)\n"
+    )
+    out = bs.normalize(log)
+    assert len(out) == 3                      # the Built line is not a marker
+    assert 'ch_mdps.md:N label "sss-fsmdp" replaced with "ss-gfsmdp"' in out
+    assert any('TMPDIR' in l for l in out)
+    assert any('-HASH.png' in l for l in out)
+    # determinism: same input → same output
+    assert bs.normalize(log) == out
+
+
+def test_build_smoke_multiset_diff_detects_count_increase():
+    """Copilot #129: identical warnings recur (DL baseline has 15 duplicate
+    'missing heading depth' lines) — a count INCREASE must register as new,
+    which a set-difference would miss."""
+    from collections import Counter
+    import build_smoke as bs
+    baseline = ['w missing heading depth N', 'w missing heading depth N']
+    current = baseline + ['w missing heading depth N']   # 2 -> 3 occurrences
+    new = Counter(current) - Counter(baseline)
+    assert sum(new.values()) == 1
+    assert list(new) == ['w missing heading depth N']

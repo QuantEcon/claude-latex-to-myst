@@ -15,6 +15,17 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Added — render-gate build smoke test (lesson 046)
+
+Five PR #103-series bugs were invisible to every structural gate and only
+surfaced in a real `myst build` (lesson 046: *structural parity is not render
+parity*). New `scripts/build_smoke.py` overlays a fixture's `regen/*.md` onto
+a temp copy of its worked-on `mystmd/`, builds, normalizes the `⚠️`/`⛔`
+lines, and diffs against a committed per-book baseline
+(`tests/baselines/build-<book>.txt`; dp1's is **empty** — zero warnings is
+the pinned contract). Wired into the harness as opt-in **signal (D)**:
+`validate_fixture.sh <book> --build`. Skips cleanly when `myst` is absent.
+
 ### Fixed — blockify tail re-scan + `{math}`-aware counting (parity-run findings)
 
 Found by the post-merge dp1/dp2/DL parity run over #114–#120:
