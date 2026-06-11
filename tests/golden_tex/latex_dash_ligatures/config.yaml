@@ -1,0 +1,8 @@
+# #1: LaTeX --/--- prose ligatures convert to Unicode en/em dashes
+# post-pandoc; verbatim blocks, inline code, and math stay untouched.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Dash Ligatures" }

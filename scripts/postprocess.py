@@ -75,6 +75,7 @@ from transforms.typography import (  # noqa: E402  (re-exports for P3a)
     strip_pandoc_html_separators,
     convert_pandoc_spans,
     convert_epigraphs,
+    convert_latex_dashes,
     cleanup_typography,
     compress_directive_whitespace,
 )
@@ -522,6 +523,7 @@ def process_text(text: str, stem: str, title: str | None = None,
     text = join_split_inline_math(text)
     text = ensure_blank_after_display_math(text)   # adds blank lines
     text = convert_pandoc_spans(text)              # [x]{.smallcaps} → X (#124)
+    text = convert_latex_dashes(text)              # --/--- → –/— in prose; AFTER decoders (markers carry '--'), fence/math/comment-aware (#1)
     text = cleanup_typography(text)                # caps blank-line runs; strips \qedhere
     text = strip_blank_lines_in_math(text)         # MUST run AFTER \qedhere removal (issue #11)
     text = strip_footnote_refs(text)               # operates on cleaned text
