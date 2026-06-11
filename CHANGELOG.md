@@ -15,6 +15,21 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — algorithm2e statement lines render numbered, not bulleted (#109)
+
+book-dp1/dp2 load `algorithm2e` with `linesnumbered`, so the PDF numbers
+every algorithm line (one flat global counter, including the `end` lines).
+The converter emitted bullet lists. `resolve_algorithms` now renders
+algorithm2e bodies as nested ordered lists (`_bullets_to_numbered` in
+`transforms/algorithms.py`) — the closest MyST-expressible form, since
+Markdown ordered lists renumber per nesting level and can't carry one
+flat counter across nesting. Block-lifted `{math}` continuations are
+re-indented to the new content column. algpseudocode bodies keep bullets
+(that dialect numbers lines only under `\begin{algorithmic}[1]`). Closes
+the last open item of #109; items 1/2/4/5 (uncaptioned `:nonumber:`,
+`do`/`end` loop delimiters, soft-wrap step joining, `\tcp` leakage)
+shipped with the #104–#113 series.
+
 ### Added — LaTeX `--`/`---` ligatures convert to Unicode en/em dashes (#1)
 
 `convert_latex_dashes` (`transforms/typography.py`, late in

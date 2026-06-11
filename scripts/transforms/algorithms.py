@@ -448,6 +448,45 @@ def _algpseudo_convert_body(body: str) -> str:
     return '\n'.join(lines).strip()
 
 
+def _bullets_to_numbered(md: str) -> str:
+    """Convert the bullet list emitted by ``_algo_convert_body`` into nested
+    ordered lists, so algorithm2e statement lines render numbered (#109).
+
+    book-dp1/dp2 load ``algorithm2e`` with ``linesnumbered``, which numbers
+    every printed line in the PDF — including ``end`` — with one flat global
+    counter across nesting. Markdown ordered lists renumber per nesting
+    level, so flat-global numbering isn't expressible; nested ordered lists
+    (each level restarting at 1) are the closest MyST-native form and are
+    what we emit. Continuation lines (block-lifted ``{math}`` displays from
+    ``_expand_math_tokens``) are re-indented to the new content column,
+    which shifts as the ``N.`` marker is wider than ``-``.
+    """
+    out: list[str] = []
+    counters: dict[int, int] = {}   # nesting level → item counter
+    content_cols: dict[int, int] = {}  # nesting level → output content column
+    for line in md.split('\n'):
+        if not line.strip():
+            out.append('')
+            continue
+        stripped = line.lstrip(' ')
+        old_indent = len(line) - len(stripped)
+        if stripped.startswith('- '):
+            level = old_indent // 2
+            # Returning to a shallower level resets deeper counters.
+            for deeper in [k for k in counters if k > level]:
+                del counters[deeper]
+            counters[level] = counters.get(level, 0) + 1
+            new_indent = content_cols.get(level - 1, 0) if level > 0 else 0
+            marker = f'{counters[level]}.'
+            content_cols[level] = new_indent + len(marker) + 1
+            out.append(' ' * new_indent + marker + ' ' + stripped[2:])
+        else:
+            # Continuation line: old content column is 2*level + 2.
+            level = max(old_indent // 2 - 1, 0)
+            out.append(' ' * content_cols.get(level, old_indent) + stripped)
+    return '\n'.join(out)
+
+
 def _algo_convert_body(body: str) -> str:
     """Convert an algorithm2e body to a Markdown bullet list.
 
@@ -718,6 +757,14 @@ def resolve_algorithms(text: str) -> str:
         except Exception:
             body = ''
         converted = _algo_convert_body(body)
+        # algorithm2e bodies render with numbered statement lines (#109) —
+        # dp1/dp2 load the package with ``linesnumbered``, so the PDF numbers
+        # every line. algpseudocode bodies (the dispatch branch inside
+        # ``_algo_convert_body``) keep bullets: that dialect numbers lines
+        # only under ``\begin{algorithmic}[1]``, which is out of scope here.
+        if not (_ALGPSEUDO_KEYWORD_RE.search(body)
+                or '\\begin{algorithmic}' in body):
+            converted = _bullets_to_numbered(converted)
         # Size the fence to outrank any code fence in the body (issue #79
         # / lesson 040); normally a no-op for pseudocode, but defensive
         # against an algorithm body that embeds a fenced block.

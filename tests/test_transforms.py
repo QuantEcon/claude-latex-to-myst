@@ -44,14 +44,14 @@ def test_resolve_algorithms_simple_body():
     out = postprocess.resolve_algorithms(_algo_marker(body))
     assert "```{prf:algorithm} T" in out
     assert ":label: algo-test" in out
-    # Statements emit as bullets
-    assert "- input $X_0$" in out
-    assert "- $t \\leftarrow 0$" in out
-    # While header (algorithm2e `do … end`), indented inner bullets, closer
-    assert "- while $t < T$ do" in out
-    assert "  - observe $X_t$" in out
-    assert "  - choose $A_t$" in out
-    assert "- end" in out
+    # Statements emit as numbered lines (#109 — linesnumbered parity)
+    assert "1. input $X_0$" in out
+    assert "2. $t \\leftarrow 0$" in out
+    # While header (algorithm2e `do … end`), indented inner lines, closer
+    assert "3. while $t < T$ do" in out
+    assert "   1. observe $X_t$" in out
+    assert "   2. choose $A_t$" in out
+    assert "4. end" in out
 
 
 def test_resolve_algorithms_kwin_kwout_return():
@@ -62,16 +62,16 @@ def test_resolve_algorithms_kwin_kwout_return():
         "\\Return{$u_k$}\n"
     )
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    assert "- input: a function $f$" in out
-    assert "- output: a fixed point" in out
-    assert "- return $u_k$" in out
+    assert "1. input: a function $f$" in out
+    assert "2. output: a fixed point" in out
+    assert "4. return $u_k$" in out
 
 
 def test_resolve_algorithms_lif_single_line():
     body = "\\lIf{$x > 0$}{break}\n"
     out = postprocess.resolve_algorithms(_algo_marker(body))
     # Single-line if: "if cond: body" flattened
-    assert "- if $x > 0$: break" in out
+    assert "1. if $x > 0$: break" in out
 
 
 def test_resolve_algorithms_repeat_with_inner():
@@ -82,8 +82,8 @@ def test_resolve_algorithms_repeat_with_inner():
         "}\n"
     )
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    assert "- repeat:" in out
-    assert "  - $u \\leftarrow Tu$" in out
+    assert "1. repeat:" in out
+    assert "   1. $u \\leftarrow Tu$" in out
 
 
 def test_resolve_algorithms_strips_textnormal():
@@ -92,17 +92,17 @@ def test_resolve_algorithms_strips_textnormal():
     aren't math, so the wrapper has no markdown equivalent."""
     body = "\\While{\\textnormal{true}}\n{\n    do stuff \\;\n}\n"
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    assert "- while true do" in out
+    assert "1. while true do" in out
     assert "\\textnormal" not in out
 
 
 def test_resolve_algorithms_unbraced_return():
     """FOLLOWUP #014, Gap C: ``\\Return $\\theta$`` (no braces) should
-    render as ``- return $\\theta$``. The existing parser only handled
-    ``\\Return{x}``."""
+    render as a ``return $\\theta$`` statement line (the second numbered
+    item here, #109). The existing parser only handled ``\\Return{x}``."""
     body = "$\\theta \\leftarrow 0$ \\;\n\\Return $\\theta$\n"
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    assert "- return $\\theta$" in out
+    assert "2. return $\\theta$" in out
     # The literal LaTeX shouldn't survive
     assert "\\Return" not in out
 
@@ -111,7 +111,7 @@ def test_resolve_algorithms_unbraced_kwin():
     """Same unbraced fallback applies to \\KwIn / \\KwOut / \\KwResult."""
     body = "\\KwIn data $\\Dsf$ and tolerance $\\tau$ \\;\n"
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    assert "- input: data $\\Dsf$ and tolerance $\\tau$" in out
+    assert "1. input: data $\\Dsf$ and tolerance $\\tau$" in out
     assert "\\KwIn" not in out
 
 
@@ -120,7 +120,7 @@ def test_resolve_algorithms_braced_return_still_works():
     the new unbraced fallback."""
     body = "\\Return{$u_k$}\n"
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    assert "- return $u_k$" in out
+    assert "1. return $u_k$" in out
 
 
 def test_resolve_algorithms_handles_unescaped_marker():
@@ -144,6 +144,22 @@ def test_resolve_algorithms_uncaptioned_is_nonumber_no_label():
     assert "NOLABEL" not in out
 
 
+def test_resolve_algorithms_algpseudocode_body_keeps_bullets():
+    """The numbered-line rendering (#109) applies to algorithm2e bodies
+    only — an algorithmic/algpseudocode body inside an ``algorithm``
+    wrapper numbers lines only under ``\\begin{algorithmic}[1]``, so the
+    dispatch branch keeps bullets."""
+    body = (
+        "\\begin{algorithmic}\n"
+        "\\STATE $k \\gets 0$\n"
+        "\\STATE $v \\gets v_0$\n"
+        "\\end{algorithmic}\n"
+    )
+    out = postprocess.resolve_algorithms(_algo_marker(body))
+    assert "- $k \\gets 0$" in out
+    assert "1. " not in out
+
+
 def test_resolve_algorithms_inline_eqref_and_texttt():
     """Inline \\eqref / \\texttt inside an algorithm body convert instead of
     leaking verbatim (#106)."""
@@ -162,13 +178,13 @@ def test_resolve_algorithms_tcp_comment_not_leaked():
     assert "\\tcp" not in out
 
 
-def test_resolve_algorithms_softwrapped_step_stays_one_bullet():
+def test_resolve_algorithms_softwrapped_step_stays_one_step():
     """A single \\;-terminated step that soft-wrapped across source lines is
-    one bullet, not two (#109)."""
+    one numbered statement line, not two (#109)."""
     body = "the controller receives a reward $R_t$ that\ndepends on the action \\;"
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    bullets = [ln for ln in out.split("\n") if ln.lstrip().startswith("- ")]
-    assert bullets == ["- the controller receives a reward $R_t$ that depends on the action"]
+    steps = [ln for ln in out.split("\n") if re.match(r"\s*\d+\. ", ln)]
+    assert steps == ["1. the controller receives a reward $R_t$ that depends on the action"]
 
 
 def test_resolve_algorithms_inline_equation_block_lifted():
@@ -196,16 +212,16 @@ def test_resolve_algorithms_inline_equation_block_lifted():
     assert "\\begin{equation*}" not in out
     # Blank-line-separated {math} block at list-item continuation indent.
     assert (
-        "  - $\\sigma_{k+1} \\leftarrow$ a policy satisfying\n"
+        "   1. $\\sigma_{k+1} \\leftarrow$ a policy satisfying\n"
         "\n"
-        "    ```{math}\n"
-        "    :enumerated: false\n"
+        "      ```{math}\n"
+        "      :enumerated: false\n"
         "\n"
-        "    \\sigma_{k+1}(w) \\in \\argmax_{w' \\in \\Gamma(w)}"
+        "      \\sigma_{k+1}(w) \\in \\argmax_{w' \\in \\Gamma(w)}"
         " \\left\\{ r(w, w') \\right\\}\n"
-        "    ```\n"
+        "      ```\n"
         "\n"
-        "  - $k \\leftarrow k + 1$" in out
+        "   2. $k \\leftarrow k + 1$" in out
     )
 
 
@@ -241,7 +257,7 @@ def test_resolve_algorithms_two_inline_envs_same_indent():
     out = postprocess.resolve_algorithms(_algo_marker(body))
     fences = [ln for ln in out.split("\n") if ln.lstrip().startswith("```{math}")]
     assert len(fences) == 2
-    assert fences[0] == fences[1] == "    ```{math}"
+    assert fences[0] == fences[1] == "      ```{math}"
 
 
 def test_resolve_algorithms_inline_equation_with_label():
@@ -263,8 +279,8 @@ def test_resolve_algorithms_math_thin_space_not_a_terminator():
     )
     out = postprocess.resolve_algorithms(_algo_marker(body))
     assert "x \\; = \\; 1" in out
-    bullets = [ln for ln in out.split("\n") if ln.lstrip().startswith("- ")]
-    assert len(bullets) == 2  # "satisfying" + the k-update
+    steps = [ln for ln in out.split("\n") if re.match(r"\s*\d+\. ", ln)]
+    assert len(steps) == 2  # "satisfying" + the k-update
 
 
 # ── Exercise markers (#69) ───────────────────────────────────────────────────
