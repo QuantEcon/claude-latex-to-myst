@@ -98,8 +98,8 @@ def test_resolve_algorithms_strips_textnormal():
 
 def test_resolve_algorithms_unbraced_return():
     """FOLLOWUP #014, Gap C: ``\\Return $\\theta$`` (no braces) should
-    render as ``- return $\\theta$``. The existing parser only handled
-    ``\\Return{x}``."""
+    render as a ``return $\\theta$`` statement line (the second numbered
+    item here, #109). The existing parser only handled ``\\Return{x}``."""
     body = "$\\theta \\leftarrow 0$ \\;\n\\Return $\\theta$\n"
     out = postprocess.resolve_algorithms(_algo_marker(body))
     assert "2. return $\\theta$" in out
@@ -178,9 +178,9 @@ def test_resolve_algorithms_tcp_comment_not_leaked():
     assert "\\tcp" not in out
 
 
-def test_resolve_algorithms_softwrapped_step_stays_one_bullet():
+def test_resolve_algorithms_softwrapped_step_stays_one_step():
     """A single \\;-terminated step that soft-wrapped across source lines is
-    one bullet, not two (#109)."""
+    one numbered statement line, not two (#109)."""
     body = "the controller receives a reward $R_t$ that\ndepends on the action \\;"
     out = postprocess.resolve_algorithms(_algo_marker(body))
     steps = [ln for ln in out.split("\n") if re.match(r"\s*\d+\. ", ln)]
