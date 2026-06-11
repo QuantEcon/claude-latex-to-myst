@@ -667,6 +667,41 @@ def test_description_marker_term_with_brackets_and_math():
     assert items[0][0].startswith("$x \\in [0, 1")
 
 
+def test_description_commented_item_not_resurrected():
+    """#138: a %-commented \\item[Term] must not become a live DESCITEM —
+    pre-fix the commented-out term was published in the rendered
+    definition list. The commented line rides inside the preceding
+    item's body, where pandoc drops the % comment."""
+    tex = (
+        "\\begin{description}\n"
+        "\\item[Alpha] First term.\n"
+        "% \\item[Beta] Commented term.\n"
+        "\\item[Gamma] Third term.\n"
+        "\\end{description}\n"
+    )
+    out = desc.process_text(tex)
+    items = _decode_desc(out)
+    assert [t for t, _ in items] == ["Alpha", "Gamma"]
+    # The commented line stays inside Alpha's body for pandoc to drop.
+    assert "% \\item[Beta] Commented term." in items[0][1]
+
+
+def test_description_commented_nest_tokens_do_not_corrupt_depth():
+    """#138: commented \\begin{itemize}/\\end{itemize} lines are not
+    depth events — pre-fix a commented opener left depth elevated and
+    swallowed every later real \\item into the preceding body."""
+    tex = (
+        "\\begin{description}\n"
+        "\\item[Alpha] First term.\n"
+        "% \\begin{itemize}\n"
+        "\\item[Beta] Second term.\n"
+        "\\end{description}\n"
+    )
+    out = desc.process_text(tex)
+    items = _decode_desc(out)
+    assert [t for t, _ in items] == ["Alpha", "Beta"]
+
+
 # ── Standalone algorithmic markers (issue #20) ───────────────────────────────
 
 
@@ -1089,6 +1124,65 @@ def test_enum_parse_ignores_nested_item_boundaries():
     assert "\\begin{itemize}" in items[0][1]
 
 
+def test_enum_marker_commented_exercise_not_resurrected():
+    """#138: a %-commented ``\\item\\label{ex:..}`` must not become a
+    live {exercise} directive — pre-fix the commented-out exercise was
+    published AND shifted the numbering of every exercise after it.
+    The commented line rides inside the preceding exercise's content,
+    where pandoc drops the % comment."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "\\item\\label{ex:ch1:1} Real exercise one.\n"
+        "% \\item\\label{ex:ch1:2} Commented-out exercise.\n"
+        "\\item\\label{ex:ch1:3} Real exercise two.\n"
+        "\\end{enumerate}\n"
+    )
+    out = enum_m.process_text(tex)
+    assert out.count("EXERCISE-START") == 2
+    assert "label=ex-ch1-1" in out
+    assert "label=ex-ch1-3" in out
+    assert "label=ex-ch1-2" not in out
+    # The commented line survives inside exercise one's content.
+    assert "% \\item\\label{ex:ch1:2} Commented-out exercise." in out
+
+
+def test_enum_marker_commented_nest_opener_does_not_disqualify():
+    """#138: a commented ``% \\begin{itemize}`` is not a depth event —
+    pre-fix it left the depth elevated, so the following real \\item
+    wasn't seen as a boundary and the whole block was disqualified
+    (silent exercise-label loss)."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "\\item\\label{ex:a} stem a\n"
+        "% \\begin{itemize}\n"
+        "\\item\\label{ex:b} stem b\n"
+        "\\end{enumerate}\n"
+    )
+    out = enum_m.process_text(tex)
+    assert out.count("EXERCISE-START") == 2
+    assert "label=ex-a" in out and "label=ex-b" in out
+
+
+def test_enum_marker_commented_end_does_not_close_block_early():
+    """#138: a commented ``% \\end{enumerate}`` inside the block must not
+    terminate it — pre-fix the block-pairing scan closed at the comment,
+    truncating the block and leaking the tail."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "\\item\\label{ex:a} stem a\n"
+        "% \\end{enumerate}\n"
+        "\\item\\label{ex:b} stem b\n"
+        "\\end{enumerate}\n"
+    )
+    out = enum_m.process_text(tex)
+    assert out.count("EXERCISE-START") == 2
+    assert "label=ex-a" in out and "label=ex-b" in out
+    # Wrapper fully dissolved: only the COMMENTED \end{enumerate} remains
+    # (inside ex:a's content, where pandoc drops it).
+    assert not re.search(r"^\\end\{enumerate\}", out, re.MULTILINE)
+    assert "% \\end{enumerate}" in out
+
+
 # ── Declaration font forms + texttt brace flattening (#107 gap1, #105) ─────────
 
 
@@ -1278,6 +1372,40 @@ def test_custom_label_enumerate_only_commented_items_bails():
         "\\end{enumerate}\n"
     )
     assert clbl.process_text(tex) == tex
+
+
+def test_custom_label_enumerate_commented_nest_does_not_bail():
+    """#138: a commented ``% \\begin{itemize}`` is not a real nested
+    list — it must not trigger the nested-env bail."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "    \\item[(a)] first\n"
+        "    % \\begin{itemize}\n"
+        "    \\item[(b)] second\n"
+        "\\end{enumerate}\n"
+    )
+    out = clbl.process_text(tex)
+    assert "\\begin{enumerate}" not in out
+    assert "(a) first" in out
+    assert "(b) second" in out
+
+
+def test_custom_label_enumerate_commented_end_does_not_close_early():
+    """#138: a commented ``% \\end{enumerate}`` must not terminate the
+    block-pairing scan early."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "    \\item[(a)] first\n"
+        "    % \\end{enumerate}\n"
+        "    \\item[(b)] second\n"
+        "\\end{enumerate}\n"
+    )
+    out = clbl.process_text(tex)
+    # Only the COMMENTED \end{enumerate} remains (inside (a)'s content,
+    # where pandoc drops it); the real wrapper is dissolved.
+    assert not re.search(r"^\s*\\end\{enumerate\}", out, re.MULTILINE)
+    assert "(a) first" in out
+    assert "(b) second" in out
 
 
 def test_custom_label_enumerate_bails_on_content_before_first_item():

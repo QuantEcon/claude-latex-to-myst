@@ -40,10 +40,16 @@ _ITEM_RE = re.compile(r'\\item\b\s*')
 def _iter_top_level_enumerates(text: str):
     """Yield ``(block_start, body_start, body_end, block_end)`` for each
     outermost enumerate, pairing begin/end by depth (mirrors
-    ``_apply_enumerate_markers``, lesson 039)."""
+    ``_apply_enumerate_markers``, lesson 039). Tokens on ``%``-commented
+    lines are not events (#138) — a commented ``\\end{enumerate}`` would
+    otherwise close the block early."""
     events = sorted(
-        [(m.start(), m.end(), 'open') for m in _ENUM_OPEN_RE.finditer(text)]
-        + [(m.start(), m.end(), 'close') for m in _ENUM_CLOSE_RE.finditer(text)]
+        (start, end, kind)
+        for start, end, kind in (
+            [(m.start(), m.end(), 'open') for m in _ENUM_OPEN_RE.finditer(text)]
+            + [(m.start(), m.end(), 'close') for m in _ENUM_CLOSE_RE.finditer(text)]
+        )
+        if not _starts_in_comment(text, start)
     )
     depth = 0
     block_start = body_start = None
@@ -87,8 +93,11 @@ def parse_custom_label_items(body: str) -> list[tuple[str, str]] | None:
     the leftover ``]…`` then rides into the content harmlessly, and no
     real corpus uses it.
     """
-    if _NEST_RE.search(body):
-        return None  # nested list env — not modelled
+    if any(
+        not _starts_in_comment(body, m.start())
+        for m in _NEST_RE.finditer(body)
+    ):
+        return None  # nested list env — not modelled (commented ones aren't real, #138)
     # A ``%``-commented ``\item`` is not a boundary (Copilot review on
     # #136): treating it as one would split at the comment and emit its
     # text as a live paragraph — effectively uncommenting it. Filtered
