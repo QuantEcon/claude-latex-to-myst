@@ -27,7 +27,11 @@ import re
 from dataclasses import asdict, dataclass, field
 
 from conversion_context import current_context
-from ._helpers import complete_image_path, convert_label_colons
+from ._helpers import (
+    complete_image_path,
+    convert_label_colons,
+    tikz_map_entry,
+)
 from ._markers import decode_payload, encode_payload
 
 
@@ -385,10 +389,13 @@ def decode_marker(payload_b64: str) -> FigureSpec:
 # ── post-pandoc resolver ────────────────────────────────────────────────────
 
 
-def _lookup_tikz_map(name: str | None, ctx=None) -> tuple[str, str | None] | None:
+def _lookup_tikz_map(
+    name: str | None, ctx=None
+) -> tuple[str, str | None, bool] | None:
     """Look up ``name`` in the per-project ``ctx.tikz_figure_map`` (populated
-    from the consumer book's overrides file). Returns
-    ``(path, caption_override)`` or None.
+    from the consumer book's overrides file). Returns the normalised
+    ``(path, caption_override, per_subfigure)`` triple or None — entries
+    may be 2-tuples or carry the ``'per-subfigure'`` opt-out tag (#75).
 
     The map is a runtime concern: consumer books call ``apply_config`` then
     ``load_overrides`` which populate the context; the parsers / emitters
@@ -397,7 +404,8 @@ def _lookup_tikz_map(name: str | None, ctx=None) -> tuple[str, str | None] | Non
     if not name:
         return None
     ctx = ctx if ctx is not None else current_context()
-    return ctx.tikz_figure_map.get(name)
+    entry = ctx.tikz_figure_map.get(name)
+    return tikz_map_entry(entry) if entry is not None else None
 
 
 def _figure_ext_map(ctx=None) -> dict:
@@ -468,12 +476,17 @@ def _emit_figure(spec: FigureSpec, ctx=None) -> str:
         # (dp1 ``f-du`` → ``du.svg``) means the individual panels are just
         # the pre-render source. The preprocessor can't see the map (#98 #3),
         # so this check lives here, post-pandoc, where the map is visible.
+        # An entry tagged ``'per-subfigure'`` (#75) is not a composite —
+        # skip the override and expand panels normally.
         mapped = _lookup_tikz_map(spec.name, ctx)
         if mapped is not None:
-            mapped_path, caption_override = mapped
-            return _emit_figure_directive(
-                mapped_path, spec.name, caption_override if caption_override else body
-            )
+            mapped_path, caption_override, per_subfigure = mapped
+            if not per_subfigure:
+                return _emit_figure_directive(
+                    mapped_path,
+                    spec.name,
+                    caption_override if caption_override else body,
+                )
         parts: list[str] = []
         outer_used = False
         for i, sub in enumerate(spec.subfigures):
@@ -517,7 +530,7 @@ def _emit_figure(spec: FigureSpec, ctx=None) -> str:
     # (caught by Copilot review on PR #97).
     mapped = _lookup_tikz_map(spec.name, ctx)
     if mapped is not None:
-        mapped_path, caption_override = mapped
+        mapped_path, caption_override, _ = mapped
         final_body = caption_override if caption_override else body
         return _emit_figure_directive(mapped_path, spec.name, final_body)
 

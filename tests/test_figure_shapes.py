@@ -438,6 +438,50 @@ def test_nested_no_composite_override_falls_back_to_per_subfigure(monkeypatch):
     assert ':name: fig-b' in out
 
 
+def test_nested_per_subfigure_optout_splits_and_resolves(monkeypatch):
+    """#75: an outer-label ``TIKZ_FIGURE_MAP`` entry tagged
+    ``'per-subfigure'`` is NOT a true composite — the #49 fast path
+    must skip it and fall back to per-subfigure splitting, where each
+    panel admonition resolves through the map individually.
+
+    Replicates book-dp2's ``f-adp_three_policies``: two separate panel
+    SVGs (no composite exists), the map keyed by the outer label (panel
+    A inherits it — lesson 021) and the inner ``_b`` label. Pre-fix the
+    fast path collapsed the float to one figure and silently dropped
+    the second panel (book-dp2#154)."""
+    monkeypatch.setattr(
+        postprocess, 'TIKZ_FIGURE_MAP',
+        {
+            'f-adp': ('figures/adp.svg', None, 'per-subfigure'),
+            'f-adp-b': ('figures/adp_fp.svg', None),
+        },
+    )
+    # TikZ panels: no <img>/<embed> src, so the split emits admonition
+    # placeholders that resolve_tikz_figures substitutes from the map.
+    src = (
+        '<figure id="f:adp">\n'
+        '<figure id="f:adp-a">\n'
+        '<figcaption>Three policy operators</figcaption>\n'
+        '</figure>\n'
+        '<figure id="f:adp-b">\n'
+        '<figcaption>Fixed points</figcaption>\n'
+        '</figure>\n'
+        '<figcaption>An ADP on R</figcaption>\n'
+        '</figure>\n'
+        'See {numref}`f-adp`.\n'
+    )
+    out = postprocess.convert_html_figures(src)
+    out = postprocess.resolve_tikz_figures(out, 'ch_test')
+    # BOTH panels survive as figures — the second panel was the one
+    # silently dropped pre-fix.
+    assert '```{figure} figures/adp.svg' in out
+    assert '```{figure} figures/adp_fp.svg' in out
+    # Outer label lands on panel A (lesson 021); panel B keeps its own.
+    assert ':name: f-adp' in out
+    assert ':name: f-adp-b' in out
+    assert 'Fixed points' in out
+
+
 def test_nested_composite_override_outer_caption_with_ref_resolves(monkeypatch):
     """The outer caption may contain pandoc-resolved ``<a>`` ref
     anchors (``\\ref{}`` resolves to an HTML link with

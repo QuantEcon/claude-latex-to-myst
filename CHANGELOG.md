@@ -15,6 +15,20 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Added — `TIKZ_FIGURE_MAP` `'per-subfigure'` opt-out for non-composite outer labels (#75)
+
+The #49 composite fast path collapses a subfigure float to a single
+figure whenever the *outer* label has a map entry — silently dropping
+every other panel when the entry's SVG is actually just one panel
+(book-dp2's `f-adp_three_policies`, book-dp2#154). A map entry may now
+carry a third tuple element `'per-subfigure'`:
+`('figures/foo.svg', None, 'per-subfigure')` opts the outer label out of
+the fast path on **both** figure paths (HTML fallback `replace_nested`
+and the marker-path `_emit_figure`), falling back to per-subfigure
+splitting where the entry resolves only the panel that ends up carrying
+the label. 2-tuples are unchanged; normalisation lives in
+`transforms/_helpers.tikz_map_entry`.
+
 ### Fixed — display equation inside an algorithm2e line block-lifted (#130)
 
 A `\begin{equation*}…\end{equation*}` (or `align*`/`gather*`) sitting inside
