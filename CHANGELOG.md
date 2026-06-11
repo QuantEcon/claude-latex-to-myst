@@ -15,6 +15,24 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — custom `\item[(a)]` enumerate labels preserved (#111)
+
+Pandoc's enumerate reader silently drops the optional arg of
+`\item[(a)]`, renumbering the list 1..N — book-dp1's norm properties
+rendered "1.–8." against the PDF's "(a)–(d)". New pre-pandoc pass
+`scripts/_apply_custom_label_enumerates.py` (wired into `preprocess.sh`
+before the exercise-enumerate pass) flattens an enumerate whose
+**every** top-level `\item` carries an explicit `[label]` (possibly
+empty) into labelled paragraphs; conservative bails (mixed items,
+nested lists, content before the first item) leave the block to pandoc.
+`cleanup_typography` unescapes pandoc's line-leading `\(a\)`
+fancy-lists escape so the labels render literally. The other #111
+pieces: the multicols column-count leak shipped earlier with the
+#104–#113 series (`_apply_rewrites` + `DEFAULT_ENV_SKIP`); the
+preamble `enumitem` roman-numeral style is unrepresentable in
+CommonMark/mystmd (verified against mystmd v1.9.1 — `i.`/`(i)` markers
+render as plain paragraphs) and routes to tier 3.
+
 ### Fixed — algorithm2e statement lines render numbered, not bulleted (#109)
 
 book-dp1/dp2 load `algorithm2e` with `linesnumbered`, so the PDF numbers

@@ -244,6 +244,14 @@ def cleanup_typography(text: str) -> str:
     text = re.sub(r'\\(\[)(?=[A-Z])', r'\1', text)
     text = re.sub(r'(?<=[.!?])\\(\])', r'\1', text)
 
+    # Pandoc's markdown writer escapes a line-leading "(a)" / "(iv)" as
+    # "\(a\)" so its own fancy_lists reader won't re-parse it as a list
+    # marker. MyST has no fancy lists — and "\(...\)" risks being read as
+    # LaTeX-style inline math — so unescape the artifact. Shape produced
+    # by the #111 custom-label enumerate flattening, but generic to any
+    # paragraph pandoc emits starting with a short parenthesised token.
+    text = re.sub(r'^\\\((\w{1,4})\\\)', r'(\1)', text, flags=re.MULTILINE)
+
     # Fix \l| → \lvert and \r| → \rvert (garbled LaTeX delimiters)
     text = re.sub(r'\\l\|', r'\\lvert ', text)
     text = re.sub(r'\\r\|', r'\\rvert ', text)

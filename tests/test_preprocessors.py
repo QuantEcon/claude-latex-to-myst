@@ -1168,6 +1168,128 @@ def test_multicols_empty_pretext_dropped():
     assert _strip_multicols(r"\begin{multicols}{2}[ ]") == r"\begin{multicols}"
 
 
+# ── Custom-label enumerate flattening (#111) ───────────────────────────────────
+
+import _apply_custom_label_enumerates as clbl
+
+
+def test_custom_label_enumerate_flattened_to_labelled_paragraphs():
+    """dp1's norm-properties shape: every \\item carries an explicit
+    [label] (some empty) → labelled paragraphs, not an auto-counter
+    list pandoc would renumber 1..N."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "    \\item[(a)] $\\| u \\| \\geq 0$\n"
+        "    \\item[(b)] $\\| u \\| = 0 \\iff u=0$\n"
+        "    \\item[] (nonnegativity)\n"
+        "\\end{enumerate}\n"
+    )
+    out = clbl.process_text(tex)
+    assert "\\begin{enumerate}" not in out
+    assert "\\item" not in out
+    assert "(a) $\\| u \\| \\geq 0$" in out
+    assert "(b) $\\| u \\| = 0 \\iff u=0$" in out
+    # Empty label → bare content paragraph (no leading space).
+    assert "\n(nonnegativity)" in out
+
+
+def test_custom_label_enumerate_bails_on_mixed_items():
+    """One auto-counter \\item disqualifies the block — it IS an
+    ordered list; pandoc handles it."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "    \\item[(a)] labelled\n"
+        "    \\item unlabelled\n"
+        "\\end{enumerate}\n"
+    )
+    assert clbl.process_text(tex) == tex
+
+
+def test_custom_label_enumerate_bails_on_plain_list():
+    tex = (
+        "\\begin{enumerate}\n"
+        "    \\item first\n"
+        "    \\item second\n"
+        "\\end{enumerate}\n"
+    )
+    assert clbl.process_text(tex) == tex
+
+
+def test_custom_label_enumerate_bails_on_nested_list():
+    """A nested list env inside the body is not modelled — bail."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "    \\item[(a)] outer\n"
+        "    \\begin{itemize}\n"
+        "        \\item inner\n"
+        "    \\end{itemize}\n"
+        "    \\item[(b)] more\n"
+        "\\end{enumerate}\n"
+    )
+    assert clbl.process_text(tex) == tex
+
+
+def test_custom_label_enumerate_skips_commented_block():
+    tex = (
+        "% \\begin{enumerate}\n"
+        "%     \\item[(a)] commented out\n"
+        "% \\end{enumerate}\n"
+    )
+    assert clbl.process_text(tex) == tex
+
+
+def test_custom_label_enumerate_leaves_exercise_enumerates_alone():
+    """The #69 exercise shape (\\item\\label{ex:..}, no [label]) must
+    pass through untouched for ``_apply_enumerate_markers``."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "\\item\\label{ex:ch1:1} Derive the gradient.\n"
+        "\\end{enumerate}\n"
+    )
+    assert clbl.process_text(tex) == tex
+
+
+def test_custom_label_enumerate_commented_item_not_uncommented():
+    """A %-commented \\item inside the body is not a boundary (Copilot
+    review on #136) — it must not be emitted as a live paragraph. The
+    commented line rides inside the preceding item's content, where
+    pandoc drops the % comment."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "    \\item[(a)] real item\n"
+        "    % \\item[(b)] commented out\n"
+        "    \\item[(c)] another real item\n"
+        "\\end{enumerate}\n"
+    )
+    out = clbl.process_text(tex)
+    assert "\\begin{enumerate}" not in out
+    assert "(a) real item" in out
+    assert "(c) another real item" in out
+    # The commented item is NOT a top-level paragraph; it stays behind
+    # its % marker inside (a)'s content for pandoc to drop.
+    assert "\n(b) commented out" not in out
+    assert "% \\item[(b)] commented out" in out
+
+
+def test_custom_label_enumerate_only_commented_items_bails():
+    tex = (
+        "\\begin{enumerate}\n"
+        "    % \\item[(a)] all commented\n"
+        "\\end{enumerate}\n"
+    )
+    assert clbl.process_text(tex) == tex
+
+
+def test_custom_label_enumerate_bails_on_content_before_first_item():
+    tex = (
+        "\\begin{enumerate}\n"
+        "stray prose\n"
+        "    \\item[(a)] item\n"
+        "\\end{enumerate}\n"
+    )
+    assert clbl.process_text(tex) == tex
+
+
 # ── PRF title markers (#112) ───────────────────────────────────────────────────
 
 import _apply_prf_title_markers as prft
