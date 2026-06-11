@@ -89,7 +89,15 @@ def parse_custom_label_items(body: str) -> list[tuple[str, str]] | None:
     """
     if _NEST_RE.search(body):
         return None  # nested list env — not modelled
-    item_matches = list(_ITEM_RE.finditer(body))
+    # A ``%``-commented ``\item`` is not a boundary (Copilot review on
+    # #136): treating it as one would split at the comment and emit its
+    # text as a live paragraph — effectively uncommenting it. Filtered
+    # out, the commented line rides inside the preceding item's content,
+    # where pandoc's LaTeX reader drops the ``%`` comment correctly.
+    item_matches = [
+        m for m in _ITEM_RE.finditer(body)
+        if not _starts_in_comment(body, m.start())
+    ]
     if not item_matches:
         return None
     # Real content before the first \item (spacing tweaks like

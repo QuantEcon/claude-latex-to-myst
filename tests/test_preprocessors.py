@@ -1249,6 +1249,37 @@ def test_custom_label_enumerate_leaves_exercise_enumerates_alone():
     assert clbl.process_text(tex) == tex
 
 
+def test_custom_label_enumerate_commented_item_not_uncommented():
+    """A %-commented \\item inside the body is not a boundary (Copilot
+    review on #136) — it must not be emitted as a live paragraph. The
+    commented line rides inside the preceding item's content, where
+    pandoc drops the % comment."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "    \\item[(a)] real item\n"
+        "    % \\item[(b)] commented out\n"
+        "    \\item[(c)] another real item\n"
+        "\\end{enumerate}\n"
+    )
+    out = clbl.process_text(tex)
+    assert "\\begin{enumerate}" not in out
+    assert "(a) real item" in out
+    assert "(c) another real item" in out
+    # The commented item is NOT a top-level paragraph; it stays behind
+    # its % marker inside (a)'s content for pandoc to drop.
+    assert "\n(b) commented out" not in out
+    assert "% \\item[(b)] commented out" in out
+
+
+def test_custom_label_enumerate_only_commented_items_bails():
+    tex = (
+        "\\begin{enumerate}\n"
+        "    % \\item[(a)] all commented\n"
+        "\\end{enumerate}\n"
+    )
+    assert clbl.process_text(tex) == tex
+
+
 def test_custom_label_enumerate_bails_on_content_before_first_item():
     tex = (
         "\\begin{enumerate}\n"
