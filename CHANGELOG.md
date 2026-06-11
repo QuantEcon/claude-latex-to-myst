@@ -15,6 +15,23 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — commented-out `\item` no longer resurrected as live content (#138)
+
+The exercise (`_apply_enumerate_markers.py`) and description
+(`_apply_description_markers.py`) preprocessors treated `\item` tokens
+on `%`-commented lines as real item boundaries: a commented-out
+exercise was published as a live `{exercise}` directive (shifting the
+numbering of every exercise after it), and a commented `\item[Term]`
+became a live definition-list entry. All event scans (items, nested-env
+openers/closers, and the enumerate `\begin`/`\end` block pairing) now
+filter tokens through the existing `_starts_in_comment` guard — the
+same fix shape Copilot prompted on #136, where
+`_apply_custom_label_enumerates.py` also gains the guard on its
+block-pairing and nested-env checks. Commented lines ride inside the
+preceding item's content, where pandoc's LaTeX reader drops them.
+Snapshot gate: byte-identical on all three fixture books (no corpus
+instance — the bug was latent).
+
 ### Fixed — custom `\item[(a)]` enumerate labels preserved (#111)
 
 Pandoc's enumerate reader silently drops the optional arg of

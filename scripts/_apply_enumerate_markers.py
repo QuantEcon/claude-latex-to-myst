@@ -86,10 +86,18 @@ def _iter_top_level_enumerates(text: str):
     sub-parts) doesn't let its inner ``\\end{enumerate}`` prematurely
     close the outer block — the failure mode of a single non-greedy
     ``.*?`` regex.
+
+    Tokens on ``%``-commented lines are not events (#138): a commented
+    ``\\end{enumerate}`` would otherwise close the block early, and a
+    commented ``\\begin{enumerate}`` would leave it unclosed.
     """
     events = sorted(
-        [(m.start(), m.end(), 'open') for m in _ENUM_OPEN_RE.finditer(text)]
-        + [(m.start(), m.end(), 'close') for m in _ENUM_CLOSE_RE.finditer(text)]
+        (start, end, kind)
+        for start, end, kind in (
+            [(m.start(), m.end(), 'open') for m in _ENUM_OPEN_RE.finditer(text)]
+            + [(m.start(), m.end(), 'close') for m in _ENUM_CLOSE_RE.finditer(text)]
+        )
+        if not _starts_in_comment(text, start)
     )
     depth = 0
     block_start = body_start = None
@@ -135,11 +143,23 @@ def parse_enum_items(body: str) -> list[tuple[str, str]] | None:
     along inside its parent exercise's content untouched. Counting those
     as boundaries used to disqualify the whole block — the original GH #69
     bug then persisted for every nested-list exercise.
+
+    Tokens on ``%``-commented lines are not events (#138). Pre-fix, a
+    ``% \\item\\label{ex:..}`` line was a live boundary: the commented-out
+    exercise was RESURRECTED as a real ``{exercise}`` directive (and
+    shifted the numbering of every exercise after it). Filtered out, the
+    commented line rides inside the preceding exercise's content, where
+    pandoc's LaTeX reader drops the ``%`` comment. Commented nest
+    openers/closers are filtered too — they'd corrupt the depth count.
     """
     events = sorted(
-        [(m.start(), 'open') for m in _NEST_OPEN_RE.finditer(body)]
-        + [(m.start(), 'close') for m in _NEST_CLOSE_RE.finditer(body)]
-        + [(m.start(), 'item') for m in re.finditer(r'\\item\b', body)]
+        (pos, kind)
+        for pos, kind in (
+            [(m.start(), 'open') for m in _NEST_OPEN_RE.finditer(body)]
+            + [(m.start(), 'close') for m in _NEST_CLOSE_RE.finditer(body)]
+            + [(m.start(), 'item') for m in re.finditer(r'\\item\b', body)]
+        )
+        if not _starts_in_comment(body, pos)
     )
     item_positions: list[int] = []
     depth = 0

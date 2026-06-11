@@ -67,6 +67,14 @@ def _split_items(body: str) -> list[tuple[str, str]]:
     Only ``\\item`` occurrences at depth 0 count — those inside a nested
     ``itemize`` / ``enumerate`` / ``description`` belong to that inner
     env and must pass through to pandoc untouched (GH #29).
+
+    Tokens on ``%``-commented lines are not events (#138). Pre-fix, a
+    ``% \\item[Term]`` line became a live ``<!--DESCITEM-->`` — the
+    commented-out term was resurrected into the rendered definition
+    list. Filtered out, the commented line rides inside the preceding
+    item's body, where pandoc's LaTeX reader drops the ``%`` comment.
+    Commented nest openers/closers are filtered too — they'd corrupt
+    the depth count.
     """
     events: list[tuple[int, str, re.Match]] = []
     for m in _NEST_OPEN.finditer(body):
@@ -75,6 +83,7 @@ def _split_items(body: str) -> list[tuple[str, str]]:
         events.append((m.start(), 'close', m))
     for m in _ITEM_RE.finditer(body):
         events.append((m.start(), 'item', m))
+    events = [e for e in events if not _starts_in_comment(body, e[0])]
     events.sort(key=lambda e: e[0])
 
     items: list[tuple[str, str]] = []
