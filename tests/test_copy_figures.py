@@ -52,11 +52,16 @@ def test_scan_ignores_other_trees_ending_in_figures():
     assert cf.scan_references(text) == {'ok.png'}
 
 
-def test_scan_accepts_gif():
-    """The hard-coded pdf/png/jpg/jpeg/svg list is gone — a referenced
-    gif (which the old loop never copied) now works."""
-    text = '![anim](figures/spin.gif)'
-    assert cf.scan_references(text) == {'spin.gif'}
+def test_scan_allowlist_broader_than_old_copy_loop():
+    """The scan's allowlist supersedes the old copy loop's
+    pdf/png/jpg/jpeg/svg set — gif/webp/avif references now work; a
+    non-image extension stays excluded (conservative regex-over-prose:
+    an open match would ship path-like strings from code listings)."""
+    text = (
+        '![a](figures/spin.gif) ![b](figures/photo.webp) '
+        '![c](figures/art.avif) [data](figures/notes.txt)'
+    )
+    assert cf.scan_references(text) == {'spin.gif', 'photo.webp', 'art.avif'}
 
 
 # ── copy_referenced_figures ──────────────────────────────────────────────────

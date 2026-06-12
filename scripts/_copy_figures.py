@@ -19,9 +19,10 @@ Behaviour:
   has never populated subdirectories.
 - **Copy referenced ∩ present.** A referenced name is copied from
   ``figures_dir`` when the destination is missing or older (same
-  missing-or-newer semantics as the old loop). The extension set is
-  whatever the output references — the hard-coded list is gone, which
-  also dissolves the "MUST match Stage 4" coupling that
+  missing-or-newer semantics as the old loop). The copy step no longer
+  maintains its own extension list — the scan's image-format allowlist
+  (``_REF_RE``, broader than the old copy list) is the single one,
+  which also dissolves the "MUST match Stage 4" coupling that
   ``conversion_context.from_config``'s ``figure_ext_map`` scan used to
   carry.
 - **Quietly skip referenced-but-not-in-source.** Pre-rendered assets
@@ -46,13 +47,16 @@ from pathlib import Path
 
 from _config import load
 
-# Common raster/vector formats. Generous on purpose: a reference to a
-# format the old copy loop didn't carry (e.g. gif) now just works. A
-# stray ``figures/...`` string inside a code fence can trigger a copy of
-# an existing source asset — harmless under copy-only semantics, so the
-# scan stays fence-unaware.
+# The single image-format allowlist in the pipeline (the old copy loop
+# kept its own). Deliberately an allowlist rather than any-extension:
+# the scan is regex-over-prose, and an open match would treat path-like
+# strings (``figures/notes.txt`` in a code listing) as assets to ship.
+# Broader than the old copy list — gif/webp/avif work; extending it is
+# this one edit. A stray ``figures/...`` image path inside a code fence
+# can still trigger a copy of an existing source asset — harmless under
+# copy-only semantics, so the scan stays fence-unaware.
 _REF_RE = re.compile(
-    r'(?:[\w.-]+/)*figures/[\w./-]+?\.(?:pdf|png|jpe?g|svg|gif)\b',
+    r'(?:[\w.-]+/)*figures/[\w./-]+?\.(?:pdf|png|jpe?g|svg|gif|webp|avif)\b',
     re.IGNORECASE,
 )
 

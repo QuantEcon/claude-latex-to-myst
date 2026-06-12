@@ -29,10 +29,11 @@ present-in-source only, with the same missing-or-newer semantics.
 Referenced-but-not-in-source is quietly counted, not warned — pre-
 rendered assets committed in the output dir are the dominant pattern
 (82 of deep-learning's 88 references). Copy-only: nothing in the
-destination is ever deleted. The hard-coded extension list is gone
-(referenced `gif` now works), which also dissolves the "MUST match
-Stage 4" coupling on `conversion_context.from_config`'s
-`figure_ext_map` scan. Fixture-verified: copied sets shrink 85→61
+destination is ever deleted. The copy step no longer keeps its own
+extension list — the scan's image-format allowlist is the single one,
+broader than before (referenced `gif`/`webp`/`avif` now work) — which
+also dissolves the "MUST match Stage 4" coupling on
+`conversion_context.from_config`'s `figure_ext_map` scan. Fixture-verified: copied sets shrink 85→61
 (dp1), 113→64 (dp2), 10→6 (deep-learning) with all `.md` output
 byte-identical.
 
