@@ -3,7 +3,6 @@ appF_solutions.md missing heading depth N
 chN_climate.md missing heading depth N
 chN_ctime_ha.md missing heading depth N
 chN_deqns.md missing heading depth N
-chN_deqns.md:N:N Could not link citation with label "tf.function".
 chN_ha_youngs.md missing heading depth N
 chN_intro.md Duplicate identifier in project "exercises"
 chN_intro.md Duplicate identifier in project "further-reading"
