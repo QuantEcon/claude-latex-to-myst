@@ -386,12 +386,12 @@ class ConversionContext:
                 heading_label_aliases = scan_heading_label_aliases(src_tex_dir)
 
             # Scan the source figures dir so an extensionless include can be
-            # completed to the file the copy step writes (#104). The extension
-            # set MUST match convert.sh Stage 4's copy loop — resolving to a
-            # format the copy step doesn't carry (e.g. gif) would point at a
-            # file absent from the output figures/ dir. Prefer web-renderable
-            # formats when several share a stem (pdf last — mystmd can't
-            # render it).
+            # completed to a concrete file (#104). No coupling to a copy
+            # list anymore: convert.sh Stage 4 (_copy_figures.py, #154) is
+            # reference-aware — whatever file this map resolves an include
+            # to is, by construction, what gets copied to the output
+            # figures/ dir. Prefer web-renderable formats when several
+            # share a stem (pdf last — mystmd can't render it).
             figdir_rel = config.get('figures_dir')
             if figdir_rel:
                 src_dir = config.get('source_dir', '.')

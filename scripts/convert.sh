@@ -173,30 +173,16 @@ fi
 echo ""
 
 # ---------------------------------------------------------------------------
-# Stage 4: Copy figures
+# Stage 4: Copy figures (reference-aware, #154)
 # ---------------------------------------------------------------------------
+# Copies only the assets the generated .md actually references — a blanket
+# copy of figures_dir diverges whenever postprocess.rewrites retarget
+# includes to a different format (book-dp1's deleted source PDFs were
+# re-copied on every run). Scan/copy logic lives in _copy_figures.py.
 FIG_DIR_REL="$(python3 "$SCRIPT_DIR/_config.py" "$CONFIG" figures_dir || true)"
 if [[ -n "${FIG_DIR_REL:-}" && "$FIG_DIR_REL" != "None" ]]; then
   echo "Stage 4: Copying figures..."
-  SRC_FIGS="$SOURCE_DIR/$FIG_DIR_REL"
-  DST_FIGS="$OUTPUT_DIR/figures"
-  mkdir -p "$DST_FIGS"
-  if [[ -d "$SRC_FIGS" ]]; then
-    count=0
-    for ext in pdf png jpg jpeg svg; do
-      for f in "$SRC_FIGS"/*."$ext"; do
-        [[ -f "$f" ]] || continue
-        dest="$DST_FIGS/$(basename "$f")"
-        if [[ ! -f "$dest" ]] || [[ "$f" -nt "$dest" ]]; then
-          cp "$f" "$dest"
-          count=$((count + 1))
-        fi
-      done
-    done
-    echo "  Copied/updated $count figures"
-  else
-    echo "  WARN: $SRC_FIGS not found"
-  fi
+  python3 "$SCRIPT_DIR/_copy_figures.py" "$CONFIG"
   echo ""
 fi
 
