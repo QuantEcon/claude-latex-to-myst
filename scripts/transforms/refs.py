@@ -291,7 +291,7 @@ def strip_doubled_noun_refs(text: str, ctx=None) -> str:
             text,
         )
 
-    # Section/chapter nouns before plain {ref} targets (#150). Same
+    # Section nouns before plain {ref} targets (#150). Same
     # separator and optional-§ handling as above, but matching the
     # ``ref`` role only — see _DOUBLED_SECTION_NOUN_REFS for why the
     # role is constrained per noun family.
