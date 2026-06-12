@@ -1,0 +1,9 @@
+# #140: \begin{center} nested inside a theorem-family env must unwrap —
+# pandoc emits an inner ::: center div that mystmd would parse as a code
+# block with lang:center, showing raw LaTeX.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Center Inside Env" }

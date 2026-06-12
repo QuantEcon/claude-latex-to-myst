@@ -15,6 +15,21 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — `::: center` nested inside a converted env unwraps (#140)
+
+A `\begin{center}` inside a theorem-family environment survived as a
+pandoc `::: center` fenced div inside the emitted directive body —
+mystmd has no `center` directive and parses the colon fence as a code
+block with `lang: center`, rendering the content as raw LaTeX (two
+book-dp1 Chapter-2 sites, audit QuantEcon/book-dp-public#27 item 4).
+Top-level skip envs already unwrapped; the bug was bodies collected
+verbatim. `convert_environment_divs` now walks each converted body
+with a fence stack, dropping skip-env (`center`/`minipage`/
+`multicols`) openers and their matching closers while leaving other
+inner fences untouched. `validate.py` gains a pass-4 lint flagging
+any surviving pandoc fenced div (`::: name` / `::: {.name}` — MyST's
+own no-space `:::{name}` form is not matched).
+
 ### Fixed — commented-out `\item` no longer resurrected as live content (#138)
 
 The exercise (`_apply_enumerate_markers.py`) and description

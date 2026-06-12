@@ -336,6 +336,20 @@ def check_resolution(text: str, filename: str,
                 f'open): {line[:80]}'
             )
 
+    # Pass 4 — surviving pandoc fenced-div opener (#140). Pandoc emits
+    # ``::: name`` / ``::: {.name}`` / ``::: {#id}`` colon fences for LaTeX
+    # environments; every one should have been converted or unwrapped by
+    # ``convert_environment_divs``. mystmd has no such directives — it
+    # parses the fence as a code block with ``lang: name``, rendering the
+    # content as raw LaTeX. (MyST's own colon directives are the no-space
+    # ``:::{name}`` form, which this pattern does not match.)
+    for i, line in enumerate(text.split('\n'), 1):
+        if re.match(r'^:{3,}\s+(\{[.#]|\w)', line):
+            diagnostics.append(
+                f'{filename}:{i}: unconverted pandoc fenced div '
+                f'(mystmd parses it as a code block): {line[:80]}'
+            )
+
     return diagnostics
 
 

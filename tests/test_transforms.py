@@ -3087,6 +3087,64 @@ def test_environment_div_widens_fence_around_nested_code_block():
     assert out.splitlines().count('````') == 1
 
 
+def test_environment_div_unwraps_nested_center_div():
+    """#140 — a ``::: center`` nested inside a converted env body was
+    copied verbatim into the directive; mystmd has no ``center``
+    directive and parses the colon fence as a code block with
+    ``lang: center``, rendering the content as raw LaTeX. The dp1
+    ch_fps Example 2.2.2 shape."""
+    body = (
+        '::: example\n'
+        '[]{#eg:ppor label="eg:ppor"} The **pointwise order** is:\n'
+        '\n'
+        '::: center\n'
+        'given $u, v$ in $\\RR^\\Xsf$, set $u \\leq v$.\n'
+        ':::\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert '::: center' not in out
+    assert ':::' not in out.replace('```', '')  # no colon fences survive
+    assert 'given $u, v$ in $\\RR^\\Xsf$, set $u \\leq v$.' in out
+    assert '{prf:example}' in out
+    assert ':label: eg-ppor' in out
+
+
+def test_environment_div_nested_skip_unwrap_keeps_non_skip_fences():
+    """The nested-skip unwrap (#140) must not touch inner fences that
+    are NOT skip envs — only center/minipage/multicols are unwrapped;
+    other colon fences pass through to keep current behaviour."""
+    body = (
+        '::: example\n'
+        'Before.\n'
+        '\n'
+        '::: somediv\n'
+        'inner content\n'
+        ':::\n'
+        '\n'
+        '::: center\n'
+        'centered $x$\n'
+        ':::\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert '::: center' not in out
+    assert 'centered $x$' in out
+    assert '::: somediv' in out          # non-skip fence untouched
+    assert 'inner content' in out
+
+
+def test_validate_flags_surviving_pandoc_div():
+    """#140 validate pass 4: a surviving ``::: name`` fenced div is a
+    diagnostic; MyST's own no-space ``:::{name}`` form is not."""
+    bad = '::: center\n$x$\n:::\n'
+    diags = validate.check_resolution(bad, 'test.md')
+    assert any('unconverted pandoc fenced div' in d for d in diags)
+    ok = ':::{note}\nfine\n:::\n'
+    diags_ok = validate.check_resolution(ok, 'test.md')
+    assert not any('unconverted pandoc fenced div' in d for d in diags_ok)
+
+
 def test_proof_midline_hypertarget_works_with_real_dp1_shape():
     """End-to-end shape from book-dp1 appB.md."""
     body = (
