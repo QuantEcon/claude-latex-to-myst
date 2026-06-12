@@ -140,6 +140,29 @@ _DEFAULT_CROSS_REF_ROUTING: list[tuple[tuple[str, ...], str]] = [
 _DOUBLED_SECTION_SYMBOL_PREFIXES = ('s-', 'ss-', 'sss-', 'sec-', 'eg-')
 
 
+# Prose nouns before ``{ref}``-routed section targets (#150). Under
+# qe-v5 book-mode numbering (same premise as
+# ``strip_doubled_section_symbol``), a ``{ref}`` to a numbered heading
+# auto-renders "Section X.Y", so prose ``Section~\ref{s:fps}`` doubles
+# to "Section Section 1.2". These targets route to plain ``{ref}`` (see
+# ``_DEFAULT_CROSS_REF_ROUTING``), so the ``{prf:ref}``/``{numref}``
+# table above can never fire on them. Kept as a separate hard-coded
+# family — tying the noun to the ``ref`` role only here avoids
+# over-stripping when a book reroutes a theorem-style prefix to
+# ``{ref}`` (where the ref renders the target title and the prose noun
+# is needed).
+#
+# ``Chapter``/``ch-`` is deliberately absent: ``injectBookSectionDefaults``
+# enables ``numbering.heading_2``..``heading_6`` only (lesson 016), so a
+# ``{ref}`` to a chapter-level heading renders the chapter *title* — the
+# prose noun isn't doubled there and must stay (the
+# ``table_caption_with_inline_role_backticks`` golden pins this).
+_DOUBLED_SECTION_NOUN_REFS = [
+    ('Section',  ('s-', 'ss-', 'sss-', 'sec-')),
+    ('Sections', ('s-', 'ss-', 'sss-', 'sec-')),
+]
+
+
 def routing_role(target: str, ctx=None) -> str:
     """Return the MyST role name (``eq`` / ``numref`` / ``prf:ref`` /
     ``ref``) for a label, honouring per-book extras from
@@ -236,6 +259,13 @@ def strip_doubled_noun_refs(text: str, ctx=None) -> str:
     match in ``_DOUBLED_NOUN_REFS`` ensures only related noun/role
     combinations get rewritten.
 
+    Also handles the ``{ref}``-routed section family (#150): prose
+    ``Section``/``Sections`` before a ``{ref}`` to a section-style label
+    doubles under qe-v5 book-mode heading numbering, which auto-renders
+    "Section X.Y". These pairs live in ``_DOUBLED_SECTION_NOUN_REFS``
+    and match the ``ref`` role only (chapter-level refs render the
+    title, not a noun — see the table's comment).
+
     Matches either a regular space or a non-breaking space (U+00A0) between
     the noun and the ref, since pandoc emits NBSP for LaTeX ``~`` ties.
 
@@ -257,6 +287,19 @@ def strip_doubled_noun_refs(text: str, ctx=None) -> str:
         text = re.sub(
             rf'(?<!\w){re.escape(noun)}[ \xa0]+(?:§[ \xa0]*)?'
             rf'(\{{(?:prf:ref|numref)\}}`{re.escape(prefix)}[^`]+`)',
+            r'\1',
+            text,
+        )
+
+    # Section/chapter nouns before plain {ref} targets (#150). Same
+    # separator and optional-§ handling as above, but matching the
+    # ``ref`` role only — see _DOUBLED_SECTION_NOUN_REFS for why the
+    # role is constrained per noun family.
+    for noun, prefixes in _DOUBLED_SECTION_NOUN_REFS:
+        alternation = '|'.join(re.escape(p) for p in prefixes)
+        text = re.sub(
+            rf'(?<!\w){re.escape(noun)}[ \xa0]+(?:§[ \xa0]*)?'
+            rf'(\{{ref\}}`(?:{alternation})[^`]+`)',
             r'\1',
             text,
         )

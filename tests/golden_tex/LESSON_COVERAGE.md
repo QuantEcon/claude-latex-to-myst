@@ -13,6 +13,7 @@ below into the corpus so they can't silently disappear.
 | 006 | `math_percent_comment` | bare `%` line removed from math |
 | 007 | `cref_comma_split` | `\cref{a,b}` → one `{prf:ref}` per key |
 | 011 | `doubled_noun_ref` | prose noun before `{prf:ref}` stripped |
+| 016 | `doubled_section_noun_ref` | `§` and prose `Section`/`Sections` before section `{ref}` stripped (#150) |
 | 014 | `algorithm2e_block` | algorithm body → `{prf:algorithm}` bullets |
 | 017 | `unnumbered_section_label` | `\label` not leaked into frontmatter label |
 | 019 | `table_float_hline` | `\hline` header row preserved through marker path |
@@ -53,7 +54,6 @@ guarded.
 | 012 | blank-after-`$$` is cosmetic; emerges in every math case | observed in `math_*` cases |
 | 013 | footnote-ref is a MyST limitation, not an emission quirk | n/a (documented MyST fact) |
 | 015 | minted needs an external listed source file | `tests/test_preprocessors.py` (listing markers) |
-| 016 | §-doubled-prefix — candidate future case | `tests/test_transforms.py` |
 | 018 | body-anchor promotion needs a heading-context fixture | `tests/test_transforms.py` |
 | 021 | subfigure currently *bails* to the HTML fallback | deferred to Phase 4 (#94) — case added when marker-ized |
 | 024 | orphan-label DOTALL is regex-safety internal | `tests/test_transforms.py` |
