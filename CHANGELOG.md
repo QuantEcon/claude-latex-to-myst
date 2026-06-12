@@ -15,6 +15,26 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Added — `postprocess.enumerate_style` for enumitem label parity (#111)
+
+A book whose preamble sets `\setlist[enumerate,1]{label=(\roman*)}`
+numbers its level-1 enumerates `(i), (ii), …` in the PDF, but the
+preamble is invisible to the per-chapter conversion — HTML showed
+`1., 2.` (dp1 exercise subitems, audit QuantEcon/book-dp-public#26
+item 15). With fancy-list support now in the publisher
+(QuantEcon/mystmd#50 closed mystmd#49), the new
+`postprocess.enumerate_style` knob (`lower-roman`,
+`lower-roman-parens`, `lower-alpha`, `lower-alpha-parens`) restyles
+**level-1** ordered-list markers post-pandoc: `convert_enumerate_style`
+(`transforms/typography.py`) maps pandoc's sequential decimal numbers
+to the configured form, re-indents continuations to the new content
+column, processes content-directive bodies (the exercise case) but
+skips code/`{math}` fences and `{prf:algorithm}` bodies (#109's
+numbered statement lines are not enumerates), and leaves nested lists
+decimal — matching enumitem's `[enumerate,1]` scope. Default unset =
+no change. Verified end-to-end: the golden output builds with
+`style: lower-roman, delimiter: parens` list nodes in the AST.
+
 ### Fixed — `\not` composites normalised to single-glyph negations (#142)
 
 KaTeX compiles `\not` as an overlay-slash that is a separate base from

@@ -172,6 +172,13 @@ class ConversionContext:
     postprocess_rewrites: list
     frontmatter_style: str
     whitespace_style: str
+    # ``postprocess.enumerate_style`` (#111): restyle LEVEL-1 ordered-list
+    # markers to the configured form (e.g. ``(i)``/``(ii)`` for a book whose
+    # preamble sets ``\setlist[enumerate,1]{label=(\roman*)}`` — preamble
+    # styling the per-chapter conversion can't see). ``None`` = leave
+    # pandoc's decimal markers (the default). Requires fancy-list support
+    # in the publisher (QuantEcon/mystmd#50).
+    enumerate_style: str | None = None
     counters: FileCounters = field(default_factory=FileCounters)
     # Map of figure-file stem → actual filename (with extension), built by
     # scanning the source ``figures_dir`` (#104). Lets the figure transforms
@@ -351,6 +358,20 @@ class ConversionContext:
                 )
             postprocess_rewrites.append((compiled, rule['to'], stems_set))
 
+        # ``postprocess.enumerate_style`` (#111) — level-1 ordered-list
+        # marker restyle. Validated here so a typo fails loudly at config
+        # load, not silently at render.
+        enumerate_style = post_section.get('enumerate_style')
+        _ENUM_STYLES = (
+            'lower-roman', 'lower-roman-parens',
+            'lower-alpha', 'lower-alpha-parens',
+        )
+        if enumerate_style is not None and enumerate_style not in _ENUM_STYLES:
+            raise SystemExit(
+                f"config.postprocess.enumerate_style must be one of "
+                f"{_ENUM_STYLES}, got {enumerate_style!r}"
+            )
+
         listing_source_base: Path | None = None
         figure_ext_map: dict[str, str] = {}
         heading_label_aliases: dict[str, str] = {}
@@ -393,6 +414,7 @@ class ConversionContext:
             postprocess_rewrites=postprocess_rewrites,
             frontmatter_style=style,
             whitespace_style=ws,
+            enumerate_style=enumerate_style,
             counters=FileCounters(),
             figure_ext_map=figure_ext_map,
             heading_label_aliases=heading_label_aliases,

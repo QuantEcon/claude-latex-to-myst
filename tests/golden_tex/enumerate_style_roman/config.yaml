@@ -1,0 +1,14 @@
+# #111 item 15: postprocess.enumerate_style restyles LEVEL-1 ordered-list
+# markers to the book's enumitem form — dp1's preamble sets
+# \setlist[enumerate,1]{label={\upshape (\roman*)}}, invisible to the
+# per-chapter conversion. Requires fancy-list support in the publisher
+# (QuantEcon/mystmd#50). Nested lists keep decimal.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+postprocess:
+  enumerate_style: lower-roman-parens
+
+chapters:
+  - { stem: input, title: "Enumerate Style" }
