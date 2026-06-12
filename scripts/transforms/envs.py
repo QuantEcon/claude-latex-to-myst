@@ -178,6 +178,30 @@ def convert_environment_divs(text: str, ctx=None) -> str:
                     continue
                 clean_body.append(bline)
 
+            # Unwrap any skip-env divs (center / minipage / multicols)
+            # NESTED in this body (#140). The body was collected verbatim,
+            # so an inner ``::: center`` survives into the directive —
+            # mystmd has no ``center`` directive and parses the colon fence
+            # as a code block with ``lang: center``, rendering the content
+            # as raw LaTeX. Walk with a fence stack: skip-env openers and
+            # their matching closers are dropped (content kept, matching
+            # the top-level skip branch); non-skip inner fences pass
+            # through untouched.
+            unwrapped: list[str] = []
+            fence_kinds: list[str] = []  # 'skip' | 'keep'
+            for bline in clean_body:
+                open_m = re.match(r'^:{3,} \{?\.?(\w+)\}?\s*$', bline)
+                if open_m:
+                    kind = 'skip' if open_m.group(1) in env_skip else 'keep'
+                    fence_kinds.append(kind)
+                    if kind == 'skip':
+                        continue
+                elif re.match(r'^:{3,}\s*$', bline) and fence_kinds:
+                    if fence_kinds.pop() == 'skip':
+                        continue
+                unwrapped.append(bline)
+            clean_body = unwrapped
+
             # Strip leading/trailing blank lines from body
             while clean_body and clean_body[0].strip() == '':
                 clean_body.pop(0)
