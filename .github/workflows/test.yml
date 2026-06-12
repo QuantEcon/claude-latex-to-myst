@@ -103,12 +103,19 @@ jobs:
           path: ~/.mystmd-dist
           key: mystmd-${{ env.MYSTMD_REF }}
 
+      # Pinned to the fork's own packageManager declaration
+      # (package.json: "packageManager": "bun@1.3.10") — same
+      # no-runner-drift policy as PANDOC_VERSION / MYSTMD_REF.
+      - name: Install bun (build toolchain for the mystmd fork)
+        if: steps.mystmd-cache.outputs.cache-hit != 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.10"
+
       - name: Build QuantEcon/mystmd @ pinned ref
         if: steps.mystmd-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          curl -fsSL https://bun.sh/install | bash
-          export PATH="$HOME/.bun/bin:$PATH"
           src="$(mktemp -d)"
           # init + fetch (not clone --branch) so MYSTMD_REF can be either
           # a qe-vN tag or a bare commit SHA — GitHub serves both.
