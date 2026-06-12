@@ -4553,3 +4553,52 @@ def test_proof_div_emits_nonumber():
     assert ':label: pf-main' in out
     # Option order: :nonumber: directly under the header.
     assert '```{prf:proof}\n:nonumber:' in out
+
+
+# ── \not composite normalization (#142) ──────────────────────────────────────
+
+
+def test_not_equals_normalized_to_neq():
+    """#142 — KaTeX compiles `\\not` as a separate overlay-slash base, so
+    `u \\not= v` can wrap as "u / = v" at narrow widths. `\\neq` is a
+    single relation glyph and cannot split. The tight form `\\not=v`
+    must not fuse into `\\neqv`."""
+    out = postprocess.cleanup_typography(
+        "Prove that $u \\leq v$ and $u \\not=v$ implies $Au \\ll Av$.\n"
+    )
+    assert "$u \\neq v$" in out
+    assert "\\not" not in out
+
+
+def test_not_spaced_form_and_composites():
+    src = (
+        "$a \\not = b$ and $c \\not< d$ and $e \\not> f$ and "
+        "$x \\not\\in S$ and $p \\not\\leq q$ and $r \\not\\geq s$\n"
+    )
+    out = postprocess.cleanup_typography(src)
+    assert "$a \\neq b$" in out
+    assert "$c \\nless d$" in out
+    assert "$e \\ngtr f$" in out
+    assert "$x \\notin S$" in out
+    assert "$p \\nleq q$" in out
+    assert "$r \\ngeq s$" in out
+
+
+def test_bare_not_without_dedicated_glyph_passes_through():
+    """`\\not\\equiv`, `\\not\\subset` etc. have no entry in the map —
+    bare `\\not` before them stays unchanged."""
+    src = "$a \\not\\equiv b$ and $S \\not\\subset T$\n"
+    out = postprocess.cleanup_typography(src)
+    assert "$a \\not\\equiv b$" in out
+    assert "$S \\not\\subset T$" in out
+
+
+def test_not_in_lookahead_does_not_eat_longer_macros():
+    """A macro that merely STARTS with `\\in` (`\\intercal`, `\\infty`,
+    `\\int`) must not be rewritten by the `\\not\\in` rule — the
+    `(?![A-Za-z])` lookahead rejects any letter after `\\in`."""
+    for macro in ("\\intercal", "\\infty", "\\int"):
+        src = f"$\\not{macro}$\n"
+        out = postprocess.cleanup_typography(src)
+        assert "\\notin " not in out, macro
+        assert f"\\not{macro}" in out, macro

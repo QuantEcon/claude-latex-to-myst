@@ -15,6 +15,20 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — `\not` composites normalised to single-glyph negations (#142)
+
+KaTeX compiles `\not` as an overlay-slash that is a separate base from
+the following relation, and browsers may wrap inline KaTeX output
+between bases — `u \not= v` breaks across lines as "u / = v" at
+narrow widths (dp1 ch_fps Exercise 2.2.8, audit
+QuantEcon/book-dp-public#27 item 5). `cleanup_typography` now
+normalises the composites with dedicated single-glyph negations:
+`\not=`→`\neq`, `\not<`→`\nless`, `\not>`→`\ngtr`, `\not\in`→`\notin`,
+`\not\leq`→`\nleq`, `\not\geq`→`\ngeq` (spaced and tight forms; bare
+`\not` before anything else passes through). Semantically identical in
+LaTeX; the dp1 fixture delta is purely these rewrites — `\not=` turns
+out to be the book's habitual form, well beyond the audited site.
+
 ### Fixed — `{prf:proof}` emits `:nonumber:` for amsthm parity (#143)
 
 mystmd enumerates bare `{prf:proof}` whenever the book numbers the

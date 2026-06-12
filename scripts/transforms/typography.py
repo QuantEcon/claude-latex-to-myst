@@ -256,6 +256,26 @@ def cleanup_typography(text: str) -> str:
     text = re.sub(r'\\l\|', r'\\lvert ', text)
     text = re.sub(r'\\r\|', r'\\rvert ', text)
 
+    # Normalize `\not` composites to their dedicated single-glyph
+    # negations (#142). KaTeX compiles `\not` as an overlay-slash that is
+    # a SEPARATE base from the following relation, and browsers may wrap
+    # inline KaTeX output between bases — `u \not= v` then breaks across
+    # lines as "u / = v" at narrow widths. The dedicated glyphs are
+    # single relations and cannot split; the forms are semantically
+    # identical in LaTeX. Replacements carry a trailing space so a tight
+    # source like `\not=v` doesn't fuse into `\neqv`; bare `\not` before
+    # anything without a dedicated glyph passes through. `\not` is
+    # math-only, so the plain-text rewrite is safe everywhere.
+    for pat, repl in (
+        (r'\\not *= *',                r'\\neq '),
+        (r'\\not *< *',                r'\\nless '),
+        (r'\\not *> *',                r'\\ngtr '),
+        (r'\\not *\\in(?![A-Za-z]) *',  r'\\notin '),
+        (r'\\not *\\leq(?![A-Za-z]) *', r'\\nleq '),
+        (r'\\not *\\geq(?![A-Za-z]) *', r'\\ngeq '),
+    ):
+        text = re.sub(pat, repl, text)
+
     # Clean up multiple blank lines (max 2)
     text = re.sub(r'\n{4,}', '\n\n\n', text)
 
