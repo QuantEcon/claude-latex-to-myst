@@ -15,6 +15,19 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — line wrap inside inline math no longer opens a list item (#141)
+
+A LaTeX source line wrap inside an inline `$...$` span whose
+continuation starts with `+`/`-`/`*`/`N.` opened a Markdown list item,
+splitting the span across two blocks so neither half parsed as math
+(dp1 ch_fps `implies $u` / `+ c \in U$.`, audit
+QuantEcon/book-dp-public#27 item 7). `join_split_inline_math` —
+which already joined the `>`-continuation (blockquote) case — now
+also joins list-marker continuations after an odd-`$`-parity line.
+Fixed three additional latent dp1 sites beyond the audited one
+(`$\| f` / `- g\|` in ch_intro; two `$Rv` / `+ Rw$` splits inside
+ch_val list items). Genuine lists after balanced lines are untouched.
+
 ### Fixed — `::: center` nested inside a converted env unwraps (#140)
 
 A `\begin{center}` inside a theorem-family environment survived as a

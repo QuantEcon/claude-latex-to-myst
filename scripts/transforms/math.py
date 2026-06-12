@@ -606,7 +606,7 @@ def convert_equations(text: str) -> str:
 
 def join_split_inline_math(text: str) -> str:
     """Join inline math expressions split across lines where the next line
-    begins with `>`.
+    begins with a Markdown block-structure token (`>`, or a list marker).
 
     Pandoc preserves LaTeX source line wraps, so a snippet like
 
@@ -615,11 +615,15 @@ def join_split_inline_math(text: str) -> str:
 
     becomes two lines in markdown. MyST then parses the leading `>` as a
     blockquote marker, breaking both the math and the surrounding paragraph.
-    Detect odd-parity unescaped `$` on a line followed by a line starting
-    with `>` and merge them with a single space.
+    The same applies to a continuation line starting with a list-marker
+    token (#141) — dp1 ch_fps wraps ``$u\\n+ c \\in U$`` and the ``+ ``
+    opens a bullet item, splitting the ``$...$`` span across two blocks
+    so neither half parses as math. Detect odd-parity unescaped `$` on a
+    line followed by a line starting with `>`, `+ `, `- `, `* `, or
+    ``N. `` / ``N) `` and merge them with a single space.
 
     Skips fenced code blocks (```) and display math blocks ($$) so genuine
-    blockquotes are left alone.
+    blockquotes and lists are left alone.
     """
     lines = text.split('\n')
     out: list[str] = []
@@ -651,8 +655,12 @@ def join_split_inline_math(text: str) -> str:
         clean = line.replace('\\$', '').replace('$$', '')
         if clean.count('$') % 2 == 1 and i + 1 < len(lines):
             next_stripped = lines[i + 1].lstrip()
-            if next_stripped.startswith('>'):
-                # The leading `>` is the math operator, not a blockquote.
+            if next_stripped.startswith('>') or re.match(
+                r'(?:[+\-*]|\d+[.)])\s', next_stripped
+            ):
+                # The line ends inside an open ``$...$`` span, so the
+                # leading token is a math operator (``+``/``-``/``*``)
+                # or plain text — not a blockquote or list marker.
                 out.append(line.rstrip() + ' ' + next_stripped)
                 i += 2
                 continue
