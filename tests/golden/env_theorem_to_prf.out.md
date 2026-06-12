@@ -12,6 +12,7 @@ If $T$ is a contraction on a complete metric space, then $T$ has a unique fixed 
 
 
 ```{prf:proof}
+:nonumber:
 
 By Banach. Apply {prf:ref}`thm-contraction` iteratively.
 ```

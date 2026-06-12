@@ -266,6 +266,18 @@ def convert_environment_divs(text: str, ctx=None) -> str:
                 result.append('')
 
             result.append(header)
+            if myst_env == 'prf:proof':
+                # LaTeX's proof environment is unnumbered by definition
+                # (amsthm has no proof counter), so there is no input that
+                # would warrant a numbered proof — but mystmd enumerates
+                # bare {prf:proof} whenever the book turns on proof-family
+                # numbering, producing "Proof 2.2.3" headers that clash
+                # with the neighbouring theorem counters (#143). Emit
+                # :nonumber: universally; precedent is #109's uncaptioned
+                # algorithms. A :label: is still emitted when the source
+                # carried one (harmless under :nonumber: — no number to
+                # shift, the anchor still resolves).
+                result.append(':nonumber:')
             if label and myst_env != 'solution':
                 result.append(f':label: {label}')
             if clean_body:
