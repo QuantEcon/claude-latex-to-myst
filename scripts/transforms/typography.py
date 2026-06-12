@@ -222,6 +222,147 @@ def convert_latex_dashes(text: str) -> str:
     return '\n'.join(out)
 
 
+# Directives whose body must not be restyled by the enumerate pass: code
+# carriers, math, AND ``{prf:algorithm}`` — algorithm2e bodies render as
+# numbered statement lines (#109) that are NOT enumerates; restyling them
+# to roman would break linesnumbered parity.
+_ENUM_VERBATIM_DIRECTIVES = frozenset({
+    'code', 'code-block', 'code-cell', 'eval-rst', 'math', 'prf:algorithm',
+})
+
+# A level-1 (column-0) ordered-list marker line: number, ``.``/``)``
+# delimiter, at least one space, content.
+_ENUM_MARKER_RE = re.compile(r'^(\d+)([.)])([ \t]+)(\S.*)$')
+
+_ROMAN_PAIRS = (
+    (1000, 'm'), (900, 'cm'), (500, 'd'), (400, 'cd'), (100, 'c'),
+    (90, 'xc'), (50, 'l'), (40, 'xl'), (10, 'x'), (9, 'ix'),
+    (5, 'v'), (4, 'iv'), (1, 'i'),
+)
+
+
+def _to_roman(n: int) -> str:
+    out = []
+    for value, glyph in _ROMAN_PAIRS:
+        while n >= value:
+            out.append(glyph)
+            n -= value
+    return ''.join(out)
+
+
+def _to_alpha(n: int) -> str:
+    # 1 → a … 26 → z, 27 → aa (matching enumitem's \alph overflow).
+    out = []
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        out.append(chr(ord('a') + rem))
+    return ''.join(reversed(out))
+
+
+def _enum_marker(n: int, style: str) -> str:
+    token = _to_roman(n) if style.startswith('lower-roman') else _to_alpha(n)
+    return f'({token})' if style.endswith('-parens') else f'{token}.'
+
+
+def convert_enumerate_style(text: str, ctx=None) -> str:
+    """Restyle LEVEL-1 ordered-list markers per
+    ``postprocess.enumerate_style`` (#111).
+
+    A book whose preamble sets ``\\setlist[enumerate,1]{label=(\\roman*)}``
+    numbers its top-level enumerates ``(i), (ii), …`` in the PDF, but the
+    preamble is invisible to the per-chapter conversion — pandoc emits
+    decimal ``1.``/``2.`` markers. With fancy-list support in the
+    publisher (QuantEcon/mystmd#50: ``i.`` / ``(i)`` / ``a.`` markers
+    parse with style metadata), the converter can now emit the styled
+    markers directly; this transform maps pandoc's sequential decimal
+    number to the configured form, so list boundaries and ``start``
+    offsets carry over for free.
+
+    Scope rules:
+
+    - **Level-1 only** — column-0 markers; indented (nested) lists keep
+      decimal, matching enumitem's ``[enumerate,1]`` scope.
+    - Fence-stack scan (lesson 040): code fences, ``{math}``/code
+      directives, and ``{prf:algorithm}`` bodies (whose numbered lines
+      are algorithm statements, not enumerates — #109) pass verbatim;
+      other directive bodies (exercises — the dp1 audit case) are prose
+      and get the restyle.
+    - Continuation lines are re-indented from the old content column to
+      the new one (``(ii)`` is wider than ``2.``), so multi-paragraph
+      items and nested blocks stay attached per CommonMark's
+      content-column rule.
+
+    No-op when ``enumerate_style`` is unset (the default).
+    """
+    ctx = ctx if ctx is not None else current_context()
+    style = ctx.enumerate_style
+    if style is None:
+        return text
+
+    out: list[str] = []
+    stack: list[tuple[int, str]] = []  # (tick_count, 'verbatim'|'prose')
+    # Active item re-indent: (old_content_col, new_content_col) or None.
+    reindent: tuple[int, int] | None = None
+
+    for line in text.split('\n'):
+        m = _DASH_FENCE_RE.match(line)
+        if m is not None:
+            ticks = len(m.group(1))
+            rest = m.group(2)
+            if stack and rest.strip() == '' and ticks >= stack[-1][0]:
+                stack.pop()
+            else:
+                rest_stripped = rest.lstrip()
+                if rest_stripped.startswith('{'):
+                    close = rest_stripped.find('}')
+                    name = rest_stripped[1:close].strip() if close > 0 else ''
+                    first_word = name.split()[0] if name else ''
+                    kind = (
+                        'verbatim'
+                        if first_word in _ENUM_VERBATIM_DIRECTIVES
+                        else 'prose'
+                    )
+                else:
+                    kind = 'verbatim'
+                stack.append((ticks, kind))
+            reindent = None
+            out.append(line)
+            continue
+
+        if stack and stack[-1][1] == 'verbatim':
+            out.append(line)
+            continue
+
+        em = _ENUM_MARKER_RE.match(line)
+        if em is not None:
+            number, _delim, spaces, content = em.groups()
+            marker = _enum_marker(int(number), style)
+            old_cc = len(number) + 1 + len(spaces)
+            new_cc = len(marker) + 1
+            reindent = (old_cc, new_cc)
+            out.append(f'{marker} {content}')
+            continue
+
+        if not line.strip():
+            out.append(line)
+            continue
+
+        if reindent is not None:
+            old_cc, new_cc = reindent
+            indent = len(line) - len(line.lstrip(' '))
+            if indent >= old_cc:
+                # Continuation (or nested block) of the current item —
+                # shift to the new content column, preserving any extra
+                # depth beyond it.
+                out.append(' ' * new_cc + line[old_cc:])
+                continue
+            reindent = None  # de-dent below the item ends it
+
+        out.append(line)
+
+    return '\n'.join(out)
+
+
 def cleanup_typography(text: str) -> str:
     """Clean up remaining TeX artifacts."""
     # Remove standalone % comment lines (LaTeX comments that KaTeX can't handle)

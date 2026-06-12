@@ -4602,3 +4602,126 @@ def test_not_in_lookahead_does_not_eat_longer_macros():
         out = postprocess.cleanup_typography(src)
         assert "\\notin " not in out, macro
         assert f"\\not{macro}" in out, macro
+
+
+# ── enumerate_style: level-1 ordered-marker restyle (#111) ───────────────────
+
+
+def _styled_ctx(style):
+    from conversion_context import ConversionContext
+    ctx = ConversionContext.default()
+    ctx.enumerate_style = style
+    return ctx
+
+
+def test_enumerate_style_noop_without_config():
+    src = "1.  first part\n2.  second part\n"
+    assert postprocess.convert_enumerate_style(src) == src
+
+
+def test_enumerate_style_lower_roman_parens():
+    """dp1's \\setlist[enumerate,1]{label=(\\roman*)} form."""
+    src = "1.  first part\n\n2.  second part\n\n3.  third part\n"
+    out = postprocess.convert_enumerate_style(src, _styled_ctx('lower-roman-parens'))
+    assert "(i) first part" in out
+    assert "(ii) second part" in out
+    assert "(iii) third part" in out
+
+
+def test_enumerate_style_other_forms():
+    src = "1.  a\n2.  b\n"
+    assert "i. a" in postprocess.convert_enumerate_style(src, _styled_ctx('lower-roman'))
+    assert "(b) b" in postprocess.convert_enumerate_style(src, _styled_ctx('lower-alpha-parens'))
+    assert "b. b" in postprocess.convert_enumerate_style(src, _styled_ctx('lower-alpha'))
+
+
+def test_enumerate_style_nested_list_keeps_decimal():
+    """Level-1 scope only, matching enumitem's [enumerate,1]: nested
+    (indented) ordered lists stay decimal."""
+    src = (
+        "1.  outer\n"
+        "    1.  inner one\n"
+        "    2.  inner two\n"
+        "2.  outer two\n"
+    )
+    out = postprocess.convert_enumerate_style(src, _styled_ctx('lower-roman-parens'))
+    assert "(i) outer" in out
+    assert "(ii) outer two" in out
+    assert "1.  inner one" in out
+    assert "2.  inner two" in out
+
+
+def test_enumerate_style_continuation_reindented():
+    """The (ii) marker is wider than 2. — continuation lines shift to the
+    new content column so multi-paragraph items stay attached."""
+    src = (
+        "1.  first\n"
+        "\n"
+        "2.  second with continuation\n"
+        "\n"
+        "    a follow-up paragraph\n"
+    )
+    out = postprocess.convert_enumerate_style(src, _styled_ctx('lower-roman-parens'))
+    assert "(ii) second with continuation" in out
+    # old content col 4 → new content col 5
+    assert "\n     a follow-up paragraph" in out
+
+
+def test_enumerate_style_inside_exercise_directive():
+    """The dp1 audit case (item 15): exercise subitems are inside an
+    {exercise} directive body — a content directive, so restyled."""
+    src = (
+        "```{exercise}\n"
+        ":label: ex-1\n"
+        "\n"
+        "Prove the following:\n"
+        "\n"
+        "1.  part one\n"
+        "2.  part two\n"
+        "```\n"
+    )
+    out = postprocess.convert_enumerate_style(src, _styled_ctx('lower-roman-parens'))
+    assert "(i) part one" in out
+    assert "(ii) part two" in out
+
+
+def test_enumerate_style_skips_code_and_algorithm_bodies():
+    """Code fences verbatim; {prf:algorithm} numbered lines are algorithm
+    statements (#109), NOT enumerates — must stay decimal."""
+    src = (
+        "```python\n"
+        "1.  not a list\n"
+        "```\n"
+        "```{prf:algorithm}\n"
+        ":label: algo-x\n"
+        "\n"
+        "1. step one\n"
+        "2. while $t < T$ do\n"
+        "   1. inner\n"
+        "3. end\n"
+        "```\n"
+    )
+    out = postprocess.convert_enumerate_style(src, _styled_ctx('lower-roman-parens'))
+    assert out == src
+
+
+def test_enumerate_style_paren_delimiter_input():
+    src = "1)  first\n2)  second\n"
+    out = postprocess.convert_enumerate_style(src, _styled_ctx('lower-roman-parens'))
+    assert "(i) first" in out
+    assert "(ii) second" in out
+
+
+def test_enumerate_style_config_validation():
+    from conversion_context import ConversionContext
+    import pytest as _pytest
+    cfg = {
+        'source_dir': '.',
+        'postprocess': {'enumerate_style': 'upper-greek'},
+    }
+    with _pytest.raises(SystemExit):
+        ConversionContext.from_config(cfg)
+    ok = ConversionContext.from_config(
+        {'source_dir': '.', 'postprocess': {'enumerate_style': 'lower-roman-parens'}}
+    )
+    assert ok.enumerate_style == 'lower-roman-parens'

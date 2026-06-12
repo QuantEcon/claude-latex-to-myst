@@ -63,6 +63,7 @@ EXPECTED_PIPELINE_ORDER: list[str] = [
     'ensure_blank_after_display_math',
     'convert_pandoc_spans',
     'convert_latex_dashes',
+    'convert_enumerate_style',
     'cleanup_typography',
     'strip_blank_lines_in_math',
     'strip_footnote_refs',
