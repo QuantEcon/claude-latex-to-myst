@@ -818,6 +818,63 @@ def test_strip_doubled_noun_refs_plural_guards_unrelated_prefix():
     assert out == text
 
 
+def test_strip_doubled_noun_refs_section_ref_routed():
+    """Section-style targets route to plain {ref}, which under qe-v5
+    book-mode numbering auto-renders "Section X.Y" — prose "Section"
+    before it doubles to "Section Section 1.2" (#150)."""
+    text = "see Section {ref}`s-fps` for details."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "see {ref}`s-fps` for details."
+
+
+def test_strip_doubled_noun_refs_section_nbsp_tie():
+    """`Section~\\ref{s:fps}` — pandoc emits the `~` tie as U+00A0."""
+    text = "see Section\xa0{ref}`s-fps` for details."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "see {ref}`s-fps` for details."
+
+
+def test_strip_doubled_noun_refs_section_all_prefixes():
+    text = (
+        "Section {ref}`ss-a`, Section {ref}`sss-b`, "
+        "and Section {ref}`sec-c`."
+    )
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "{ref}`ss-a`, {ref}`sss-b`, and {ref}`sec-c`."
+
+
+def test_strip_doubled_noun_refs_sections_plural():
+    text = "Sections {ref}`s-a` and {ref}`s-b` cover X."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == "{ref}`s-a` and {ref}`s-b` cover X."
+
+
+def test_strip_doubled_noun_refs_chapter_ref_noun_preserved():
+    """qe-v5's injectBookSectionDefaults numbers heading_2..heading_6
+    only (lesson 016) — a {ref} to a chapter-level heading renders the
+    chapter *title*, so prose 'Chapter' before a ch- ref is NOT doubled
+    and must stay."""
+    text = "In Chapter {ref}`ch-mdps` we generalize."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == text
+
+
+def test_strip_doubled_noun_refs_section_guards_unrelated_prefix():
+    """A {ref} to a non-section target (e.g. a rerouted theorem label)
+    renders the target title, so the prose noun must stay."""
+    text = "Section {ref}`t-foo` should stay."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == text
+
+
+def test_strip_doubled_noun_refs_section_noun_not_stripped_for_prf_ref():
+    """The section-noun family is tied to the `ref` role only — a
+    {prf:ref} after 'Section' (whatever produced it) is left alone."""
+    text = "Section {prf:ref}`s-odd` stays."
+    out = postprocess.strip_doubled_noun_refs(text)
+    assert out == text
+
+
 def test_strip_doubled_section_symbol_basic():
     text = "in §{ref}`s-foo` and §{ref}`ss-bar`"
     out = postprocess.strip_doubled_section_symbol(text)

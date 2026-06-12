@@ -1,0 +1,9 @@
+# Seeded from issue #150: prose "Section"/"Sections" before a
+# {ref}-routed section target is stripped — qe-v5 book-mode numbering
+# auto-renders "Section X.Y", so the noun doubles ("Section Section 1.2").
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Doubled Section Noun Ref" }

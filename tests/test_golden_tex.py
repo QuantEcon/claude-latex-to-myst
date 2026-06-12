@@ -196,6 +196,7 @@ def test_golden_tex_seeded():
         'cite_natbib_variants',           # 020
         'cref_comma_split',               # 007
         'doubled_noun_ref',               # 011
+        'doubled_section_noun_ref',       # 016 / #150
         'math_text_dollar',               # 003
         'math_percent_comment',           # 006
         'math_thin_space_superscript',    # 042

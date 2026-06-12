@@ -15,6 +15,22 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — doubled noun "Section Section X.Y" on `{ref}`-routed section refs (#150)
+
+Prose `Section~\ref{s:fps}` converts to ``Section {ref}`s-fps` ``, and
+under qe-v5 book-mode numbering the `{ref}` auto-renders "Section X.Y"
+— so the prose noun doubled ("Section **Section 1.2**"; book-dp1
+reviewer follow-up, QuantEcon/book-dp-public#26, 9 sites across 5
+chapters). `strip_doubled_noun_refs` never fired because its table
+matches `{prf:ref}`/`{numref}` roles only, while section prefixes
+route to plain `{ref}`. A new hard-coded `_DOUBLED_SECTION_NOUN_REFS`
+family (`transforms/refs.py`) strips `Section`/`Sections` (space or
+NBSP separator, optional stray `§`) before ``{ref}`` targets with
+`s-`/`ss-`/`sss-`/`sec-` prefixes. `Chapter`/`ch-` is deliberately
+excluded: `injectBookSectionDefaults` numbers heading_2–6 only
+(lesson 016), so chapter refs render the title and the prose noun is
+not doubled there. Golden case `doubled_section_noun_ref`.
+
 ### Added — `postprocess.enumerate_style` for enumitem label parity (#111)
 
 A book whose preamble sets `\setlist[enumerate,1]{label=(\roman*)}`
