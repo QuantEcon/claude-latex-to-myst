@@ -1,0 +1,13 @@
+---
+title: "Math Linewrap"
+---
+
+# Blackwell
+
+Let $U$ be a set of functions and suppose $\Xsf$ is finite. Also, $U$ has the property that $u \in U$ and $c \in \RR_+$ implies $u + c \in U$.
+
+A genuine list stays a list:
+
+- nonnegativity
+
+- monotonicity

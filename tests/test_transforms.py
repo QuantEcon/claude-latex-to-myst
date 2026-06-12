@@ -4491,3 +4491,43 @@ def test_dashes_indented_code_block_skipped_nested_list_converted():
     assert "command --flag --- raw" in out
     assert "prose – here" in out
     assert "nested – item" in out
+
+
+# ── join_split_inline_math: list-marker continuations (#141) ─────────────────
+
+
+def test_join_split_math_blockquote_marker():
+    """The original case: continuation line starting with `>` is the math
+    operator, not a blockquote."""
+    src = "we require that $r\n> 0$ and continue.\n"
+    out = postprocess.join_split_inline_math(src)
+    assert "$r > 0$" in out
+
+
+def test_join_split_math_plus_list_marker():
+    """#141 (dp1 ch_fps): continuation starting with `+ ` inside an open
+    $...$ span would open a bullet item and split the math."""
+    src = "$u \\in U$ and $c \\in \\RR_+$ implies $u\n+ c \\in U$.\n"
+    out = postprocess.join_split_inline_math(src)
+    assert "implies $u + c \\in U$." in out
+
+
+def test_join_split_math_minus_star_and_numbered_markers():
+    for marker in ("- v", "* w", "2. x", "3) y"):
+        src = f"the value $u\n{marker}$ holds.\n"
+        out = postprocess.join_split_inline_math(src)
+        assert f"$u {marker}$ holds." in out, marker
+
+
+def test_join_split_math_genuine_list_untouched():
+    """A real list after a $-balanced line must stay a list."""
+    src = "Properties of $u$:\n- nonnegativity\n- monotonicity\n"
+    assert postprocess.join_split_inline_math(src) == src
+
+
+def test_join_split_math_skips_display_math_and_fences():
+    src = (
+        "$$\nx\n+ y\n$$\n"
+        "```python\na = b\n- c\n```\n"
+    )
+    assert postprocess.join_split_inline_math(src) == src

@@ -1,0 +1,9 @@
+# #141: a LaTeX source line wrap inside inline math whose continuation
+# starts with `+` must not open a Markdown list item — the $...$ span
+# would split across two blocks and neither half parses as math.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Math Linewrap" }
