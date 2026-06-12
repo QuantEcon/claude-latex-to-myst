@@ -15,6 +15,19 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — `{prf:proof}` emits `:nonumber:` for amsthm parity (#143)
+
+mystmd enumerates bare `{prf:proof}` whenever the book numbers the
+proof family, producing "Proof 2.2.3" headers that clash with the
+neighbouring theorem counters (dp1 ch_fps, audit
+QuantEcon/book-dp-public#27 items 8–9). LaTeX's `proof` environment is
+unnumbered by definition — amsthm has no proof counter — so
+`convert_environment_divs` now emits `:nonumber:` on every
+`{prf:proof}`, universally (precedent: #109's uncaptioned algorithms).
+A source `\label` is kept (harmless under `:nonumber:`; the anchor
+still resolves). dp1 fixture delta verified as purely added
+`:nonumber:` lines.
+
 ### Fixed — line wrap inside inline math no longer opens a list item (#141)
 
 A LaTeX source line wrap inside an inline `$...$` span whose

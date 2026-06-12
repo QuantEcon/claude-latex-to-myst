@@ -4531,3 +4531,25 @@ def test_join_split_math_skips_display_math_and_fences():
         "```python\na = b\n- c\n```\n"
     )
     assert postprocess.join_split_inline_math(src) == src
+
+
+def test_proof_div_emits_nonumber():
+    """#143 — LaTeX's proof env is unnumbered by definition (amsthm has
+    no proof counter), but mystmd enumerates bare {prf:proof} whenever
+    the book numbers the proof family ("Proof 2.2.3" next to "Lemma
+    2.2.4"). Every emitted {prf:proof} carries :nonumber:; a source
+    \\label is kept (harmless under :nonumber:, anchor still resolves)."""
+    body = (
+        '::: proof\n'
+        '*Proof.* By Banach.\n'
+        ':::\n'
+        '::: proof\n'
+        '[]{#pf:main label="pf:main"} *Proof.* Labelled proof.\n'
+        ':::\n'
+    )
+    out = postprocess.convert_environment_divs(body)
+    assert out.count('{prf:proof}') == 2
+    assert out.count(':nonumber:') == 2
+    assert ':label: pf-main' in out
+    # Option order: :nonumber: directly under the header.
+    assert '```{prf:proof}\n:nonumber:' in out
