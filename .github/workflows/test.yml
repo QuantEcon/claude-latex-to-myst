@@ -16,6 +16,14 @@ env:
   # the golden corpus in the same commit. Keep in lock-step with the version
   # the maintainers run locally.
   PANDOC_VERSION: "3.8"
+  # The render gate (#151) builds against the QuantEcon/mystmd FORK, not
+  # upstream npm mystmd: the committed build baselines
+  # (tests/baselines/build-*.txt) assume fork behavior (qe-v5 book-mode
+  # numbering, fancy lists from QuantEcon/mystmd#50, the cite-scanner fix
+  # from QuantEcon/mystmd#53). A SHA or qe-vN tag on QuantEcon/mystmd.
+  # Bump deliberately, re-validating the three build baselines with the
+  # new ref in the same commit — never let runner drift pick the version.
+  MYSTMD_REF: "d1a942cae177120a5ddad49fe30b02d1ad583553"  # v1.10.1 (qe-v8)
 
 jobs:
   # Job 1 — the merge blocker. Unit suite + both golden tiers
@@ -50,12 +58,17 @@ jobs:
         run: uv run pytest -q
 
   # Job 2 — deeper, label-gated, allowed-to-be-flaky (NOT a merge blocker).
-  # Clones the real consumer books and diffs validate.py counts against the
-  # committed tests/baselines/*.json (Phase 1 §2b). It needs fixture access
-  # (private repos) supplied via secrets, so it is skipped unless the
-  # `fixture-check` label is present AND the secrets are configured. The
-  # curated golden corpus in Job 1 is the real blocker; this job documents
-  # the per-book count surface and catches whole-book drops.
+  # Clones the real consumer books and (a) diffs validate.py counts against
+  # the committed tests/baselines/*.json (Phase 1 §2b), then (b) runs the
+  # render gate (#151): build_smoke.py overlays each book's regen onto its
+  # worked-on mystmd/ project, runs `myst build --html` with the pinned
+  # QuantEcon/mystmd fork build, and multiset-diffs normalized warnings
+  # against tests/baselines/build-<book>.txt (dp1's empty baseline = the
+  # zero-warning contract). It needs fixture access (private repos)
+  # supplied via secrets, so it is skipped unless the `fixture-check`
+  # label is present AND the secrets are configured. The curated golden
+  # corpus in Job 1 is the real blocker; this job documents the per-book
+  # count + render surface and catches whole-book drops.
   fixture-counts:
     runs-on: ubuntu-latest
     needs: test
@@ -80,7 +93,43 @@ jobs:
       - name: Sync dependencies
         run: uv sync
 
-      - name: Clone fixtures + diff counts vs committed baselines
+      # The fork CLI bundles to a single self-contained dist/myst.cjs
+      # (no runtime deps), so caching that one artifact keyed on the ref
+      # skips the whole clone + bun + turbo build on repeat runs.
+      - name: Cache built mystmd fork
+        id: mystmd-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.mystmd-dist
+          key: mystmd-${{ env.MYSTMD_REF }}
+
+      - name: Build QuantEcon/mystmd @ pinned ref
+        if: steps.mystmd-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          curl -fsSL https://bun.sh/install | bash
+          export PATH="$HOME/.bun/bin:$PATH"
+          src="$(mktemp -d)"
+          # init + fetch (not clone --branch) so MYSTMD_REF can be either
+          # a qe-vN tag or a bare commit SHA — GitHub serves both.
+          git -C "$src" init -q
+          git -C "$src" remote add origin https://github.com/QuantEcon/mystmd.git
+          git -C "$src" fetch -q --depth 1 origin "$MYSTMD_REF"
+          git -C "$src" checkout -q FETCH_HEAD
+          (cd "$src" && bun install --frozen-lockfile && bun run build)
+          mkdir -p "$HOME/.mystmd-dist"
+          cp "$src/packages/mystmd/dist/myst.cjs" "$HOME/.mystmd-dist/"
+
+      - name: Put pinned myst on PATH
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          printf '#!/bin/sh\nexec node "$HOME/.mystmd-dist/myst.cjs" "$@"\n' > "$HOME/.local/bin/myst"
+          chmod +x "$HOME/.local/bin/myst"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/myst" --version
+
+      - name: Clone fixtures + diff counts/build warnings vs committed baselines
         env:
           # GitHub clone URLs (with embedded token) for the consumer books.
           # Unset ⇒ this job no-ops (it cannot clone private repos without them).
@@ -105,5 +154,10 @@ jobs:
             uv run python scripts/count_baseline.py \
               --config "fixtures/$d/regen/config.yaml" --book "$b" \
               --check "tests/baselines/$b.json" || fail=1
+            # Render gate (#151): regen must build with warnings matching
+            # the committed baseline (multiset diff — any NEW line fails).
+            uv run python scripts/build_smoke.py \
+              --fixture "fixtures/$d" \
+              --check "tests/baselines/build-$b.txt" || fail=1
           done
           exit "$fail"

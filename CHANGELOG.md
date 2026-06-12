@@ -15,6 +15,24 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Added — CI render gate: `myst build` on converted output (#151)
+
+CI never ran `myst build`, so output passing every structural check
+could still fail as a product (lesson 046: structural parity is not
+render parity). Job 2 (`fixture-counts`, label-gated, non-blocking) now
+runs the existing `build_smoke.py` gate per book after the count check:
+overlay regen onto the worked-on `mystmd/`, `myst build --html`,
+multiset-diff normalized warnings against
+`tests/baselines/build-<book>.txt` (dp1's empty baseline = the
+zero-warning contract; any NEW warning line fails). The build runs on a
+**pinned QuantEcon/mystmd fork ref** (`MYSTMD_REF`, currently
+`d1a942ca` = v1.10.1 qe-v8 — the build the baselines were validated
+against; upstream mystmd lacks the fork behavior they assume), built
+with bun+turbo and cached as the single self-contained `myst.cjs`
+keyed on the ref. Bump the pin deliberately, re-validating the three
+baselines in the same commit. Deferred from the issue: the always-on
+Job-1 mini-project smoke and the pdftotext numbering comparison.
+
 ### Fixed — doubled noun "Section Section X.Y" on `{ref}`-routed section refs (#150)
 
 Prose `Section~\ref{s:fps}` converts to ``Section {ref}`s-fps` ``, and
