@@ -33,6 +33,28 @@ keyed on the ref. Bump the pin deliberately, re-validating the three
 baselines in the same commit. Deferred from the issue: the always-on
 Job-1 mini-project smoke and the pdftotext numbering comparison.
 
+### Fixed — Stage 4 copies only figure assets the output references (#154)
+
+The blanket copy (every `pdf/png/jpg/jpeg/svg` in `figures_dir`,
+missing-or-newer) diverged from the generated output whenever
+`postprocess.rewrites` retargeted includes to a different format:
+book-dp1 deleted its 85 source PDFs from `mystmd/figures/` (serving
+pre-rendered SVGs instead) and every run re-copied them as untracked
+files. Stage 4 now delegates to `scripts/_copy_figures.py`, which scans
+every `output_dir/*.md` for flat `figures/<name>.<ext>` references
+(normalizing `figures/../figures/x` shapes) and copies referenced ∩
+present-in-source only, with the same missing-or-newer semantics.
+Referenced-but-not-in-source is quietly counted, not warned — pre-
+rendered assets committed in the output dir are the dominant pattern
+(82 of deep-learning's 88 references). Copy-only: nothing in the
+destination is ever deleted. The copy step no longer keeps its own
+extension list — the scan's image-format allowlist is the single one,
+broader than before (referenced `gif`/`webp`/`avif` now work) — which
+also dissolves the "MUST match Stage 4" coupling on
+`conversion_context.from_config`'s `figure_ext_map` scan. Fixture-verified: copied sets shrink 85→61
+(dp1), 113→64 (dp2), 10→6 (deep-learning) with all `.md` output
+byte-identical.
+
 ### Fixed — doubled noun "Section Section X.Y" on `{ref}`-routed section refs (#150)
 
 Prose `Section~\ref{s:fps}` converts to ``Section {ref}`s-fps` ``, and
