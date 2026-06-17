@@ -15,6 +15,22 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — algorithm control keywords render uniformly bold (#161)
+
+Algorithm blocks render as numbered statement lists (#109/#134), but
+control-keyword emphasis was inconsistent: a book mixing the algorithm2e
+`\Return`/`\While` macros with a literal `\textbf{return}` rendered the
+macro keywords plain and the `\textbf` one bold (book-dp2 §1.2.1.3, the
+VFI/HPI/OPI algorithms). The reference point is the LaTeX→PDF output:
+algorithm2e's default keyword style is `\SetKwSty{textbf}` (bold) and
+dp2's preamble does not override it, so every control keyword is bold in
+the PDF. The emitter now bolds control keywords in both dialect paths —
+algorithm2e (`while`/`do`, `for`/`do`, `if`/`else if`/`else`, `return`,
+`repeat`, `end`, `KwIn`/`KwOut`/`KwResult`) and algpseudocode
+(`for`/`while`/`if`/`repeat`/`until`/`loop`/`procedure`/`function`/`return`/`end`).
+Words the author typed as literal text (`input $v$…`, `set …`) stay plain,
+matching the PDF.
+
 ### Fixed — book-dp2 validation batch: pifont glyphs, orphan pagerefs, labelled enumerates, `\paragraph` (#159, #158A, #157A, #160B)
 
 Four Tier-1 fidelity defects surfaced validating book-dp2 on `main`

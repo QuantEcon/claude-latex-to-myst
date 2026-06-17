@@ -47,11 +47,12 @@ def test_resolve_algorithms_simple_body():
     # Statements emit as numbered lines (#109 — linesnumbered parity)
     assert "1. input $X_0$" in out
     assert "2. $t \\leftarrow 0$" in out
-    # While header (algorithm2e `do … end`), indented inner lines, closer
-    assert "3. while $t < T$ do" in out
+    # While header (algorithm2e `do … end`), indented inner lines, closer.
+    # Control keywords render bold (#161 — algorithm2e `\SetKwSty{textbf}`).
+    assert "3. **while** $t < T$ **do**" in out
     assert "   1. observe $X_t$" in out
     assert "   2. choose $A_t$" in out
-    assert "4. end" in out
+    assert "4. **end**" in out
 
 
 def test_resolve_algorithms_kwin_kwout_return():
@@ -62,16 +63,16 @@ def test_resolve_algorithms_kwin_kwout_return():
         "\\Return{$u_k$}\n"
     )
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    assert "1. input: a function $f$" in out
-    assert "2. output: a fixed point" in out
-    assert "4. return $u_k$" in out
+    assert "1. **input:** a function $f$" in out
+    assert "2. **output:** a fixed point" in out
+    assert "4. **return** $u_k$" in out
 
 
 def test_resolve_algorithms_lif_single_line():
     body = "\\lIf{$x > 0$}{break}\n"
     out = postprocess.resolve_algorithms(_algo_marker(body))
     # Single-line if: "if cond: body" flattened
-    assert "1. if $x > 0$: break" in out
+    assert "1. **if** $x > 0$: break" in out
 
 
 def test_resolve_algorithms_repeat_with_inner():
@@ -82,7 +83,7 @@ def test_resolve_algorithms_repeat_with_inner():
         "}\n"
     )
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    assert "1. repeat:" in out
+    assert "1. **repeat**:" in out
     assert "   1. $u \\leftarrow Tu$" in out
 
 
@@ -92,7 +93,7 @@ def test_resolve_algorithms_strips_textnormal():
     aren't math, so the wrapper has no markdown equivalent."""
     body = "\\While{\\textnormal{true}}\n{\n    do stuff \\;\n}\n"
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    assert "1. while true do" in out
+    assert "1. **while** true **do**" in out
     assert "\\textnormal" not in out
 
 
@@ -102,7 +103,7 @@ def test_resolve_algorithms_unbraced_return():
     item here, #109). The existing parser only handled ``\\Return{x}``."""
     body = "$\\theta \\leftarrow 0$ \\;\n\\Return $\\theta$\n"
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    assert "2. return $\\theta$" in out
+    assert "2. **return** $\\theta$" in out
     # The literal LaTeX shouldn't survive
     assert "\\Return" not in out
 
@@ -111,7 +112,7 @@ def test_resolve_algorithms_unbraced_kwin():
     """Same unbraced fallback applies to \\KwIn / \\KwOut / \\KwResult."""
     body = "\\KwIn data $\\Dsf$ and tolerance $\\tau$ \\;\n"
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    assert "1. input: data $\\Dsf$ and tolerance $\\tau$" in out
+    assert "1. **input:** data $\\Dsf$ and tolerance $\\tau$" in out
     assert "\\KwIn" not in out
 
 
@@ -120,7 +121,7 @@ def test_resolve_algorithms_braced_return_still_works():
     the new unbraced fallback."""
     body = "\\Return{$u_k$}\n"
     out = postprocess.resolve_algorithms(_algo_marker(body))
-    assert "1. return $u_k$" in out
+    assert "1. **return** $u_k$" in out
 
 
 def test_resolve_algorithms_handles_unescaped_marker():
@@ -4023,9 +4024,9 @@ def test_algpseudo_for_endfor_nests():
     )
     out = postprocess._algpseudo_convert_body(body)
     assert _bullets(out) == [
-        "- for $i = 1$ to $n$ do",
+        "- **for** $i = 1$ to $n$ **do**",
         "  - work($i$)",
-        "- end",
+        "- **end**",
     ]
 
 
@@ -4039,11 +4040,11 @@ def test_algpseudo_nested_for():
     )
     out = postprocess._algpseudo_convert_body(body)
     assert _bullets(out) == [
-        "- for $i$ do",
-        "  - for $j$ do",
+        "- **for** $i$ **do**",
+        "  - **for** $j$ **do**",
         "    - cell($i$, $j$)",
-        "  - end",
-        "- end",
+        "  - **end**",
+        "- **end**",
     ]
 
 
@@ -4055,9 +4056,9 @@ def test_algpseudo_while_endwhile():
     )
     out = postprocess._algpseudo_convert_body(body)
     assert _bullets(out) == [
-        r"- while $v > \epsilon$ do",
+        r"- **while** $v > \epsilon$ **do**",
         "  - step",
-        "- end",
+        "- **end**",
     ]
 
 
@@ -4071,9 +4072,9 @@ def test_algpseudo_repeat_until_preserves_condition():
     )
     out = postprocess._algpseudo_convert_body(body)
     assert _bullets(out) == [
-        "- repeat:",
+        "- **repeat**:",
         "  - noop",
-        "- until converged",
+        "- **until** converged",
     ]
 
 
@@ -4087,9 +4088,9 @@ def test_algpseudo_if_else_endif():
     )
     out = postprocess._algpseudo_convert_body(body)
     assert _bullets(out) == [
-        "- if $x < 0$:",
+        "- **if** $x < 0$:",
         "  - neg",
-        "- else:",
+        "- **else**:",
         "  - pos",
     ]
 
@@ -4106,11 +4107,11 @@ def test_algpseudo_if_elsif_else_chain():
     )
     out = postprocess._algpseudo_convert_body(body)
     assert _bullets(out) == [
-        "- if $x < 0$:",
+        "- **if** $x < 0$:",
         "  - neg",
-        "- else if $x = 0$:",
+        "- **else if** $x = 0$:",
         "  - zero",
-        "- else:",
+        "- **else**:",
         "  - pos",
     ]
 
@@ -4127,7 +4128,7 @@ def test_algpseudo_require_ensure_return_kw_words():
         "- **Input:** Initial $x_0$",
         "- Iterate",
         r"- **Output:** Converged $\bar x$",
-        r"- return $\bar x$",
+        r"- **return** $\bar x$",
     ]
 
 
@@ -4141,7 +4142,7 @@ def test_algpseudo_loop_endloop():
     )
     out = postprocess._algpseudo_convert_body(body)
     assert _bullets(out) == [
-        "- loop:",
+        "- **loop**:",
         "  - forever",
     ]
 
@@ -4230,9 +4231,9 @@ def test_algo_convert_body_dispatches_to_algpseudo_on_algorithmic_wrapper():
     assert "\\STATE" not in out
     assert "\\FOR" not in out
     assert "- Step one" in out
-    assert "- for $i$ do" in out
+    assert "- **for** $i$ **do**" in out
     assert "  - inner" in out
-    assert "- end" in out
+    assert "- **end**" in out
 
 
 # ── resolve_algorithmics end-to-end (issue #20) ──────────────────────────────
@@ -4272,12 +4273,12 @@ def test_resolve_algorithmics_full_reporter_example():
     bullets = _bullets(out)
     assert bullets == [
         "- **Input:** Initial state $x_0$",
-        r"- for episode $e = 1, \ldots, E$ do",
+        r"- **for** episode $e = 1, \ldots, E$ **do**",
         "  - **Simulate path:** ...",
-        r"  - for gradient step $t = 1, \ldots, T$ do",
+        r"  - **for** gradient step $t = 1, \ldots, T$ **do**",
         "    - Compute loss",
-        "  - end",
-        "- end",
+        "  - **end**",
+        "- **end**",
         "- **Output:** Trained network",
     ]
 

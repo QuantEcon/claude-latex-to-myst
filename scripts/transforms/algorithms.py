@@ -352,7 +352,7 @@ def _algpseudo_convert_body(body: str) -> str:
         elif kw == 'ENSURE' or kw == 'OUTPUT':
             emit(f'**Output:** {text}' if text else '**Output:**')
         elif kw == 'RETURN':
-            emit(f'return {text}' if text else 'return')
+            emit(f'**return** {text}' if text else '**return**')
         elif kw == 'COMMENT':
             # Standalone \COMMENT{...} — rare; if seen at top level emit
             # as italicized note rather than a bullet so it stands out.
@@ -360,32 +360,32 @@ def _algpseudo_convert_body(body: str) -> str:
                 emit(f'*{arg}*')
         elif kw == 'FOR':
             stack.append('FOR')
-            emit_header(f'for {arg} do' if arg else 'for do')
+            emit_header(f'**for** {arg} **do**' if arg else '**for** **do**')
             if text:
                 emit(text)
         elif kw == 'FORALL':
             stack.append('FOR')  # closed by same \ENDFOR
-            emit_header(f'for all {arg} do' if arg else 'for all do')
+            emit_header(f'**for all** {arg} **do**' if arg else '**for all** **do**')
             if text:
                 emit(text)
         elif kw == 'ENDFOR':
             close_block({'FOR'})
-            emit('end')   # algorithm2e-style loop terminator (#109)
+            emit('**end**')   # algorithm2e-style loop terminator (#109)
             if text:
                 emit(text)
         elif kw == 'WHILE':
             stack.append('WHILE')
-            emit_header(f'while {arg} do' if arg else 'while do')
+            emit_header(f'**while** {arg} **do**' if arg else '**while** **do**')
             if text:
                 emit(text)
         elif kw == 'ENDWHILE':
             close_block({'WHILE'})
-            emit('end')   # algorithm2e-style loop terminator (#109)
+            emit('**end**')   # algorithm2e-style loop terminator (#109)
             if text:
                 emit(text)
         elif kw == 'REPEAT':
             stack.append('REPEAT')
-            emit_header('repeat:')
+            emit_header('**repeat**:')
             if text:
                 emit(text)
         elif kw == 'UNTIL':
@@ -393,12 +393,12 @@ def _algpseudo_convert_body(body: str) -> str:
             # bullet at the now-restored depth so the condition is
             # preserved (unlike algorithm2e's one-arg \Repeat).
             close_block({'REPEAT'})
-            emit(f'until {arg}' if arg else 'until')
+            emit(f'**until** {arg}' if arg else '**until**')
             if text:
                 emit(text)
         elif kw == 'IF':
             stack.append('IF')
-            emit_header(f'if {arg}:' if arg else 'if:')
+            emit_header(f'**if** {arg}:' if arg else '**if**:')
             if text:
                 emit(text)
         elif kw == 'ELSIF':
@@ -409,7 +409,7 @@ def _algpseudo_convert_body(body: str) -> str:
                 if depth > 0:
                     depth -= 1
             stack.append('ELSIF')
-            emit_header(f'else if {arg}:' if arg else 'else if:')
+            emit_header(f'**else if** {arg}:' if arg else '**else if**:')
             if text:
                 emit(text)
         elif kw == 'ELSE':
@@ -418,7 +418,7 @@ def _algpseudo_convert_body(body: str) -> str:
                 if depth > 0:
                     depth -= 1
             stack.append('ELSE')
-            emit_header('else:')
+            emit_header('**else**:')
             if text:
                 emit(text)
         elif kw == 'ENDIF':
@@ -427,7 +427,7 @@ def _algpseudo_convert_body(body: str) -> str:
                 emit(text)
         elif kw == 'LOOP':
             stack.append('LOOP')
-            emit_header('loop:')
+            emit_header('**loop**:')
             if text:
                 emit(text)
         elif kw == 'ENDLOOP':
@@ -437,7 +437,7 @@ def _algpseudo_convert_body(body: str) -> str:
         elif kw in ('PROCEDURE', 'FUNCTION'):
             stack.append(kw)
             label = 'procedure' if kw == 'PROCEDURE' else 'function'
-            emit_header(f'{label} {arg}:' if arg else f'{label}:')
+            emit_header(f'**{label}** {arg}:' if arg else f'**{label}**:')
             if text:
                 emit(text)
         elif kw in ('ENDPROCEDURE', 'ENDFUNCTION'):
@@ -577,14 +577,19 @@ def _algo_convert_body(body: str) -> str:
         # Two-arg control blocks. ``closer`` is the algorithm2e block
         # terminator (#109): loops render ``while C do … end`` /
         # ``for … do … end``; conditionals keep the ``if C:`` colon form.
+        # Control keywords are emitted **bold** to match algorithm2e's
+        # default ``\SetKwSty{textbf}`` rendering in the PDF (#161) — a book
+        # that mixes the ``\While``/``\Return`` macros with a literal
+        # ``\textbf{return}`` otherwise renders the macro keywords plain and
+        # the textbf one bold.
         for cmd, header_fmt, closer in (
-            ('While',   'while {} do',     'end'),
-            ('For',     'for {} do',       'end'),
-            ('ForEach', 'for each {} do',  'end'),
-            ('If',      'if {}:',          None),
-            ('uIf',     'if {}:',          None),
-            ('ElseIf',  'else if {}:',     None),
-            ('lIf',     'if {}: {}',       None),
+            ('While',   '**while** {} **do**',     '**end**'),
+            ('For',     '**for** {} **do**',       '**end**'),
+            ('ForEach', '**for each** {} **do**',  '**end**'),
+            ('If',      '**if** {}:',              None),
+            ('uIf',     '**if** {}:',              None),
+            ('ElseIf',  '**else if** {}:',         None),
+            ('lIf',     '**if** {}: {}',           None),
         ):
             pat = re.compile(r'\\' + cmd + r'\s*\{')
             m = pat.search(text)
@@ -610,7 +615,7 @@ def _algo_convert_body(body: str) -> str:
             if cmd == 'lIf':
                 # Single-line if: "if cond: body" (no nested bullets).
                 inner_flat = re.sub(r'\s+', ' ', body_inner.lstrip('-').strip())
-                replacement = f'\\NEWLINE\\if {cond}: {inner_flat}\\NEWLINE\\'
+                replacement = f'\\NEWLINE\\**if** {cond}: {inner_flat}\\NEWLINE\\'
             else:
                 indented = '\n'.join('  ' + ln for ln in body_inner.split('\n'))
                 replacement = (
@@ -631,16 +636,16 @@ def _algo_convert_body(body: str) -> str:
                 body_inner = _algo_convert_body(body_inner).strip()
                 indented = '\n'.join('  ' + ln for ln in body_inner.split('\n'))
                 replacement = (
-                    f'\\NEWLINE\\repeat:\\NEWLINE\\{indented}\\NEWLINE\\'
+                    f'\\NEWLINE\\**repeat**:\\NEWLINE\\{indented}\\NEWLINE\\'
                 )
                 return text[: m.start()] + replacement + text[j + 1 :], True
 
         # One-arg statement commands.
         one_arg_cmds = (
-            ('Return',   'return {}'),
-            ('KwResult', 'result: {}'),
-            ('KwIn',     'input: {}'),
-            ('KwOut',    'output: {}'),
+            ('Return',   '**return** {}'),
+            ('KwResult', '**result:** {}'),
+            ('KwIn',     '**input:** {}'),
+            ('KwOut',    '**output:** {}'),
         )
         for cmd, fmt in one_arg_cmds:
             pat = re.compile(r'\\' + cmd + r'\s*\{')
