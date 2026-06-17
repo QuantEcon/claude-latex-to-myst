@@ -134,6 +134,13 @@ for ch in "${CHAPTER_STEMS[@]}"; do
   # BSD vs GNU sed portability traps and shell quoting hell.
   python3 "$SCRIPT_DIR/_apply_rewrites.py" "$CONFIG" "$dst"
 
+  # Substitute \ding{N} (pifont) with its unicode glyph (GH #159). Pandoc
+  # drops \ding silently — a tabular of \ding{51} checkmarks otherwise
+  # converts to a table of blank cells. Must run BEFORE the table/figure
+  # marker extraction below, else the \ding rides into a marker payload
+  # where the batch pandoc pass drops it. No-op for sources without \ding.
+  python3 "$SCRIPT_DIR/_apply_pifont_glyphs.py" "$dst"
+
   # Preserve the optional [title] of theorem-family environments. Pandoc
   # drops the optional arg of a \begin{theorem}[Title] it can't resolve (and
   # renders \begin{proof}[Proof of …] inline, duplicating the auto heading),

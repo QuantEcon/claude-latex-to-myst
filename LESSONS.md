@@ -54,13 +54,14 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 045 | [Pandoc's HTML figcaption flattens caption math for tikzpicture figures — extract the caption from source instead](lessons/045-tikzpicture-figcaption-math-flattened-by-pandoc-html.md) | post-processing | 🔴 | codified |
 | 046 | [Structural parity is not render parity — only a real `myst build` catches emission bugs the text can't show](lessons/046-structural-parity-is-not-render-parity.md) | validation | 🔴 | codified |
 | 047 | [pandoc's smart writer is load-bearing for HTML-comment markers — `-t markdown-smart` corrupts every `<!--MARKER-->`; dash conversion must be post-pandoc](lessons/047-markdown-smart-writer-breaks-html-comment-markers.md) | pandoc | 🔴 | codified |
+| 048 | [Auto-mapping `\\ding{N}`→Unicode must run before marker extraction — once a cell's `\\ding` is base64'd into a table/figure marker, the batch pandoc pass drops it again](lessons/048-pifont-glyph-substitution-precedes-marker-extraction.md) | preprocess | 🔴 | codified |
 
 ## By category
 
 - **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045
 - **regex-safety:** 002, 017, 024, 031, 035, 036
 - **pandoc:** 027, 047
-- **preprocess:** 028, 029, 030, 039, 044
+- **preprocess:** 028, 029, 030, 039, 044, 048
 - **katex:** 003, 006, 042
 - **myst:** 013, 040, 041
 - **tooling:** 009, 010, 038
@@ -77,7 +78,7 @@ coverage.**
   construct. These *shrink* as constructs move onto the marker path (the
   marker bypasses pandoc for that construct), then survive only as a
   `golden_tex` lock: 007, 014, 015, 016, 017, 019, 020, 021, 022, 023, 026,
-  027, 028, 029, 030, 031, 032, 033, 034, 035, 036, 037, 043, 045.
+  027, 028, 029, 030, 031, 032, 033, 034, 035, 036, 037, 043, 045, 048.
 - **permanent** — a fact about MyST / KaTeX / sphinx-proof rendering, a
   property of our own transforms/architecture, or tooling. Not pandoc's
   fault; won't disappear by marker-izing anything: 001, 002, 003, 004, 005,

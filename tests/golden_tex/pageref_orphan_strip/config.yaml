@@ -1,0 +1,9 @@
+# #158A: \pageref has no meaning in single-page HTML — pandoc drops it and
+# strands "on page .". The companion \cref already renders a link, so the whole
+# locator clause is stripped pre-pandoc.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Pageref Strip" }

@@ -1,0 +1,9 @@
+# #160B: \paragraph is a run-in unnumbered heading in LaTeX; emit it as a bold
+# run-in (**Title.**) rather than a deep ##### heading that book numbering
+# would label with a full multi-level section number.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Paragraph Run-in" }

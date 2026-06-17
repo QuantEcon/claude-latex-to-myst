@@ -15,6 +15,41 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — book-dp2 validation batch: pifont glyphs, orphan pagerefs, labelled enumerates, `\paragraph` (#159, #158A, #157A, #160B)
+
+Four Tier-1 fidelity defects surfaced validating book-dp2 on `main`
+(reader report QuantEcon/book-dp-public#29), each landing pre-pandoc with
+a `golden_tex` end-to-end case:
+
+- **`\ding{}` (pifont) auto-mapped to Unicode (#159).** Pandoc silently
+  drops `\ding`, so a `tabular` of `\ding{51}` checkmarks converted to a
+  table of *blank* cells (dp2's Table 2.1 conveyed nothing). The
+  unambiguous glyph table (`\ding{51}`→✓, `\ding{55}`→✗, `\ding{172}`–`{191}`
+  →①–⑩/❶–❿) is now applied pre-pandoc by `_apply_pifont_glyphs.py`, **before**
+  the table/figure marker extraction (else the macro rides into a marker
+  payload where the batch pandoc pass drops it). `\faIcon` and other
+  no-default macros stay warn-only.
+- **Orphaned `on page~\pageref{X}` clauses stripped (#158A).** `\pageref`
+  has no meaning in single-page HTML — pandoc drops it and strands "on
+  page .". The companion `\cref`/`\ref` already renders a link, so the
+  whole locator clause is removed pre-pandoc (`strip_orphan_pagerefs`),
+  while the `\pageref` token is still intact and unambiguous. A locator
+  preposition (`on`/`from`) is required so a load-bearing bare
+  `page~\pageref` is never touched; the parenthetical `(page~\pageref{X})`
+  form is handled separately. All 67 dp2 sites strip with correct grammar.
+- **Custom-label enumerate with a leading `\label{}` (#157A).** A
+  `\begin{enumerate}\label{enum:b13}` no longer makes the custom-label
+  head-check bail (which dropped the list to pandoc, where
+  `enumerate_style` then clobbered `(B1)–(B3)` to `(i),(ii),(iii)`).
+  Leading no-output tokens (`\label`, `\setlength`, `%`-comments) are
+  skipped, and a leading `\label` is hoisted to an own-line anchor so it
+  becomes a `(enum-b13)=` target and cross-refs keep resolving.
+- **`\paragraph` emitted as a bold run-in (#160B).** A run-in unnumbered
+  LaTeX heading was becoming a deep `#####` that qe-v5 book numbering
+  labelled §8.3.1.2.1. `\paragraph`/`\subparagraph` now rewrite to
+  `\textbf{…}` pre-pandoc, matching LaTeX's run-in semantics and staying
+  out of the numbering tree entirely.
+
 ### Added — CI render gate: `myst build` on converted output (#151)
 
 CI never ran `myst build`, so output passing every structural check

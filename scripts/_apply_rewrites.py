@@ -107,6 +107,42 @@ _DECLARATION_FORMS = {
 }
 
 
+# Orphaned page references (#158A). LaTeX's ``… on page~\pageref{X}`` has no
+# meaning in single-page HTML — pandoc drops the ``\pageref`` and strands the
+# lead-in, leaving "on page .", "on page ,", "(page )". The companion
+# ``\cref``/``\ref`` immediately before it already renders a working link, so
+# the whole locator clause is redundant. Strip it pre-pandoc, while the
+# ``\pageref`` token is still intact and unambiguous (post-pandoc the orphan
+# "page " is much harder to tell from a real "page 5").
+#
+# Two shapes, stripped in this order:
+#   1. parenthetical-only — ``(page~\pageref{X})`` / ``(see p.~\pageref{X})``
+#      with the leading space, so "theorem (page~\pageref{X}), the" → "theorem,
+#      the". A parenthetical that wraps *more* than the page ref (e.g.
+#      ``(see, in particular, \cref{Y} on page~\pageref{X})``) is left for the
+#      inline pass, which strips only the inner clause and keeps "(… \cref{Y})".
+#   2. inline companion clause — ``[,] on page~\pageref{X}`` /
+#      ``from page~\pageref{X}`` / ``on p.~\pageref{X}``. A locator preposition
+#      (``on``/``from``) is required, so a bare load-bearing "page~\pageref" is
+#      never touched; ``\s+`` between the preposition and ``page`` absorbs the
+#      LaTeX line-wrap ``\cref{X} on\n    page~\pageref{X}``.
+_PAGEREF = r'\\pageref\{[^}]*\}'
+_PAGEREF_PAREN_RE = re.compile(
+    r'[ \t]*\(\s*(?:see\s+|on\s+|from\s+)?(?:pages?|pp?\.)\s*[~ ]*'
+    + _PAGEREF + r'\s*\)'
+)
+_PAGEREF_INLINE_RE = re.compile(
+    r'(?:[ \t]*,)?\s+(?:on|from)\s+(?:pages?|pp?\.)\s*[~ ]*' + _PAGEREF
+)
+
+
+def strip_orphan_pagerefs(text: str) -> str:
+    """Drop redundant ``on page~\\pageref{X}`` locator clauses (#158A)."""
+    text = _PAGEREF_PAREN_RE.sub('', text)
+    text = _PAGEREF_INLINE_RE.sub('', text)
+    return text
+
+
 def _find_matching_brace(s: str, open_idx: int) -> int:
     """``s[open_idx] == '{'`` → index of the matching ``}`` (or -1)."""
     depth = 0
@@ -181,6 +217,35 @@ def _flatten_grouping_braces(arg: str) -> str:
     return out
 
 
+# ``\paragraph``/``\subparagraph`` are run-in, *unnumbered* headings in LaTeX,
+# but pandoc emits them as deep ATX headings (``####``/``#####``) that qe-v5
+# book-mode numbering then labels with a full multi-level number (the reporter
+# saw a paragraph carrying §8.3.1.2.1 — #160B). Rewrite them to a bold run-in
+# (``\textbf{…}`` → ``**…**``) pre-pandoc so they never enter the heading
+# numbering tree at all. Matches LaTeX's own run-in semantics (the title flows
+# into the following body). An optional ``[short-title]`` arg is dropped.
+_PARAGRAPH_RE = re.compile(r'\\(?:sub)?paragraph\b\s*(?:\[[^\]]*\])?\s*\{')
+
+
+def convert_paragraph_runins(text: str) -> str:
+    """``\\paragraph{Title.}`` → ``\\textbf{Title.}`` (#160B)."""
+    out = []
+    pos = 0
+    for m in _PARAGRAPH_RE.finditer(text):
+        if m.start() < pos:
+            continue
+        open_brace = m.end() - 1
+        close = _find_matching_brace(text, open_brace)
+        if close < 0:
+            continue
+        title = text[open_brace + 1:close]
+        out.append(text[pos:m.start()])
+        out.append(f'\\textbf{{{title}}}')
+        pos = close + 1
+    out.append(text[pos:])
+    return ''.join(out)
+
+
 def flatten_texttt_brace_groups(text: str) -> str:
     """``\\texttt{{@}foo}`` → ``\\texttt{@foo}`` (#105).
 
@@ -236,11 +301,20 @@ def main():
     text = normalize_declaration_forms(text)
     text = flatten_texttt_brace_groups(text)
 
+    # 3b'. Rewrite \paragraph/\subparagraph run-in headings to bold so they
+    # don't enter qe-v5 book-mode heading numbering as deep ##### headings
+    # (#160B).
+    text = convert_paragraph_runins(text)
+
     # 3c. Strip the multicols column-count argument so it doesn't leak as a
     # stray number into the (column-less) MyST output, hoisting any optional
     # [pre-text] out as a paragraph before the env so pandoc doesn't silently
     # drop it (#111).
     text = _MULTICOLS_ARGS.sub(_strip_multicols_args, text)
+
+    # 3d. Strip redundant ``on page~\pageref{X}`` locator clauses — pandoc
+    # drops \pageref and strands "on page ." in single-page HTML (#158A).
+    text = strip_orphan_pagerefs(text)
 
     # 4. Search-and-replace: { from: regex, to: replacement }
     for rule in pre.get('rewrites') or []:
