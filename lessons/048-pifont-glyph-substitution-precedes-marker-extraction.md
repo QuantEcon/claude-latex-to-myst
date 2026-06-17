@@ -5,7 +5,7 @@ category: preprocess
 tags: [pifont, ding, text-macros, markers, ordering, tables, unicode]
 source_project: book-dp2 (issue #159, reader report QuantEcon/book-dp-public#29)
 status: codified
-codified_in: scripts/_apply_pifont_glyphs.py::apply_known_glyphs (preprocess.sh, before the marker scripts)
+codified_in: scripts/_warn_dropped_text_macros.py::apply_known_glyphs (invoked by scripts/_apply_pifont_glyphs.py, wired into preprocess.sh before the marker scripts)
 severity: high
 date: 2026-06-17
 ---
