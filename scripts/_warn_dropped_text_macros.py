@@ -205,22 +205,46 @@ def scan(source_dir: Path, chapter_files: list[Path]) -> dict[str, dict]:
 #                 (only meaningful when has_arg=True).
 #   'replacement': (unicode, label) — fixed replacement (zero-arg only).
 # }
+#
+# Entries whose mapping is unambiguous and lossless (the ``\ding{N}`` glyph
+# table) are **auto-applied** pre-pandoc by ``apply_known_glyphs`` /
+# ``_apply_pifont_glyphs.py`` (#159) — a dropped ``\ding{51}`` leaves a
+# blank table cell, which is strictly worse than the correct ✓. The warn
+# path then only reports the leftover unmapped args (and the
+# arg-less ``faIcon`` family the author still has to pick).
+
+
+# ZapfDingbats circled numbers (pifont manual): \ding{172}–{181} are the
+# open circled digits ①–⑩ (U+2460–U+2469); \ding{182}–{191} are the
+# negative/filled circled digits ❶–❿ (U+2776–U+277F). dp2's FDP diagram
+# uses the circled step numbers \ding{172}, \ding{173}, … (book-dp2#155).
+def _circled_ding_glyphs() -> dict[str, tuple[str, str]]:
+    out: dict[str, tuple[str, str]] = {}
+    for i in range(10):
+        out[str(172 + i)] = (chr(0x2460 + i), f'U+{0x2460 + i:04X} circled {i + 1}')
+        out[str(182 + i)] = (chr(0x2776 + i), f'U+{0x2776 + i:04X} negative circled {i + 1}')
+    return out
+
+
+_DING_GLYPHS: dict[str, tuple[str, str]] = {
+    # Common pifont numbers seen in mathematical / data-science books.
+    # Numbers correspond to ZapfDingbats glyph positions; the unicode
+    # mappings here follow the pifont package manual.
+    '51': ('✓', 'U+2713 check mark'),
+    '52': ('✔', 'U+2714 heavy check mark'),
+    '55': ('✗', 'U+2717 ballot x'),
+    '56': ('✘', 'U+2718 heavy ballot x'),
+    '108': ('●', 'U+25CF black circle'),
+    '109': ('❍', 'U+274D shadowed white circle'),
+    **_circled_ding_glyphs(),
+}
+
 
 _PACKAGE_DROP_REGISTRY: dict[str, dict] = {
     'ding': {
         'package': 'pifont',
         'has_arg': True,
-        # Common pifont numbers seen in mathematical / data-science books.
-        # Numbers correspond to ZapfDingbats glyph positions; the unicode
-        # mappings here follow the pifont package manual.
-        'arg_glyphs': {
-            '51': ('✓', 'U+2713 check mark'),
-            '52': ('✔', 'U+2714 heavy check mark'),
-            '55': ('✗', 'U+2717 ballot x'),
-            '56': ('✘', 'U+2718 heavy ballot x'),
-            '108': ('●', 'U+25CF black circle'),
-            '109': ('❍', 'U+274D shadowed white circle'),
-        },
+        'arg_glyphs': _DING_GLYPHS,
     },
     'faIcon': {
         'package': 'fontawesome5',
@@ -250,6 +274,36 @@ def _package_bare_pattern(name: str) -> re.Pattern[str]:
     # Word boundary: macro name not followed by a letter (so ``\ding`` doesn't
     # also match ``\dingbat``).
     return re.compile(rf'\\{re.escape(name)}(?![A-Za-z@])')
+
+
+def apply_known_glyphs(text: str) -> str:
+    """Rewrite every ``\\macro{ARG}`` whose ARG has an unambiguous unicode
+    glyph in the registry to that glyph, in place (#159).
+
+    Runs pre-pandoc. Only the ``has_arg`` families with a populated
+    ``arg_glyphs`` table are touched (i.e. ``\\ding`` today); an arg with no
+    registered glyph, and the arg-less families (``\\checkmark``), are left
+    untouched so the warn path still surfaces them. The rewrite must run
+    *before* the structural marker preprocessors (table/figure extraction)
+    — once a cell's ``\\ding{51}`` is encoded into a marker payload, the
+    batch pandoc pass drops it (the blank-table symptom). Math-mode-capable
+    macros are deliberately excluded from auto-apply (a bare ✓ inside
+    ``$…$`` would break KaTeX); ``\\ding`` is text-mode only.
+    """
+    for name, spec in _PACKAGE_DROP_REGISTRY.items():
+        if not spec.get('has_arg'):
+            continue
+        glyphs = spec.get('arg_glyphs') or {}
+        if not glyphs:
+            continue
+        pat = _package_arg_pattern(name)
+
+        def repl(m: re.Match, _glyphs=glyphs) -> str:
+            entry = _glyphs.get(m.group(1).strip())
+            return entry[0] if entry else m.group(0)
+
+        text = pat.sub(repl, text)
+    return text
 
 
 def find_package_macro_usages(text: str) -> dict[str, dict]:

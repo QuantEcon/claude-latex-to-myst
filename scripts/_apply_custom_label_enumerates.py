@@ -82,10 +82,18 @@ def _starts_in_comment(text: str, pos: int) -> bool:
     return False
 
 
-def parse_custom_label_items(body: str) -> list[tuple[str, str]] | None:
-    """Parse an enumerate body into ``[(label, content), …]`` when every
-    top-level ``\\item`` carries an explicit ``[…]`` arg. Returns
-    ``None`` — leave the block to pandoc — on any bail condition.
+_LABEL_RE = re.compile(r'\\label\{([^}]*)\}')
+_SETLENGTH_RE = re.compile(r'\\setlength\{[^}]*\}\{[^}]*\}')
+
+
+def parse_custom_label_items(
+    body: str,
+) -> tuple[list[tuple[str, str]], list[str]] | None:
+    """Parse an enumerate body into ``([(label, content), …], head_labels)``
+    when every top-level ``\\item`` carries an explicit ``[…]`` arg.
+    ``head_labels`` are any ``\\label{}`` anchors that preceded the first
+    ``\\item`` (hoisted out by the caller). Returns ``None`` — leave the
+    block to pandoc — on any bail condition.
 
     Labels in this idiom are short plain text (``(a)``, ``(b)``, or
     empty); a label containing ``]`` (e.g. nested optional-arg syntax)
@@ -109,13 +117,21 @@ def parse_custom_label_items(body: str) -> list[tuple[str, str]] | None:
     ]
     if not item_matches:
         return None
-    # Real content before the first \item (spacing tweaks like
-    # \setlength would merely be dropped, but bail conservatively).
+    # Content before the first \item. A leading ``\label{}`` (e.g. dp2's
+    # ``\begin{enumerate}\label{enum:b13}``) must not make the head-check
+    # bail — that drops the block to pandoc, where convert_enumerate_style
+    # then restyles the custom labels to (i),(ii),(iii) (#157A). Skip the
+    # no-output tokens (``\label``, ``\setlength``, ``%``-comments) and
+    # hoist any ``\label`` out as ``head_labels`` so its anchor survives;
+    # bail only if genuine content remains.
     head = body[: item_matches[0].start()]
-    if any(
-        ln.strip() and not ln.lstrip().startswith('%')
+    head_live = '\n'.join(
+        '' if ln.lstrip().startswith('%') else ln
         for ln in head.split('\n')
-    ):
+    )
+    head_labels = _LABEL_RE.findall(head_live)
+    residual = _SETLENGTH_RE.sub('', _LABEL_RE.sub('', head_live))
+    if residual.strip():
         return None
 
     items: list[tuple[str, str]] = []
@@ -134,7 +150,7 @@ def parse_custom_label_items(body: str) -> list[tuple[str, str]] | None:
         )
         content = body[close + 1 : end].strip()
         items.append((label, content))
-    return items
+    return items, head_labels
 
 
 def process_text(text: str) -> str:
@@ -146,14 +162,21 @@ def process_text(text: str) -> str:
             continue
         if _starts_in_comment(text, block_start):
             continue
-        items = parse_custom_label_items(text[body_start:body_end])
-        if items is None:
+        parsed = parse_custom_label_items(text[body_start:body_end])
+        if parsed is None:
             continue
+        items, head_labels = parsed
         paragraphs = [
             f'{label} {content}'.strip() for label, content in items
         ]
+        # Hoist a leading ``\label{}`` (anchor on the enumerate itself) onto
+        # its own line ahead of the flattened paragraphs. Pandoc renders an
+        # own-line ``\label`` as ``[]{#name …}``, which convert_standalone_labels
+        # turns into a ``(name)=`` MyST target — so cross-refs to the list
+        # still resolve (#157A).
+        blocks = [f'\\label{{{lbl}}}' for lbl in head_labels] + paragraphs
         out.append(text[cursor:block_start])
-        out.append('\n\n' + '\n\n'.join(paragraphs) + '\n\n')
+        out.append('\n\n' + '\n\n'.join(blocks) + '\n\n')
         cursor = block_end
     out.append(text[cursor:])
     return ''.join(out)

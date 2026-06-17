@@ -400,6 +400,98 @@ def test_itemsep_strip_full_nested_example():
     assert r"\item nested 1" in out
 
 
+# ── Orphaned \pageref clause strip (issue #158A) ─────────────────────────────
+
+
+@pytest.mark.parametrize("src,want", [
+    # Inline "on page" companion — the \cref stays, the locator + trailing
+    # punctuation collapse to just the punctuation.
+    (r"from \cref{l:exgre} on page~\pageref{l:exgre}.",
+     r"from \cref{l:exgre}."),
+    # Comma-led: the comma before "on" goes with the clause.
+    (r"in \cref{t:fintroop}, on page~\pageref{eq:fintroie}.",
+     r"in \cref{t:fintroop}."),
+    # LaTeX line-wrap between "on" and "page".
+    ("applying \\cref{l:snms} on\n    page~\\pageref{l:snms}, the rest",
+     r"applying \cref{l:snms}, the rest"),
+    # "from page" lead-in.
+    (r"properties from page~\pageref{enum:b13}. Let",
+     r"properties. Let"),
+    # Abbreviated "on p.~".
+    (r"using \eqref{eq:adjrules} on p.~\pageref{eq:adjrules} to obtain",
+     r"using \eqref{eq:adjrules} to obtain"),
+    # Stray closing paren after the clause is preserved.
+    (r"See \cref{l:fo} on page~\pageref{l:fo}) for details.",
+     r"See \cref{l:fo}) for details."),
+])
+def test_pageref_inline_clause_stripped(src, want):
+    assert rew.strip_orphan_pagerefs(src) == want
+
+
+@pytest.mark.parametrize("src,want", [
+    # Parenthetical-only locator — the whole "(page~…)" with its leading
+    # space goes, leaving the sentence punctuation.
+    (r"fixed point theorem (page~\pageref{t:bfpt}), the ADP",
+     r"fixed point theorem, the ADP"),
+    (r"Neumann series lemma (page~\pageref{t:nslbs}). See also",
+     r"Neumann series lemma. See also"),
+    # "(see p.~…)" filler word inside the paren.
+    (r"measure theory (see p.~\pageref{l:scheffe}). Standard",
+     r"measure theory. Standard"),
+    (r"partial order (see page~\pageref{eq:cpor}).",
+     r"partial order."),
+])
+def test_pageref_parenthetical_clause_stripped(src, want):
+    assert rew.strip_orphan_pagerefs(src) == want
+
+
+def test_pageref_paren_wrapping_more_keeps_inner_ref():
+    """A parenthetical that wraps a \\cref plus the page locator keeps the
+    \\cref — only the inner ``on page~\\pageref`` clause is stripped."""
+    src = r"(see, in particular, \cref{c:ibnl} on page~\pageref{c:ibnl}), the map"
+    assert rew.strip_orphan_pagerefs(src) == r"(see, in particular, \cref{c:ibnl}), the map"
+
+
+def test_pageref_bare_loadbearing_not_touched():
+    """A bare ``page~\\pageref`` with no locator preposition and no
+    surrounding parens is left alone — without an ``on``/``from`` lead-in
+    we can't tell a redundant locator from load-bearing prose."""
+    src = r"Equation \eqref{X}, page~\pageref{Y}, shows the bound."
+    assert rew.strip_orphan_pagerefs(src) == src
+
+
+# ── \paragraph run-in headings (issue #160B) ─────────────────────────────────
+
+
+def test_paragraph_rewritten_to_bold_runin():
+    """``\\paragraph{Title.}`` becomes ``\\textbf{Title.}`` so it never
+    enters the heading numbering tree as a deep ##### heading."""
+    src = "\\paragraph{Connection to the production chain.}\n\nBody."
+    out = rew.convert_paragraph_runins(src)
+    assert out == "\\textbf{Connection to the production chain.}\n\nBody."
+
+
+def test_subparagraph_also_rewritten():
+    assert rew.convert_paragraph_runins(r"\subparagraph{Deeper.}") == r"\textbf{Deeper.}"
+
+
+def test_paragraph_with_nested_braces_balanced():
+    """The title may carry nested braces / math — balanced matching keeps
+    the whole title."""
+    src = r"\paragraph{The $\mathcal{Q}$ operator}"
+    assert rew.convert_paragraph_runins(src) == r"\textbf{The $\mathcal{Q}$ operator}"
+
+
+def test_paragraph_optional_short_title_dropped():
+    src = r"\paragraph[Conn.]{Connection to the production chain.}"
+    assert rew.convert_paragraph_runins(src) == r"\textbf{Connection to the production chain.}"
+
+
+def test_paragraph_runin_noop_without_paragraph():
+    src = r"Plain \textbf{already bold} text."
+    assert rew.convert_paragraph_runins(src) == src
+
+
 # ── Chapter splits (multi-chapter source files) ──────────────────────────────
 
 
@@ -924,6 +1016,40 @@ def _files_with_content(tmp_path, text: str):
     return [ch]
 
 
+# ── Auto-apply known pifont glyphs (issue #159) ──────────────────────────────
+
+
+def test_apply_known_glyphs_rewrites_ding_checkmarks():
+    """GH #159 — the unambiguous ``\\ding{N}`` glyphs are auto-applied
+    pre-pandoc (a dropped ``\\ding{51}`` leaves a blank table cell)."""
+    out = wdtm.apply_known_glyphs(r"Hit \ding{51} miss \ding{55}.")
+    assert out == "Hit ✓ miss ✗."
+
+
+def test_apply_known_glyphs_circled_step_numbers():
+    """``\\ding{172}``–``{181}`` → ①–⑩, ``{182}``–``{191}`` → ❶–❿ (the FDP
+    diagram's circled step numbers, book-dp2#155)."""
+    out = wdtm.apply_known_glyphs(r"\ding{172}\ding{173} then \ding{182}.")
+    assert out == "①② then ❶."
+
+
+def test_apply_known_glyphs_leaves_unmapped_and_argless_untouched():
+    """An unknown ``\\ding`` number, ``\\faIcon`` (empty glyph table) and
+    arg-less macros are left for the warn path — we don't invent glyphs."""
+    src = r"Pick \ding{999} and \faIcon{rocket} and \checkmark."
+    assert wdtm.apply_known_glyphs(src) == src
+
+
+def test_apply_known_glyphs_then_warn_surfaces_only_leftovers(tmp_path):
+    """After auto-apply, the warn scan (which runs later on the same tmp
+    file) only reports the args with no registered glyph."""
+    applied = wdtm.apply_known_glyphs(r"\ding{51} known, \ding{999} unknown.")
+    usage = wdtm.scan_package_macros(_files_with_content(tmp_path, applied))
+    msg = wdtm.format_package_warning(usage)
+    assert "999" in msg
+    assert "51" not in msg  # the mapped one was already substituted
+
+
 # ── Enumerate exercise markers (issue #69) ───────────────────────────────────
 
 
@@ -1416,6 +1542,58 @@ def test_custom_label_enumerate_bails_on_content_before_first_item():
         "\\end{enumerate}\n"
     )
     assert clbl.process_text(tex) == tex
+
+
+def test_custom_label_enumerate_leading_label_does_not_bail(tmp_path):
+    """#157A: ``\\begin{enumerate}\\label{enum:b13}`` must still flatten —
+    the leading ``\\label`` is a no-output token, not real content. The
+    custom labels (B1)/(B3) survive instead of being clobbered to
+    (i),(ii),(iii) by the downstream enumerate_style restyle."""
+    tex = (
+        "\\begin{enumerate}\\label{enum:b13}\n"
+        "    \\item[(B1)] first property\n"
+        "    \\item[(B3)] third property\n"
+        "\\end{enumerate}\n"
+    )
+    out = clbl.process_text(tex)
+    assert "\\begin{enumerate}" not in out
+    assert "(B1) first property" in out
+    assert "(B3) third property" in out
+    # The list anchor is hoisted to its own line so it becomes a
+    # ``(enum-b13)=`` target post-pandoc (cross-refs keep resolving).
+    assert "\\label{enum:b13}\n\n(B1) first property" in out
+
+
+def test_custom_label_enumerate_leading_setlength_and_label_skipped():
+    """Leading no-output spacing tweaks (``\\setlength``) alongside a
+    ``\\label`` are skipped without bailing."""
+    tex = (
+        "\\begin{enumerate}\\label{enum:x}\\setlength{\\itemsep}{0pt}\n"
+        "    \\item[(a)] one\n"
+        "    \\item[(b)] two\n"
+        "\\end{enumerate}\n"
+    )
+    out = clbl.process_text(tex)
+    assert "\\begin{enumerate}" not in out
+    assert "(a) one" in out and "(b) two" in out
+    assert "\\label{enum:x}" in out
+    assert "\\setlength" not in out  # spacing tweak dropped, not hoisted
+
+
+def test_custom_label_enumerate_commented_leading_label_not_hoisted():
+    """A ``%``-commented ``\\label`` before the first item is neither a
+    bail trigger nor hoisted as a live anchor."""
+    tex = (
+        "\\begin{enumerate}\n"
+        "    % \\label{enum:dead}\n"
+        "    \\item[(a)] one\n"
+        "\\end{enumerate}\n"
+    )
+    out = clbl.process_text(tex)
+    assert "\\begin{enumerate}" not in out
+    assert "(a) one" in out
+    # The commented label is not promoted to an own-line anchor.
+    assert "\n\n\\label{enum:dead}" not in out
 
 
 # ── PRF title markers (#112) ───────────────────────────────────────────────────

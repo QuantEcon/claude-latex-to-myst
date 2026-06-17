@@ -1,0 +1,9 @@
+# #157A: an all-custom-label enumerate carrying a leading \label{} flattens to
+# labelled paragraphs (preserving (B1)-(B3)); the leading \label is hoisted to
+# a (enum-b13)= target so cross-refs keep resolving.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Custom Label Enumerate" }

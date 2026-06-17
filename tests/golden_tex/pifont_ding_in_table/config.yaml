@@ -1,0 +1,8 @@
+# #159: \ding{N} (pifont) is auto-mapped to its unicode glyph pre-pandoc, so a
+# tabular of \ding{51} checkmarks renders ✓ cells instead of blank ones.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Pifont Glyphs" }
