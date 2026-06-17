@@ -1,0 +1,10 @@
+# #161: algorithm2e control keywords render bold (matching the package's
+# default \SetKwSty{textbf}). The two algorithms below mirror dp2's VFI/HPI:
+# VFI uses \textbf{return} (already bold), HPI uses the \Return macro — both
+# must render **return**, and \While must render **while** … **do**.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Algorithm Keyword Emphasis" }

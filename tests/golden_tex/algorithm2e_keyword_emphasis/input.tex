@@ -1,0 +1,24 @@
+\begin{algorithm}
+\DontPrintSemicolon
+input $v \in \RR^\Xsf$ and tolerance $\tau$ \;
+$\epsilon \leftarrow \tau + 1$ \;
+\While{$\epsilon > \tau$}
+{
+    $v' \leftarrow Tv$ \;
+    $\epsilon \leftarrow \| v' - v \|$ \;
+    $v \leftarrow v'$ \;
+}
+\textbf{return} a $v$-greedy policy $\sigma$ \;
+\caption{\label{algo:vfi} Value function iteration}
+\end{algorithm}
+
+\begin{algorithm}
+\DontPrintSemicolon
+input $\sigma \in \Sigma$ and tolerance $\tau$ \;
+\While{$\epsilon > \tau$}
+{
+    $\sigma \leftarrow$ a $v$-greedy policy \;
+}
+\Return{$\sigma$}
+\caption{\label{algo:hpi} Howard policy iteration}
+\end{algorithm}
