@@ -1,0 +1,10 @@
+# #158B: a literal LaTeX bracket run wrapping a \cref ([Hint: … \cref{X}])
+# must keep its prose — the cross-ref conversion starts at the unescaped link
+# opener, not the escaped \[Hint bracket. Inside an Exercise env (the dp2
+# ex:tmodb shape).
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Bracketed Hint" }
