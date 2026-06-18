@@ -1,18 +1,5 @@
-appF_solutions.md missing heading depth N
-appF_solutions.md missing heading depth N
-chN_climate.md missing heading depth N
-chN_ctime_ha.md missing heading depth N
-chN_deqns.md missing heading depth N
-chN_ha_youngs.md missing heading depth N
 chN_intro.md Duplicate identifier in project "exercises"
 chN_intro.md Duplicate identifier in project "further-reading"
 chN_irbc.md missing heading depth N
-chN_nas.md missing heading depth N
-chN_olg.md missing heading depth N
-chN_olg.md missing heading depth N
-chN_pinns.md missing heading depth N
-chN_smm.md missing heading depth N
 chN_surrogates_gps.md missing heading depth N
-chN_synthesis.md missing heading depth N
-chN_synthesis.md missing heading depth N
 preface.md Could not link citation with label "unil".
