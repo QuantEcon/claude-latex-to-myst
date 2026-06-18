@@ -492,6 +492,34 @@ def test_paragraph_runin_noop_without_paragraph():
     assert rew.convert_paragraph_runins(src) == src
 
 
+@pytest.mark.parametrize("src", [
+    # immediate label (dl's \paragraph{…}\label{sec:matern})
+    r"\paragraph{The Matérn kernel family.}\label{sec:matern}  body",
+    # space before the label
+    r"\paragraph{Kernel.} \label{sec:k} body",
+    # single newline before the label (still the paragraph's label)
+    "\\paragraph{Kernel.}\n\\label{sec:k} body",
+])
+def test_paragraph_with_label_kept_as_heading(src):
+    """#160B follow-up: a labelled \\paragraph keeps its heading form so the
+    \\label survives as a (name)= anchor — converting it to a bold run-in
+    drops the anchor and breaks every cross-ref to it (dl sec-matern /
+    sec-irbc went unresolved in a fixture pass)."""
+    out = rew.convert_paragraph_runins(src)
+    assert out == src                 # left verbatim → pandoc renders a heading
+    assert r"\textbf" not in out
+
+
+def test_paragraph_with_label_after_blank_line_still_bolded():
+    """A \\label separated from the \\paragraph by a blank line belongs to a
+    later construct (e.g. an equation), not the paragraph — so the paragraph
+    is still a run-in and the conversion fires."""
+    src = "\\paragraph{Foo.}\n\nBody.\n\n\\label{eq:x}"
+    out = rew.convert_paragraph_runins(src)
+    assert out.startswith(r"\textbf{Foo.}")
+    assert r"\label{eq:x}" in out      # the equation's label is untouched
+
+
 # ── Chapter splits (multi-chapter source files) ──────────────────────────────
 
 

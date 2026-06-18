@@ -224,11 +224,22 @@ def _flatten_grouping_braces(arg: str) -> str:
 # (``\textbf{…}`` → ``**…**``) pre-pandoc so they never enter the heading
 # numbering tree at all. Matches LaTeX's own run-in semantics (the title flows
 # into the following body). An optional ``[short-title]`` arg is dropped.
+#
+# EXCEPTION — a ``\paragraph`` carrying a ``\label{}`` keeps its heading form.
+# The bold run-in would drop the anchor (a ``\label`` after ``\textbf`` becomes
+# a mid-line ``[]{#…}`` span the post-pass strips), breaking every cross-ref to
+# it — caught in a fixture pass: dl's ``\paragraph{…}\label{sec:matern}`` /
+# ``\label{sec:irbc_…}`` are ``\ref``'d and went unresolved. Left as a heading,
+# pandoc folds the ``\label`` into the heading id → ``(name)=`` anchor and the
+# ref resolves (as a heading, which also renders the nicer ref text). The
+# trailing ``\label`` must follow within the same paragraph (no blank line).
 _PARAGRAPH_RE = re.compile(r'\\(?:sub)?paragraph\b\s*(?:\[[^\]]*\])?\s*\{')
+_PARAGRAPH_LABEL_RE = re.compile(r'[ \t]*\n?[ \t]*\\label\{')
 
 
 def convert_paragraph_runins(text: str) -> str:
-    """``\\paragraph{Title.}`` → ``\\textbf{Title.}`` (#160B)."""
+    """``\\paragraph{Title.}`` → ``\\textbf{Title.}`` (#160B), unless the
+    ``\\paragraph`` is labelled (then keep the heading so the anchor survives)."""
     out = []
     pos = 0
     for m in _PARAGRAPH_RE.finditer(text):
@@ -237,6 +248,10 @@ def convert_paragraph_runins(text: str) -> str:
         open_brace = m.end() - 1
         close = _find_matching_brace(text, open_brace)
         if close < 0:
+            continue
+        # Labelled \paragraph → leave verbatim (kept as a heading); the
+        # skipped span rides into the next emitted slice unchanged.
+        if _PARAGRAPH_LABEL_RE.match(text, close + 1):
             continue
         title = text[open_brace + 1:close]
         out.append(text[pos:m.start()])
