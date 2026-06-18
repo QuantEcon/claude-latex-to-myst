@@ -1,0 +1,9 @@
+# #160B follow-up: a labelled \paragraph keeps its heading form so the \label
+# survives as a (name)= anchor and cross-refs resolve; an unlabelled \paragraph
+# still becomes a bold run-in (stays out of the numbering tree).
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Labeled Paragraph" }

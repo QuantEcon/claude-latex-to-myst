@@ -15,6 +15,23 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — labelled `\paragraph` keeps its heading so cross-refs resolve (#160B follow-up)
+
+#160B rewrites `\paragraph`/`\subparagraph` to a bold run-in so they don't
+pick up a spurious deep heading number. But an unconditional rewrite drops
+the anchor on a *labelled* `\paragraph`: `\paragraph{…}\label{sec:x}` becomes
+`\textbf{…}\label{sec:x}`, the `\label` lands mid-paragraph as a `[]{#sec-x}`
+span that the post-pass strips, and every `\ref{sec:x}` to it goes
+unresolved. A fixture pass over book-dp-deep-learning (which uses `\paragraph`
+388× as subheadings) surfaced two build-breaking cases —
+`\paragraph{…}\label{sec:matern}` and `…\label{sec:irbc_fischer_burmeister}`,
+both `\ref`'d. `convert_paragraph_runins` now skips a `\paragraph` immediately
+followed by a `\label{}` (within the same paragraph — a blank line means the
+label belongs to a later construct): it keeps its heading form, pandoc folds
+the `\label` into the heading id → `(name)=` anchor, and the ref resolves (as
+a heading, which also renders nicer ref text). Unlabelled `\paragraph`s still
+become bold run-ins (book-dp2's case is unchanged).
+
 ### Fixed — bracketed `[… \cref …]` run no longer swallows its prose (#158B)
 
 A literal LaTeX bracket run wrapping a cross-ref — `[Hint: Apply the sup

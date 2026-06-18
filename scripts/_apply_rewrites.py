@@ -224,11 +224,51 @@ def _flatten_grouping_braces(arg: str) -> str:
 # (``\textbf{…}`` → ``**…**``) pre-pandoc so they never enter the heading
 # numbering tree at all. Matches LaTeX's own run-in semantics (the title flows
 # into the following body). An optional ``[short-title]`` arg is dropped.
+#
+# EXCEPTION — a ``\paragraph`` carrying a ``\label{}`` keeps its heading form.
+# The bold run-in would drop the anchor (a ``\label`` after ``\textbf`` becomes
+# a mid-line ``[]{#…}`` span the post-pass strips), breaking every cross-ref to
+# it — caught in a fixture pass: dl's ``\paragraph{…}\label{sec:matern}`` /
+# ``\label{sec:irbc_…}`` are ``\ref``'d and went unresolved. Left as a heading,
+# pandoc folds the ``\label`` into the heading id → ``(name)=`` anchor and the
+# ref resolves (as a heading, which also renders the nicer ref text). The
+# trailing ``\label`` must follow within the same paragraph (no blank line).
 _PARAGRAPH_RE = re.compile(r'\\(?:sub)?paragraph\b\s*(?:\[[^\]]*\])?\s*\{')
 
 
+def _label_follows(text: str, pos: int) -> bool:
+    """True if a ``\\label{`` follows ``text[pos:]`` separated only by
+    horizontal whitespace, ``%``-comments, and single newlines — i.e. still
+    the same LaTeX paragraph. A *blank* line (two newlines with only
+    whitespace between) ends the paragraph, so a ``\\label`` past it belongs
+    to a later construct and is not the paragraph's. A scanner (not a regex)
+    so the ``\\paragraph{T}%\n\\label`` line-join idiom and comment-only lines
+    between the title and the label are handled, per the fence-aware doctrine
+    (Copilot review on #165)."""
+    i, n, pending_newline = pos, len(text), False
+    while i < n:
+        c = text[i]
+        if c in ' \t':
+            i += 1
+        elif c == '%':                       # comment to end of line (content,
+            nl = text.find('\n', i)          # so the line is not blank)
+            i = n if nl < 0 else nl
+            pending_newline = False
+        elif c == '\n':
+            if pending_newline:              # second newline → blank line
+                return False
+            pending_newline = True
+            i += 1
+        elif text.startswith(r'\label{', i):
+            return True
+        else:
+            return False
+    return False
+
+
 def convert_paragraph_runins(text: str) -> str:
-    """``\\paragraph{Title.}`` → ``\\textbf{Title.}`` (#160B)."""
+    """``\\paragraph{Title.}`` → ``\\textbf{Title.}`` (#160B), unless the
+    ``\\paragraph`` is labelled (then keep the heading so the anchor survives)."""
     out = []
     pos = 0
     for m in _PARAGRAPH_RE.finditer(text):
@@ -237,6 +277,10 @@ def convert_paragraph_runins(text: str) -> str:
         open_brace = m.end() - 1
         close = _find_matching_brace(text, open_brace)
         if close < 0:
+            continue
+        # Labelled \paragraph → leave verbatim (kept as a heading); the
+        # skipped span rides into the next emitted slice unchanged.
+        if _label_follows(text, close + 1):
             continue
         title = text[open_brace + 1:close]
         out.append(text[pos:m.start()])
