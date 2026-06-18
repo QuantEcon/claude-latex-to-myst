@@ -15,6 +15,22 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — bracketed `[… \cref …]` run no longer swallows its prose (#158B)
+
+A literal LaTeX bracket run wrapping a cross-ref — `[Hint: Apply the sup
+inequality from \cref{c:supineq}]` (book-dp2 exercise `ex:tmodb`) — reaches
+pandoc as `\[Hint: … [\[c:supineq\]](#c:supineq){…}.\]` (outer brackets
+escaped, inner cross-ref a real link). `convert_cross_references` opened its
+match on *any* `[`, so it started at the escaped `\[Hint` bracket and
+swallowed "Hint: Apply the sup inequality from …" as discarded display text,
+leaving a stranded `\{prf:ref}` (escaped brace → literal text) and a dangling
+`]`. A negative lookbehind `(?<!\\)` now anchors the match to the *unescaped*
+link opener (pandoc only escapes literal brackets), so the hint prose
+survives and the inner `\cref` converts to a proper role. As a side benefit
+the lookbehind also shields escaped-bracket natbib markers (`\[\[CITEP:…\]\]`)
+from the same greed (defense-in-depth atop the decode-before-cross-refs
+ordering).
+
 ### Fixed — algorithm control keywords render uniformly bold (#161)
 
 Algorithm blocks render as numbered statement lists (#109/#134), but

@@ -236,8 +236,17 @@ def convert_cross_references(text: str, ctx=None) -> str:
     # IMPORTANT: Use [^\]\n$] (not [^\]]) to prevent matching across lines
     # or through math boundaries — otherwise [0,1) in math could pair with
     # a cross-ref many characters later on the same line.
+    #
+    # The opening ``[`` must NOT be backslash-escaped (``(?<!\\)``): a literal
+    # LaTeX bracket run — e.g. ``[Hint: … \cref{c:supineq}]`` — reaches pandoc
+    # as ``\[Hint: … [\[c:supineq\]](#c:supineq){…}.\]``. Without the
+    # lookbehind the match starts at the escaped ``\[Hint`` bracket and
+    # swallows "Hint: …" as discarded display text, leaving a stranded
+    # ``\{prf:ref}`` (escaped brace → literal) and a dangling ``]`` (#158B).
+    # Pandoc only escapes *literal* brackets; a real cross-ref link opener is
+    # always an unescaped ``[``, so the lookbehind never blocks a true match.
     text = re.sub(
-        r'\[([^\]\n$]*(?:\\\][^\]\n$]*)*)\]\(#([^)\n]+)\)\{reference-type="([^"]+)"(?:\s+reference="[^"]*")?\}',
+        r'(?<!\\)\[([^\]\n$]*(?:\\\][^\]\n$]*)*)\]\(#([^)\n]+)\)\{reference-type="([^"]+)"(?:\s+reference="[^"]*")?\}',
         replace_ref,
         text
     )

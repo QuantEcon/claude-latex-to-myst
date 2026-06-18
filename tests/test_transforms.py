@@ -1478,10 +1478,16 @@ def test_citation_natbib_marker_citeyearpar_adds_parens():
 
 def test_citation_marker_decode_protects_against_cross_ref_greed():
     """Regression for lesson 020 / lesson 002: when a natbib marker
-    appears in the same paragraph as a pandoc cross-ref, decoding must
-    run BEFORE convert_cross_references — otherwise the cross-ref regex
-    matches greedily from the marker's [ to the ref's ](#x){...},
-    swallowing the marker entirely."""
+    appears in the same paragraph as a pandoc cross-ref, decoding runs
+    BEFORE convert_cross_references (the established ordering).
+
+    Pre-#158B, the reversed order was actively destructive — the cross-ref
+    regex matched greedily from the marker's ``[`` to the ref's
+    ``](#x){...}``, swallowing the marker entirely. The #158B negative
+    lookbehind now makes convert_cross_references skip the marker's escaped
+    ``\\[`` opener, so the marker survives even in the wrong order
+    (defense-in-depth); the canonical decode-first order is still the
+    pipeline invariant."""
     pandoc_out = (
         r"preferences \[\[CITEP:epstein1989risk, weil1990nonexpected\]\] "
         r'play. Bellman equation [\[eq:osbell\]](#eq:osbell)'
@@ -1492,9 +1498,35 @@ def test_citation_marker_decode_protects_against_cross_ref_greed():
     fixed = postprocess.convert_cross_references(fixed)
     assert "{cite:p}`epstein1989risk,weil1990nonexpected`" in fixed
     assert "{eq}`eq-osbell`" in fixed
-    # Demonstrate the failure mode: reversed order eats the marker.
+    # Reversed order no longer eats the marker (#158B lookbehind): the
+    # escaped-bracket marker survives and the real cross-ref still converts.
     bad = postprocess.convert_cross_references(pandoc_out)
-    assert "epstein1989risk" not in bad
+    assert "epstein1989risk" in bad
+    assert "{eq}`eq-osbell`" in bad
+
+
+def test_cross_ref_after_escaped_bracket_run_preserves_text():
+    """#158B: a literal LaTeX bracket run wrapping a cross-ref —
+    ``[Hint: … \\cref{c:supineq}]`` — reaches pandoc as
+    ``\\[Hint: … [\\[c:supineq\\]](#c:supineq){…}.\\]``. The cross-ref
+    conversion must start at the *unescaped* link opener, not the escaped
+    ``\\[Hint`` bracket, so the "Hint: …" prose survives instead of being
+    swallowed as discarded display text (which left a stranded
+    ``\\{prf:ref}`` and a dangling ``]``)."""
+    pandoc_out = (
+        r"on $(V, \| \cdot \|)$. \[Hint: Apply the sup inequality from "
+        r'[\[c:supineq\]](#c:supineq)'
+        r'{reference-type="ref+label" reference="c:supineq"}.\]'
+    )
+    out = postprocess.convert_cross_references(pandoc_out)
+    # The hint prose and the escaped outer brackets survive …
+    assert "Hint: Apply the sup inequality from" in out
+    assert out.startswith(r"on $(V, \| \cdot \|)$. \[Hint:")
+    assert out.rstrip().endswith(r".\]")
+    # … and the inner \cref converts to a proper role (not literal text).
+    assert "{prf:ref}`c-supineq`" in out
+    # The escaped-brace failure mode (\{prf:ref}) must not appear.
+    assert r"\{prf:ref}" not in out
 
 
 def test_citation_pandoc_suppress_author_decoded():
