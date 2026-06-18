@@ -499,6 +499,10 @@ def test_paragraph_runin_noop_without_paragraph():
     r"\paragraph{Kernel.} \label{sec:k} body",
     # single newline before the label (still the paragraph's label)
     "\\paragraph{Kernel.}\n\\label{sec:k} body",
+    # the %-line-join idiom: title-EOL comment then label (Copilot #165)
+    "\\paragraph{Kernel.}%\n\\label{sec:k} body",
+    # a comment-only line between the title and the label
+    "\\paragraph{Kernel.}\n% set the label\n\\label{sec:k} body",
 ])
 def test_paragraph_with_label_kept_as_heading(src):
     """#160B follow-up: a labelled \\paragraph keeps its heading form so the
