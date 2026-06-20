@@ -278,7 +278,44 @@ def convert_equations(text: str) -> str:
       → $$ \\begin{aligned} ... \\end{aligned} $$ (label)
     - $$\\begin{align*} ... \\end{align*}$$
       → ```{math} :enumerated: false \\begin{aligned} … ``` (unnumbered, #113)
+    - $$ ... $$ / \\[ ... \\] (plain TeX display math, no env wrapper)
+      → ```{math} :enumerated: false … ``` (unnumbered, #167)
     """
+    # Plain TeX display math — bare ``$$ … $$`` and ``\[ … \]``. Pandoc emits
+    # BOTH as a bare ``$$ … $$`` with no ``\begin{equation}`` wrapper, and both
+    # are UNNUMBERED in LaTeX. But mystmd assigns a bare ``$$`` an equation
+    # number under book-wide numbering (``numbering: book: true`` /
+    # ``equation: true``) — inventing a number that isn't in the PDF and
+    # shifting every later equation by +1 (#167). Emit them as a
+    # forced-unnumbered ``{math}`` directive, the same treatment ``equation*``
+    # already gets (#113).
+    #
+    # This MUST run before the ``\begin{equation}``-env patterns below: a
+    # numbered ``equation`` keeps its ``\begin{}`` wrapper through pandoc and is
+    # rewritten to a bare ``$$`` *here in this same pass*, after which it is
+    # indistinguishable from genuine plain display math. So the wrapper is the
+    # only signal — bail on any body that is a numbered top-level env (handled
+    # by those patterns) and leave it untouched for them. Also bail on a
+    # ``\begin{tikzcd}`` body (the consumer ``TIKZCD_INLINE_MAP`` matches the
+    # bare ``$$ … tikzcd … $$`` shape) and on a ``\label{}`` / ``\tag`` body
+    # (a numbered-with-label form the single-line label pass handles below).
+    # Inner unnumbered envs (``aligned`` / ``cases`` / ``split`` / ``array`` …
+    # from ``\[\begin{aligned}…\]``) are NOT bailed — they stay plain.
+    _NUMBERED_ENV_RE = re.compile(
+        r'\\begin\{(?:equation|align|gather|multline|flalign|eqnarray|alignat)\*?\}'
+    )
+
+    def replace_plain_display(m):
+        body = m.group(1).strip()
+        if (_NUMBERED_ENV_RE.match(body)
+                or '\\begin{tikzcd}' in body
+                or '\\label{' in body
+                or '\\tag' in body):
+            return m.group(0)
+        return _emit_unnumbered_math(body)
+
+    text = re.sub(r'\$\$(.*?)\$\$', replace_plain_display, text, flags=re.DOTALL)
+
     # Pattern: $$\begin{equation} ... \end{equation}$$ with optional \label.
     # The label may appear before, after, or interleaved with the body —
     # all three conventions exist in real LaTeX manuscripts. Extracting the

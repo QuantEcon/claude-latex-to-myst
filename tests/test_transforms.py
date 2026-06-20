@@ -3504,6 +3504,41 @@ def test_convert_equations_plain_equation_still_numbered_bare():
     assert out.strip().startswith('$$')
 
 
+def test_convert_equations_plain_display_math_unnumbered():
+    """Plain ``$$ … $$`` (pandoc's rendering of both LaTeX ``$$ … $$`` and
+    ``\\[ … \\]``) is unnumbered in LaTeX — emit a forced-unnumbered ``{math}``
+    directive so book-wide numbering doesn't invent a number for it (#167)."""
+    text = "$$\nTf = e \\vee (c + \\beta Pf)\n$$\n"
+    out = postprocess.convert_equations(text)
+    assert '```{math}' in out
+    assert ':enumerated: false' in out
+    assert 'Tf = e \\vee (c + \\beta Pf)' in out
+    assert '(eq-' not in out
+
+
+def test_convert_equations_plain_display_inner_env_unnumbered():
+    """``\\[\\begin{aligned} … \\end{aligned}\\]`` round-trips through pandoc as a
+    bare ``$$\\begin{aligned} … \\end{aligned}$$`` — an inner (unnumbered) env,
+    not a numbered top-level one, so it must convert to an unnumbered ``{math}``
+    directive (#167), keeping its ``aligned`` alignment intact."""
+    text = "$$\\begin{aligned}\na &= b \\\\\nc &= d\n\\end{aligned}$$\n"
+    out = postprocess.convert_equations(text)
+    assert '```{math}' in out
+    assert ':enumerated: false' in out
+    assert '\\begin{aligned}' in out
+
+
+def test_convert_equations_plain_display_tikzcd_stays_bare():
+    """A plain ``$$ … \\begin{tikzcd} … $$`` must NOT become a ``{math}``
+    directive: the consumer ``TIKZCD_INLINE_MAP`` (resolve_tikz_figures)
+    matches the bare ``$$ … tikzcd … $$`` shape to swap in an image (#167
+    bail mirrors the ``equation*`` tikzcd bail in #113)."""
+    text = "$$\n\\begin{tikzcd}\nA \\arrow{r} & B\n\\end{tikzcd}\n$$\n"
+    out = postprocess.convert_equations(text)
+    assert '```{math}' not in out
+    assert '\\begin{tikzcd}' in out
+
+
 def test_convert_equations_starred_midline_blockified():
     """A starred env abutting prose mid-line must be hoisted to its own block
     (a ``{math}`` directive can't share a line with prose)."""
@@ -3591,8 +3626,12 @@ def test_convert_equations_standalone_label_does_not_cross_paragraphs():
         "Done.\n"
     )
     out = postprocess.convert_equations(text)
-    # The inline display formula must remain inline (untouched).
-    assert "$$h(x) = \\theta_0 + \\theta_1 x.$$" in out
+    # The plain ``$$ … $$`` display formula converts to an unnumbered ``{math}``
+    # directive (#167 — ``$$`` is display math in LaTeX, unnumbered). The
+    # #26 invariant is unchanged: its non-greedy match must NOT span down to
+    # fuse the figure / prose / far-below ``\label{eq:mse}`` into its body.
+    assert "h(x) = \\theta_0 + \\theta_1 x." in out
+    assert "```{math}" in out
     # The figure between the two equations must survive.
     assert "```{figure} figures/regression.png" in out
     assert "Unrelated prose between equations." in out

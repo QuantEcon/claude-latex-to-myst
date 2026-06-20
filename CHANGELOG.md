@@ -15,6 +15,23 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — plain `$$ … $$` / `\[ … \]` display math stays unnumbered (#167)
+
+Plain TeX display math — `$$ … $$` and `\[ … \]` — is **unnumbered** in
+LaTeX, but pandoc emits both as a bare `$$ … $$` block (no `\begin{equation}`
+wrapper), which mystmd then **auto-numbers** under book-wide numbering
+(`numbering: {book: true}` / `{equation: true}`). That invents an equation
+number absent from the PDF and shifts every later equation by +1 (book-dp1
+ch_opt_stop turned a plain `$$ … $$` into HTML eq (4.9), bumping the rest).
+`convert_equations` now converts a plain bare `$$ … $$` to a forced-unnumbered
+`{math}` directive (`:enumerated: false`) — the same treatment `equation*`
+already gets (#113). It runs before the `\begin{equation}`-env patterns and
+keys off the wrapper that pandoc preserves: a numbered `equation` (which keeps
+`\begin{equation}` through pandoc, with or without a label) is untouched and
+stays numbered; an inner unnumbered env from `\[\begin{aligned} … \]` stays
+plain and converts; a `tikzcd` body bails so `TIKZCD_INLINE_MAP` keeps
+matching. Reported in QuantEcon/book-dp-public#30 (item 1).
+
 ### Fixed — labelled `\paragraph` keeps its heading so cross-refs resolve (#160B follow-up)
 
 #160B rewrites `\paragraph`/`\subparagraph` to a bold run-in so they don't

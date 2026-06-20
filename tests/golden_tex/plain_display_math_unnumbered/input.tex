@@ -1,0 +1,32 @@
+Plain double-dollar display math (unnumbered in LaTeX):
+
+$$
+Tf = e \vee (c + \beta Pf) \leq e \vee (c + \beta Pg) = Tg.
+$$
+
+Bracket display math (also unnumbered):
+
+\[
+a = b + c
+\]
+
+A numbered equation keeps its number:
+
+\begin{equation}
+x = y + z
+\end{equation}
+
+A numbered, labelled equation keeps its number too:
+
+\begin{equation}\label{eq:foo}
+p = q
+\end{equation}
+
+Bracket display math wrapping an inner alignment stays unnumbered:
+
+\[
+\begin{aligned}
+u &= v \\
+w &= z
+\end{aligned}
+\]
