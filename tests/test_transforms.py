@@ -4662,6 +4662,82 @@ def test_join_split_math_skips_display_math_and_fences():
     assert postprocess.join_split_inline_math(src) == src
 
 
+# ── collapse_inline_math_newlines: hard-break inside inline $…$ (#168) ────────
+
+
+def test_collapse_inline_math_basic_newline():
+    """A newline inside an inline ``$…$`` span (continuation NOT starting with
+    a block marker — the case ``join_split_inline_math`` misses) collapses to
+    a single space (#168)."""
+    src = "under the policy $\\sigma\n\\equiv 0$, where the firm exits.\n"
+    out = postprocess.collapse_inline_math_newlines(src)
+    assert "$\\sigma \\equiv 0$" in out
+    assert "\n\\equiv" not in out
+
+
+def test_collapse_inline_math_two_spans_even_parity_line():
+    """The #168 example: a middle line both closes the previous span and opens
+    a new one (even per-line ``$`` count, but still open) — running cross-line
+    parity must catch it where ``join_split``'s per-line count cannot."""
+    src = (
+        "Now note that under the policy $\\sigma\n"
+        "\\equiv 0$, where the firm never exits, we have $T_\\sigma v = \\pi\n"
+        "+ \\beta Q v$.\n"
+    )
+    out = postprocess.collapse_inline_math_newlines(src)
+    assert "$\\sigma \\equiv 0$" in out
+    assert "$T_\\sigma v = \\pi + \\beta Q v$" in out
+    # Whole paragraph folds onto one line; no embedded newline survives.
+    assert out.strip().count("\n") == 0
+
+
+def test_collapse_inline_math_span_open_across_three_lines():
+    src = "value $a\n+ b\n+ c$ done.\n"
+    out = postprocess.collapse_inline_math_newlines(src)
+    assert "$a + b + c$" in out
+
+
+def test_collapse_inline_math_ignores_dollar_in_code_span():
+    """A lone ``$`` inside an inline-code span isn't a math delimiter, so the
+    line's true parity is even and nothing merges (#168)."""
+    src = "the path `$HOME` is set and $x = 1$ here.\nNext line stays.\n"
+    out = postprocess.collapse_inline_math_newlines(src)
+    assert out == src
+
+
+def test_collapse_inline_math_skips_display_and_fences():
+    src = (
+        "$$\nx\n+ y\n$$\n"
+        "```python\na = b\n- c\n```\n"
+    )
+    assert postprocess.collapse_inline_math_newlines(src) == src
+
+
+def test_collapse_inline_math_does_not_cross_blank_line():
+    """A blank line is a paragraph break — an inline span can't legally cross
+    it, so a dangling odd ``$`` must not swallow the next paragraph."""
+    src = "an open $x\n\nnew paragraph.\n"
+    out = postprocess.collapse_inline_math_newlines(src)
+    assert out == src
+
+
+def test_collapse_inline_math_balanced_line_untouched():
+    """A line whose inline spans are all closed is left exactly as-is."""
+    src = "Properties of $u$ and $v$ here.\nA second line.\n"
+    assert postprocess.collapse_inline_math_newlines(src) == src
+
+
+def test_collapse_inline_math_single_line_display_not_a_delimiter():
+    """A self-contained single-line ``$$x$$`` must NOT toggle the display-block
+    state (Copilot review on #172): a loose ``startswith('$$')`` would flip
+    ``in_math_block`` and silently disable collapsing for everything after it.
+    The split span below must still collapse."""
+    src = "$$y = mx$$\n\nthen we have $a\n+ b$ here.\n"
+    out = postprocess.collapse_inline_math_newlines(src)
+    assert "$$y = mx$$" in out          # the display line is untouched
+    assert "$a + b$" in out             # the later split span still collapses
+
+
 def test_proof_div_emits_nonumber():
     """#143 — LaTeX's proof env is unnumbered by definition (amsthm has
     no proof counter), but mystmd enumerates bare {prf:proof} whenever

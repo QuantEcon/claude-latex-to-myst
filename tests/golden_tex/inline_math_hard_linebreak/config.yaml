@@ -1,0 +1,12 @@
+# #168: LaTeX routinely breaks an inline $…$ span across a hard source line
+# break (a newline LaTeX treats as a space). Pandoc copies the newline into
+# the generated inline math; MyST's dollarmath inline parser then handles some
+# such spans inconsistently and leaks the raw $…$ as visible text. The
+# converter collapses every internal hard break in an inline span to a single
+# space so the span always stays on one line.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Inline Math Hard Linebreak" }

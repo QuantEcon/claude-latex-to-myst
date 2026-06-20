@@ -59,6 +59,7 @@ EXPECTED_PIPELINE_ORDER: list[str] = [
     'resolve_algorithms',
     'resolve_algorithmics',
     'fix_spacing_superscript',
+    'collapse_inline_math_newlines',
     'join_split_inline_math',
     'ensure_blank_after_display_math',
     'convert_pandoc_spans',

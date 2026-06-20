@@ -84,6 +84,7 @@ from transforms.math import (  # noqa: E402  (re-exports for P3a)
     fix_text_dollar,
     fix_spacing_superscript,
     convert_equations,
+    collapse_inline_math_newlines,
     join_split_inline_math,
     strip_blank_lines_in_math,
     ensure_blank_after_display_math,
@@ -521,6 +522,7 @@ def process_text(text: str, stem: str, title: str | None = None,
     text = resolve_algorithms(text)                # decode algorithm2e markers
     text = resolve_algorithmics(text)              # decode standalone algorithmicx markers (lesson 023)
     text = fix_spacing_superscript(text)           # \,^ → \,{}^ for KaTeX — runs AFTER decoders so table-cell math is visible (closes #45, #85)
+    text = collapse_inline_math_newlines(text)     # inline $…$ spanning a hard line break → single space (#168)
     text = join_split_inline_math(text)
     text = ensure_blank_after_display_math(text)   # adds blank lines
     text = convert_pandoc_spans(text)              # [x]{.smallcaps} → X (#124)
