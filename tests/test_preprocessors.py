@@ -1472,6 +1472,22 @@ def test_multicols_grid_bails_on_extra_content_around_enumerate():
     assert parse_multicols_block(2, body) is None
 
 
+def test_multicols_grid_tolerates_inert_setlength_and_comments():
+    """\\setlength + full-line AND trailing comments around the enumerate are
+    inert — they must not bail the grid extraction (Copilot review on #173)."""
+    from transforms.multicols import parse_multicols_block
+    body = (
+        "% spanning note\n"
+        "\\setlength{\\columnsep}{2em} % tweak\n"
+        "\\begin{enumerate}\n\\item[(a)] x\n\\item[] y\n\\end{enumerate}\n"
+        "% trailing note\n"
+    )
+    result = parse_multicols_block(2, body)
+    assert result is not None
+    spec, cells = result
+    assert cells == ["(a) x", "y"]
+
+
 def test_multicols_grid_bails_on_nested_multicols():
     from transforms.multicols import parse_multicols_block
     body = (

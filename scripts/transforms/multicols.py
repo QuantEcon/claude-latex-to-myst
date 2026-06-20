@@ -143,10 +143,11 @@ def parse_multicols_block(columns: int, body: str):
     em = enum_iter[0]
     # Everything OUTSIDE the enumerate must be inert (whitespace / setlength /
     # label / comment); otherwise this multicols carries content we don't model.
+    # Strip non-escaped ``%`` comments — full-line AND trailing — so a
+    # ``\setlength{…}{…} % tweak`` doesn't leave a residual ``% tweak`` and
+    # bail (Copilot review). Same idiom as ``_algpseudo_tokenize``.
     outside = body[: em.start()] + body[em.end():]
-    outside_live = '\n'.join(
-        '' if ln.lstrip().startswith('%') else ln for ln in outside.split('\n')
-    )
+    outside_live = re.sub(r'(?<!\\)%.*$', '', outside, flags=re.MULTILINE)
     residual = _LABEL_RE.sub('', _SETLENGTH_RE.sub('', outside_live))
     if residual.strip():
         return None
