@@ -15,6 +15,25 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — inline `$…$` spanning a hard line break no longer leaks raw LaTeX (#168)
+
+LaTeX routinely breaks an inline math span across a hard source line break
+(`$\sigma\n\equiv 0$`), treating the newline as a space. Pandoc copies the
+newline verbatim into the generated inline `$…$`, and MyST's dollarmath inline
+parser handles such spans inconsistently — some parse, others fail and leak
+the raw `$…$` LaTeX as visible text in the HTML (~600 such spans across DP
+Vol I; ~30 in ch_opt_stop alone). A new `collapse_inline_math_newlines` pass
+collapses every internal hard break inside an inline span to a single space
+(matching LaTeX's own whitespace semantics), so every inline `$…$` stays on
+one line and the fragile pattern is removed regardless of parser quirks. It
+generalises `join_split_inline_math` (which only rescued continuations
+starting with a block-structure token) by tracking a **running cross-line**
+inline-math parity — catching the common `$a\n… $ … $b\n…$` wrap where a
+middle line both closes one span and opens another (even per-line `$` count,
+still open). Fence- and display-aware, skips inline-code `$`, and never
+crosses a blank line. Reported in QuantEcon/book-dp-public#30 (item 2); the
+underlying parser inconsistency is also filed upstream at QuantEcon/mystmd#69.
+
 ### Fixed — plain `$$ … $$` / `\[ … \]` display math stays unnumbered (#167)
 
 Plain TeX display math — `$$ … $$` and `\[ … \]` — is **unnumbered** in

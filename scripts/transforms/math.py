@@ -641,6 +641,111 @@ def convert_equations(text: str) -> str:
     return text
 
 
+def _inline_math_open_at_end(s: str) -> bool:
+    r"""Return ``True`` when scanning ``s`` from outside math leaves an inline
+    ``$…$`` span still open at the end of the line.
+
+    Skips escaped ``\$``, inline-code backtick spans (so a lone ``$`` inside
+    ``\`$HOME\``` isn't mistaken for a math delimiter), and ``$$`` display
+    delimiters (which never open an inline span). A bare single ``$`` toggles
+    the inline state. Used by ``collapse_inline_math_newlines`` to track an
+    inline span ACROSS source lines — the per-line ``$``-parity count in
+    ``join_split_inline_math`` is wrong precisely when a line both closes the
+    span the previous line opened and opens a new one (even count, still
+    open), which is the common ``$a\n…$ … $b\n…$`` wrap (#168)."""
+    open_ = False
+    j = 0
+    n = len(s)
+    while j < n:
+        c = s[j]
+        if c == '\\':
+            j += 2          # skip the escaped char (incl. ``\$``)
+            continue
+        if c == '`':
+            k = j
+            while k < n and s[k] == '`':
+                k += 1
+            run = k - j
+            close = s.find('`' * run, k)
+            j = (close + run) if close != -1 else n
+            continue
+        if c == '$':
+            if j + 1 < n and s[j + 1] == '$':
+                j += 2      # ``$$`` display delimiter — not an inline toggle
+                continue
+            open_ = not open_
+            j += 1
+            continue
+        j += 1
+    return open_
+
+
+def collapse_inline_math_newlines(text: str) -> str:
+    r"""Collapse hard source line breaks that fall inside an inline ``$…$``
+    span to a single space (#168).
+
+    LaTeX treats a newline inside ``$…$`` as a space, but pandoc copies the
+    break verbatim into the generated inline math, leaving spans like
+    ``$T_\sigma v = \pi\n+ \beta Q v$``. MyST's dollarmath inline parser
+    handles a ``$…$`` span containing a literal newline inconsistently — some
+    parse, others fail and leak the raw ``$…$`` LaTeX as visible text in the
+    HTML. Joining each split span onto one line (matching LaTeX's own
+    whitespace semantics) removes the fragile pattern entirely, regardless of
+    downstream parser quirks.
+
+    This generalises ``join_split_inline_math`` (which only rescued a
+    continuation line beginning with a block-structure token ``>`` / list
+    marker) by tracking a **running cross-line** inline-math parity: whenever a
+    prose line ends inside an open span, the next line is pulled up with a
+    single space — repeatedly, so a span open across three or more lines
+    collapses fully. Fence- and display-aware (skips fenced code blocks and
+    ``$$ … $$`` display blocks) and never merges into a fence opener, a
+    display opener, or a blank line (a paragraph break — an inline span can't
+    legally cross one)."""
+    lines = text.split('\n')
+    out: list[str] = []
+    in_fence = False
+    in_math_block = False
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_fence = not in_fence
+            out.append(line)
+            i += 1
+            continue
+        if in_fence:
+            out.append(line)
+            i += 1
+            continue
+        if stripped.startswith('$$'):
+            in_math_block = not in_math_block
+            out.append(line)
+            i += 1
+            continue
+        if in_math_block:
+            out.append(line)
+            i += 1
+            continue
+        # Prose line: while it ends inside an open inline span, pull the next
+        # line up with a single space.
+        cur = line
+        while _inline_math_open_at_end(cur) and i + 1 < n:
+            nxt = lines[i + 1]
+            nstripped = nxt.strip()
+            if (nstripped == ''
+                    or nstripped.startswith('```')
+                    or nstripped.startswith('$$')):
+                break
+            cur = cur.rstrip() + ' ' + nxt.lstrip()
+            i += 1
+        out.append(cur)
+        i += 1
+    return '\n'.join(out)
+
+
 def join_split_inline_math(text: str) -> str:
     """Join inline math expressions split across lines where the next line
     begins with a Markdown block-structure token (`>`, or a list marker).
