@@ -1,0 +1,11 @@
+# #167: plain TeX display math — bare ``$$ … $$`` and ``\[ … \]`` — is
+# unnumbered in LaTeX, but mystmd numbers a bare ``$$`` under book-wide
+# numbering. The converter emits a forced-unnumbered {math} directive (the
+# same treatment ``equation*`` gets) so the numbering matches the PDF.
+# Numbered ``\begin{equation}`` (with or without a label) is unaffected.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Plain Display Math" }
