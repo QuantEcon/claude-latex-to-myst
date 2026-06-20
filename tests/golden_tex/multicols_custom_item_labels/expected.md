@@ -6,6 +6,8 @@ title: "Custom Item Labels"
 
 Recall the norm properties:
 
+::::{grid} 1 1 2 2
+:::{grid-item}
 (a) $\| u \| \geq 0$
 
 (b) $\| u \| = 0 \iff u = 0$
@@ -13,7 +15,8 @@ Recall the norm properties:
 (c) $\| \alpha u \| = |\alpha| \| u \|$ and
 
 (d) $\| u + v \| \leq \| u \| + \| v \|$
-
+:::
+:::{grid-item}
 (nonnegativity)
 
 (positive definiteness)
@@ -21,6 +24,8 @@ Recall the norm properties:
 (absolute homogeneity)
 
 (triangle inequality)
+:::
+::::
 
 An ordinary list is untouched:
 

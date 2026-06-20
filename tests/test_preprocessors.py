@@ -1391,10 +1391,13 @@ def test_texttt_plain_arg_unchanged():
 
 
 # ── multicols column-count strip (#111) ────────────────────────────────────────
+# Moved out of _apply_rewrites into transforms.multicols (#170) so a single
+# pass owns all multicols handling (grid extraction + count strip).
 
 
 def _strip_multicols(text: str) -> str:
-    return rew._MULTICOLS_ARGS.sub(rew._strip_multicols_args, text)
+    from transforms.multicols import strip_remaining_multicols_args
+    return strip_remaining_multicols_args(text)
 
 
 def test_multicols_count_argument_stripped():
@@ -1418,6 +1421,115 @@ def test_multicols_count_strip_keeps_following_content():
 
 def test_multicols_empty_pretext_dropped():
     assert _strip_multicols(r"\begin{multicols}{2}[ ]") == r"\begin{multicols}"
+
+
+# ── multicols paired enumerate → MyST grid (#170) ──────────────────────────────
+
+
+_PAIRED = (
+    "\\begin{multicols}{2}\n"
+    "\\begin{enumerate}\n"
+    "\\item[(a)] $\\| u \\| \\geq 0$\n"
+    "\\item[(b)] $\\| u \\| = 0$\n"
+    "\\item[] (nonnegativity)\n"
+    "\\item[] (positive definiteness)\n"
+    "\\end{enumerate}\n"
+    "\\end{multicols}\n"
+)
+
+
+def test_multicols_grid_parse_paired_enumerate():
+    from transforms.multicols import find_multicols_blocks, parse_multicols_block
+    blocks = find_multicols_blocks(_PAIRED)
+    assert len(blocks) == 1
+    _start, _end, cols, body = blocks[0]
+    assert cols == 2
+    spec, cells = parse_multicols_block(cols, body)
+    assert spec.columns == 2
+    assert spec.head_labels == []
+    assert cells == [
+        "(a) $\\| u \\| \\geq 0$",
+        "(b) $\\| u \\| = 0$",
+        "(nonnegativity)",
+        "(positive definiteness)",
+    ]
+
+
+def test_multicols_grid_bails_on_wrapped_tabular():
+    """A multicols wrapping a tabular (not a custom-label enumerate) is not
+    modelled — leave it to the count-strip + ENV_SKIP path."""
+    from transforms.multicols import parse_multicols_block
+    body = "\n\\begin{tabular}{cc}\na & b \\\\\n\\end{tabular}\n"
+    assert parse_multicols_block(2, body) is None
+
+
+def test_multicols_grid_bails_on_extra_content_around_enumerate():
+    from transforms.multicols import parse_multicols_block
+    body = (
+        "Some spanning prose.\n"
+        "\\begin{enumerate}\n\\item[(a)] x\n\\item[] y\n\\end{enumerate}\n"
+    )
+    assert parse_multicols_block(2, body) is None
+
+
+def test_multicols_grid_bails_on_nested_multicols():
+    from transforms.multicols import parse_multicols_block
+    body = (
+        "\\begin{multicols}{2}\n\\begin{enumerate}\n\\item[(a)] x\n"
+        "\\end{enumerate}\n\\end{multicols}\n"
+    )
+    assert parse_multicols_block(2, body) is None
+
+
+def test_multicols_grid_bails_on_auto_counter_list():
+    """An item without an explicit [label] is an auto-counter list — bail."""
+    from transforms.multicols import parse_multicols_block
+    body = "\\begin{enumerate}\n\\item a\n\\item b\n\\end{enumerate}\n"
+    assert parse_multicols_block(2, body) is None
+
+
+def test_multicols_grid_split_columns_balances_column_first():
+    from transforms.multicols import _split_columns
+    assert _split_columns(list("abcdefgh"), 2) == [list("abcd"), list("efgh")]
+    # Odd remainder rides in the earlier columns (multicols balancing).
+    assert _split_columns(list("abcde"), 2) == [list("abc"), list("de")]
+    assert _split_columns(list("abcdefg"), 3) == [list("abc"), list("de"), list("fg")]
+
+
+def test_multicols_grid_resolver_emits_grid():
+    from transforms.multicols import MulticolsSpec, encode_marker, resolve_multicols_grid
+    spec = MulticolsSpec(
+        columns=2,
+        items=["(a) x", "(b) y", "(nonnegativity)", "(positive definiteness)"],
+    )
+    out = resolve_multicols_grid(f"pre\n\n{encode_marker(spec)}\n\npost")
+    assert "::::{grid} 1 1 2 2" in out
+    assert out.count(":::{grid-item}") == 2
+    # column-first split: statements in cell 1, names in cell 2
+    first = out.index("(a) x")
+    second = out.index("(nonnegativity)")
+    mid = out.index(":::{grid-item}", out.index(":::{grid-item}") + 1)
+    assert first < mid < second
+
+
+def test_multicols_grid_preprocessor_emits_marker():
+    """End-to-end (needs pandoc): the preprocessor replaces the paired block
+    with a MULTICOLSGRID marker and leaves the rest."""
+    import _apply_multicols_grid as mg
+    out = mg.process_text(_PAIRED)
+    assert "<!--MULTICOLSGRID payload=" in out
+    assert "\\begin{multicols}" not in out  # the whole block is consumed
+
+
+def test_multicols_grid_preprocessor_strips_nongrid_count():
+    """A non-grid multicols (wrapped tabular) keeps the #111 behaviour: count
+    stripped, block left for ENV_SKIP."""
+    import _apply_multicols_grid as mg
+    src = "\\begin{multicols}{2}\n\\begin{tabular}{c}\na\n\\end{tabular}\n\\end{multicols}\n"
+    out = mg.process_text(src)
+    assert "<!--MULTICOLSGRID" not in out
+    assert "\\begin{multicols}{2}" not in out
+    assert "\\begin{multicols}" in out
 
 
 # ── Custom-label enumerate flattening (#111) ───────────────────────────────────

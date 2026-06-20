@@ -15,6 +15,30 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — `multicols` paired two-column layout reproduced as a MyST `{grid}` (#170)
+
+book-dp1 places a set of math statements beside their property names with a
+`\begin{multicols}{2}` wrapping a custom-label `enumerate`: the first half of
+the items are the statements `(a)–(d)` and the second half the matching
+`\item[]` names. `multicols` balances the items column-first (4-and-4) so each
+statement sits next to its name in the PDF, but the converter dropped
+`multicols` (it is in `DEFAULT_ENV_SKIP`) and the list flattened into one
+stacked column — separating every name from its statement (the unfinished
+layout half of #111; the custom labels and the stray column-count leak were
+fixed there). A new `_apply_multicols_grid.py` preprocessor extracts a
+`multicols` wrapping a custom-label enumerate pre-pandoc, batch-converts each
+item, and emits a `<!--MULTICOLSGRID-->` marker; `resolve_multicols_grid`
+splits the items column-first into N balanced groups and emits a responsive
+MyST `{grid} 1 1 N N` (one column on mobile, N on desktop), so the browser
+reproduces the row pairing. Conservative bail: only a `multicols` whose body is
+a single custom-label enumerate (surrounded by nothing but
+whitespace/`\setlength`/`\label`/comments) is gridded; every other `multicols`
+(wrapped tabulars, backmatter prose, auto-counter lists, nested `multicols`)
+falls through unchanged. All `multicols` handling — the grid extraction and the
+#111 column-count strip + `[pre-text]` hoist — now lives in this one pass
+(moved out of `_apply_rewrites.py`), so it runs with the column count intact.
+Reported in QuantEcon/book-dp-public#26 (item 11) and #27 (item 3).
+
 ### Fixed — inline `$…$` spanning a hard line break no longer leaks raw LaTeX (#168)
 
 LaTeX routinely breaks an inline math span across a hard source line break

@@ -177,6 +177,15 @@ for ch in "${CHAPTER_STEMS[@]}"; do
   # sources that contain no description envs (GH #19).
   python3 "$SCRIPT_DIR/_apply_description_markers.py" "$dst"
 
+  # Rewrite a \begin{multicols}{N} wrapping a custom-label enumerate into a
+  # MULTICOLSGRID marker that postprocess expands into a MyST {grid} (#170 —
+  # the unfinished layout half of #111). MUST run before the custom-label
+  # enumerate flattener below (so the paired enumerate is still intact) and
+  # owns ALL multicols handling now: it also strips the {N} count + hoists any
+  # [pre-text] from the non-grid multicols it leaves in place (moved here from
+  # _apply_rewrites.py). No-op for sources without multicols.
+  python3 "$SCRIPT_DIR/_apply_multicols_grid.py" "$dst"
+
   # Flatten enumerates whose every \item carries an explicit [label]
   # into labelled paragraphs (GH #111). Pandoc drops custom \item[(a)]
   # labels silently, renumbering the list 1..N — dp1's norm properties
