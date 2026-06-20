@@ -4727,6 +4727,17 @@ def test_collapse_inline_math_balanced_line_untouched():
     assert postprocess.collapse_inline_math_newlines(src) == src
 
 
+def test_collapse_inline_math_single_line_display_not_a_delimiter():
+    """A self-contained single-line ``$$x$$`` must NOT toggle the display-block
+    state (Copilot review on #172): a loose ``startswith('$$')`` would flip
+    ``in_math_block`` and silently disable collapsing for everything after it.
+    The split span below must still collapse."""
+    src = "$$y = mx$$\n\nthen we have $a\n+ b$ here.\n"
+    out = postprocess.collapse_inline_math_newlines(src)
+    assert "$$y = mx$$" in out          # the display line is untouched
+    assert "$a + b$" in out             # the later split span still collapses
+
+
 def test_proof_div_emits_nonumber():
     """#143 — LaTeX's proof env is unnumbered by definition (amsthm has
     no proof counter), but mystmd enumerates bare {prf:proof} whenever

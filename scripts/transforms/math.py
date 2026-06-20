@@ -701,7 +701,13 @@ def collapse_inline_math_newlines(text: str) -> str:
     collapses fully. Fence- and display-aware (skips fenced code blocks and
     ``$$ … $$`` display blocks) and never merges into a fence opener, a
     display opener, or a blank line (a paragraph break — an inline span can't
-    legally cross one)."""
+    legally cross one).
+
+    Display-delimiter detection mirrors ``ensure_blank_after_display_math`` —
+    only a line that is exactly ``$$`` or opens ``$$ `` / ``$$(`` (the
+    label-closer form) toggles the block state. A self-contained single-line
+    ``$$x$$`` is NOT a block delimiter, so it doesn't flip the state and
+    silently disable collapsing for the rest of the file (Copilot review)."""
     lines = text.split('\n')
     out: list[str] = []
     in_fence = False
@@ -720,7 +726,12 @@ def collapse_inline_math_newlines(text: str) -> str:
             out.append(line)
             i += 1
             continue
-        if stripped.startswith('$$'):
+        is_dm_delim = (
+            stripped == '$$'
+            or stripped.startswith('$$ ')
+            or stripped.startswith('$$(')
+        )
+        if is_dm_delim:
             in_math_block = not in_math_block
             out.append(line)
             i += 1
