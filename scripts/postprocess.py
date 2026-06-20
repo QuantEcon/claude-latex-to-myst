@@ -103,6 +103,7 @@ from transforms.refs import (  # noqa: E402  (re-exports for P3a)
 from transforms.tables import convert_simple_tables  # noqa: E402  (P3a)
 from transforms.tables_from_latex import resolve_table_markers  # noqa: E402  (#51)
 from transforms.figures_from_latex import resolve_figure_markers  # noqa: E402  (#89/#90/#92/#93)
+from transforms.multicols import resolve_multicols_grid  # noqa: E402  (#170)
 from transforms.code import (  # noqa: E402  (re-exports for P3a)
     convert_pandoc_attr_code_blocks,
     resolve_listings,
@@ -504,6 +505,11 @@ def process_text(text: str, stem: str, title: str | None = None,
     text = convert_environment_divs(text, ctx)
     text = convert_description_lists(text)         # decode DESCITEM markers (lesson 022)
     text = resolve_exercise_markers(text)          # decode EXERCISE markers (closes #69)
+    # resolve_multicols_grid decodes MULTICOLSGRID markers into {grid} (#170).
+    # AFTER convert_environment_divs (so its ::: grid fences aren't taken for
+    # pandoc env divs) and BEFORE the cross-ref / cite passes (so any ref/cite
+    # in a grid cell is still processed).
+    text = resolve_multicols_grid(text, ctx)
     text = decode_natbib_markers(text)              # before cross-refs (lesson 020)
     text = convert_cross_references(text, ctx)
     text = strip_doubled_noun_refs(text, ctx)      # needs MyST refs in place

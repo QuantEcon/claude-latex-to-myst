@@ -44,30 +44,6 @@ _ITEMSEP_STRIP = re.compile(
     r'(?:\s*\\\\)?\s*'
 )
 
-# ``\begin{multicols}{N}[pre-text]`` — the mandatory column-count argument
-# and the optional spanning pre-text. multicols is skipped post-pandoc (the
-# wrapper is dropped, content kept), but pandoc renders the ``{N}`` arg as a
-# stray ``N`` paragraph at the top of the div, which then leaks into the body
-# (#111). MyST has no multi-column primitive, so the count carries no meaning
-# downstream — strip the ``{N}``.
-#
-# The optional ``[pre-text]`` is real content (multicols prints it full-width
-# before the columns begin), but it CANNOT simply be left in place: pandoc
-# silently drops an optional arg on the count-less env (verified — worse than
-# the pre-fix garbled leak, per the lesson-028 "silent drops are the worst
-# failure mode" rule). Hoist it OUT as a paragraph before the env instead,
-# which matches multicols' own semantics (spanning text above the columns).
-_MULTICOLS_ARGS = re.compile(
-    r'(\\begin\{multicols\*?\})\s*\{[^}]*\}(?:\s*\[([^\]]*)\])?'
-)
-
-
-def _strip_multicols_args(m: re.Match) -> str:
-    env, pretext = m.group(1), m.group(2)
-    if pretext and pretext.strip():
-        return f'{pretext.strip()}\n\n{env}'
-    return env
-
 _NATBIB_OPT = r'(?:\s*\[[^\]]*\]){0,2}'
 # Same optional-locator shape as ``_NATBIB_OPT`` but with at least one
 # ``[...]`` required (one or two) — used to gate the plain-``\cite``
@@ -350,11 +326,9 @@ def main():
     # (#160B).
     text = convert_paragraph_runins(text)
 
-    # 3c. Strip the multicols column-count argument so it doesn't leak as a
-    # stray number into the (column-less) MyST output, hoisting any optional
-    # [pre-text] out as a paragraph before the env so pandoc doesn't silently
-    # drop it (#111).
-    text = _MULTICOLS_ARGS.sub(_strip_multicols_args, text)
+    # 3c. (multicols handling moved to ``_apply_multicols_grid.py`` — #170 — so
+    # the column count is still present when that pass decides whether to emit a
+    # {grid} for a paired enumerate; it strips the count for the rest.)
 
     # 3d. Strip redundant ``on page~\pageref{X}`` locator clauses — pandoc
     # drops \pageref and strands "on page ." in single-page HTML (#158A).

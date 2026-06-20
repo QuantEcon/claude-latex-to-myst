@@ -44,6 +44,7 @@ EXPECTED_PIPELINE_ORDER: list[str] = [
     'convert_environment_divs',
     'convert_description_lists',
     'resolve_exercise_markers',
+    'resolve_multicols_grid',
     'decode_natbib_markers',
     'convert_cross_references',
     'strip_doubled_noun_refs',

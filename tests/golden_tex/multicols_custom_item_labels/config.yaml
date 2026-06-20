@@ -1,7 +1,10 @@
-# #111 items 11/13: a multicols-wrapped enumerate whose every \item carries
-# an explicit [label] (dp1's norm-properties shape). The multicols wrapper
-# unwraps without leaking the column count; the custom (a)-(d) labels
-# survive as labelled paragraphs instead of pandoc's renumbered 1..N list.
+# #111 items 11/13 + #170: a multicols-wrapped enumerate whose every \item
+# carries an explicit [label] (dp1's norm-properties shape). #111 kept the
+# custom (a)-(d) labels (vs pandoc's renumbered 1..N); #170 reproduces the
+# two-column LAYOUT as a MyST {grid} (split column-first), so each statement
+# (a)-(d) sits beside its property name instead of stacking below it. The
+# trailing ordinary enumerate confirms only the paired multicols shape is
+# touched.
 source_dir: "."
 output_dir: "."
 tmp_dir: "./tmp"
