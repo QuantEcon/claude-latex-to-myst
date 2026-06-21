@@ -4553,6 +4553,56 @@ def test_dashes_math_directive_skipped_other_directives_processed():
     assert "A note – with a dash." in out
 
 
+def test_dashes_prose_directive_title_argument_converted():
+    """A prose directive's opener carries its argument (a theorem title)
+    on the same line; ``--``/``---`` there must convert (#174)."""
+    src = (
+        "```{prf:theorem} Bolzano--Weierstrass\n"
+        "Body text.\n"
+        "```\n"
+    )
+    out = postprocess.convert_latex_dashes(src)
+    assert "```{prf:theorem} Bolzano–Weierstrass" in out
+
+
+def test_dashes_directive_title_protects_math_and_keeps_token():
+    """The ``{directive}`` token stays byte-identical and a ``$…$`` span in
+    the title is protected; only real prose dashes in the title convert."""
+    src = "```{prf:theorem} Range $a_{i}$ for i--j\n```\n"
+    out = postprocess.convert_latex_dashes(src)
+    assert "```{prf:theorem} Range $a_{i}$ for i–j" in out
+
+
+def test_dashes_admonition_title_argument_converted():
+    """Admonition openers also carry a prose title argument (#174)."""
+    for directive in ("note", "admonition", "exercise"):
+        src = f"```{{{directive}}} A long---title\nBody.\n```\n"
+        out = postprocess.convert_latex_dashes(src)
+        assert f"```{{{directive}}} A long—title" in out
+
+
+def test_dashes_verbatim_directive_opener_argument_untouched():
+    """A code-bearing opener's argument stays verbatim — its body is code,
+    so a dash-looking token on the opener line must not be rewritten."""
+    src = "```{code-cell} ipython3 --no-pager\nx = 1\n```\n"
+    out = postprocess.convert_latex_dashes(src)
+    assert "```{code-cell} ipython3 --no-pager" in out
+
+
+def test_dashes_path_and_label_directive_opener_args_untouched():
+    """Opener-argument substitution is a strict title whitelist: directives
+    whose argument is a PATH or LABEL ({figure}, {image}, {include},
+    {solution}) must stay byte-identical or the reference breaks (Copilot
+    review on #175)."""
+    for src in (
+        "```{figure} figures/my--image.png\n:name: fig-x\n```\n",
+        "```{image} a--b.png\n```\n",
+        "```{include} ../part--two.md\n```\n",
+        "```{solution} ex--label\n```\n",
+    ):
+        assert postprocess.convert_latex_dashes(src) == src
+
+
 def test_dashes_frontmatter_and_table_rules_skipped():
     src = (
         "---\n"
@@ -4709,6 +4759,37 @@ def test_collapse_inline_math_skips_display_and_fences():
     src = (
         "$$\nx\n+ y\n$$\n"
         "```python\na = b\n- c\n```\n"
+    )
+    assert postprocess.collapse_inline_math_newlines(src) == src
+
+
+def test_collapse_inline_math_inside_prf_directive_body():
+    """A content directive ({prf:proof}) is NOT a code fence: an inline ``$…$``
+    span wrapping a hard break inside its body must still collapse (#174). The
+    old naive ``in_fence`` toggle skipped the whole body, leaving the span (and
+    any adjacent ``--``/``---``) unconverted by the later dash pass."""
+    src = (
+        "```{prf:proof}\n"
+        "\n"
+        "the bound $|Tv - Tw| \\leq\n"
+        "    D|v-w|$. This proves (i)--(ii). ◻\n"
+        "```\n"
+    )
+    out = postprocess.collapse_inline_math_newlines(src)
+    assert "$|Tv - Tw| \\leq D|v-w|$" in out
+    assert "\\leq\n" not in out
+    # End-to-end: the dash pass now reaches the joined line.
+    assert "(i)–(ii)" in postprocess.convert_latex_dashes(out)
+
+
+def test_collapse_inline_math_still_skips_code_cell_directive():
+    """A code-bearing directive ({code-cell}) stays opaque — a ``$`` in source
+    code must never trigger a cross-line merge (regression guard for #174)."""
+    src = (
+        "```{code-cell} python\n"
+        "x = \"$a\n"
+        "+ b$\"\n"
+        "```\n"
     )
     assert postprocess.collapse_inline_math_newlines(src) == src
 

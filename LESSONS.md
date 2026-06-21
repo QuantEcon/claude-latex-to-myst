@@ -56,10 +56,11 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 047 | [pandoc's smart writer is load-bearing for HTML-comment markers — `-t markdown-smart` corrupts every `<!--MARKER-->`; dash conversion must be post-pandoc](lessons/047-markdown-smart-writer-breaks-html-comment-markers.md) | pandoc | 🔴 | codified |
 | 048 | [Auto-mapping `\\ding{N}`→Unicode must run before marker extraction — once a cell's `\\ding` is base64'd into a table/figure marker, the batch pandoc pass drops it again](lessons/048-pifont-glyph-substitution-precedes-marker-extraction.md) | preprocess | 🔴 | codified |
 | 049 | [multicols two-column layout needs a MyST `{grid}` — pandoc mangles literal `:::` markup, so reproduce columns via the marker pattern (one cell per column, split column-first)](lessons/049-multicols-paired-layout-needs-grid.md) | post-processing | 🟡 | codified |
+| 050 | [fence-walking math/typography passes must treat `{prf:*}` content directives as transparent, not opaque code fences — else dashes/inline-math in theorem/proof titles and bodies are silently skipped](lessons/050-fence-walkers-must-descend-content-directive-bodies.md) | post-processing | 🟡 | codified |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045, 049
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045, 049, 050
 - **regex-safety:** 002, 017, 024, 031, 035, 036
 - **pandoc:** 027, 047
 - **preprocess:** 028, 029, 030, 039, 044, 048
@@ -86,7 +87,9 @@ coverage.**
   006, 008, 009, 010, 011, 012, 013, 018, 024, 025, 038 (superseded), 039,
   040, 041, 042, 044, 046, 047 (a property of the marker round-trip,
   not of any one construct's emission), 049 (MyST has no multicols
-  primitive — a layout-mapping decision, not a pandoc emission quirk).
+  primitive — a layout-mapping decision, not a pandoc emission quirk),
+  050 (a property of our own fence-walking transforms — content directives
+  must be transparent, not opaque).
 
 ## Open (gaps to close on the next book)
 

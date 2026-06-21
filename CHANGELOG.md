@@ -15,6 +15,28 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — dashes in `{prf:*}` titles and inside theorem/proof bodies now convert (#174)
+
+`--`/`---` ligatures still rendered literally in three contexts that share a
+single root cause — a fence-walking pass treating a content directive as an
+opaque code fence. (1) `convert_latex_dashes` classified a directive opener
+line but emitted it verbatim, so a theorem **title** carried on that line
+(`` ```{prf:theorem} Bolzano--Weierstrass ``) was never converted. (2)
+`collapse_inline_math_newlines` / `join_split_inline_math` (#168) used a naive
+`in_fence` boolean that flipped on `` ```{prf:proof} ``, skipping the whole
+body — so an inline `$…$` span wrapping a hard line break inside a
+theorem/proof/example never collapsed, leaving the later dash pass to choke on
+the dangling-`$` continuation line (off-by-one `$`-pairing) or skip it as a
+4-space-indented code block. Top-level prose was already handled by #168; only
+directive-body cases leaked. Both passes now share `_update_fence_stack` (the
+lesson-040 `(ticks, kind)` stack already used by `fix_spacing_superscript`):
+only genuine code fences and `_CODE_DIRECTIVE_NAMES` directives are opaque, so
+`{prf:*}` bodies are descended into; and a title-bearing opener's argument
+(`prf:*` / admonition / `exercise` titles — a fail-closed whitelist that keeps
+path/label directives like `{figure}` / `{solution}` byte-identical) is
+dash-substituted with `$…$`/inline-code protection. Count-neutral; dp2 render
+gate unchanged. See lesson 050. Reported in QuantEcon/book-dp-public#29.
+
 ### Fixed — `multicols` paired two-column layout reproduced as a MyST `{grid}` (#170)
 
 book-dp1 places a set of math statements beside their property names with a
