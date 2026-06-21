@@ -680,6 +680,39 @@ def _inline_math_open_at_end(s: str) -> bool:
     return open_
 
 
+def _update_fence_stack(stack: list[tuple[int, str]], line: str) -> bool:
+    """Push/pop ``line`` on a backtick-fence ``stack`` of ``(ticks, kind)``;
+    return ``True`` if ``line`` is a fence delimiter (opener or closer).
+
+    ``kind`` is ``'code'`` for a plain code fence or a directive in
+    ``_CODE_DIRECTIVE_NAMES`` (``code``/``code-cell``/…), else ``'content'``
+    for any other ``{name}`` directive (``{prf:*}``, admonitions, …) whose
+    body is prose/math the inline-math collapse must reach. Closers are
+    matched by the stack (a bare run of ``≥`` the top opener's ticks), never
+    by a second regex — the lesson-040 fence machine shared with
+    ``fix_spacing_superscript``. A ``{prf:proof}`` opener is therefore NOT
+    opaque, so an inline ``$…$`` span wrapping a hard line break inside a
+    theorem/proof/example body still collapses (#174)."""
+    m = _FENCE_LINE_RE.match(line.lstrip())
+    if m is None:
+        return False
+    ticks = len(m.group(1))
+    rest = m.group(2)
+    if stack and rest.strip() == '' and ticks >= stack[-1][0]:
+        stack.pop()
+        return True
+    rest_stripped = rest.lstrip()
+    if rest_stripped.startswith('{'):
+        close = rest_stripped.find('}')
+        name = rest_stripped[1:close].strip() if close > 0 else ''
+        first_word = name.split()[0] if name else ''
+        kind = 'code' if first_word in _CODE_DIRECTIVE_NAMES else 'content'
+    else:
+        kind = 'code'  # plain code fence
+    stack.append((ticks, kind))
+    return True
+
+
 def collapse_inline_math_newlines(text: str) -> str:
     r"""Collapse hard source line breaks that fall inside an inline ``$…$``
     span to a single space (#168).
@@ -698,10 +731,13 @@ def collapse_inline_math_newlines(text: str) -> str:
     marker) by tracking a **running cross-line** inline-math parity: whenever a
     prose line ends inside an open span, the next line is pulled up with a
     single space — repeatedly, so a span open across three or more lines
-    collapses fully. Fence- and display-aware (skips fenced code blocks and
-    ``$$ … $$`` display blocks) and never merges into a fence opener, a
-    display opener, or a blank line (a paragraph break — an inline span can't
-    legally cross one).
+    collapses fully. Fence- and display-aware: only genuine *code* fences
+    (plain ``` ``` ``` and ``_CODE_DIRECTIVE_NAMES`` directives) and
+    ``$$ … $$`` display blocks are opaque — a *content* directive body
+    (``{prf:proof}``, admonitions, …) IS descended into, so a span wrapping a
+    hard break inside a theorem/proof/example collapses too (#174). Never
+    merges into a fence opener, a display opener, or a blank line (a
+    paragraph break — an inline span can't legally cross one).
 
     Display-delimiter detection mirrors ``ensure_blank_after_display_math`` —
     only a line that is exactly ``$$`` or opens ``$$ `` / ``$$(`` (the
@@ -710,19 +746,18 @@ def collapse_inline_math_newlines(text: str) -> str:
     silently disable collapsing for the rest of the file (Copilot review)."""
     lines = text.split('\n')
     out: list[str] = []
-    in_fence = False
+    fence_stack: list[tuple[int, str]] = []
     in_math_block = False
     i = 0
     n = len(lines)
     while i < n:
         line = lines[i]
         stripped = line.strip()
-        if stripped.startswith('```'):
-            in_fence = not in_fence
+        if _update_fence_stack(fence_stack, line):
             out.append(line)
             i += 1
             continue
-        if in_fence:
+        if fence_stack and fence_stack[-1][1] == 'code':
             out.append(line)
             i += 1
             continue
@@ -775,23 +810,24 @@ def join_split_inline_math(text: str) -> str:
     line followed by a line starting with `>`, `+ `, `- `, `* `, or
     ``N. `` / ``N) `` and merge them with a single space.
 
-    Skips fenced code blocks (```) and display math blocks ($$) so genuine
-    blockquotes and lists are left alone.
+    Skips genuine code fences (plain ``` ``` ``` / ``_CODE_DIRECTIVE_NAMES``
+    directives) and display math blocks (``$$``) so blockquotes and lists are
+    left alone; a content directive body (``{prf:*}``, admonitions) is still
+    descended into (#174).
     """
     lines = text.split('\n')
     out: list[str] = []
-    in_fence = False
+    fence_stack: list[tuple[int, str]] = []
     in_math_block = False
     i = 0
     while i < len(lines):
         line = lines[i]
         stripped = line.strip()
-        if stripped.startswith('```'):
-            in_fence = not in_fence
+        if _update_fence_stack(fence_stack, line):
             out.append(line)
             i += 1
             continue
-        if in_fence:
+        if fence_stack and fence_stack[-1][1] == 'code':
             out.append(line)
             i += 1
             continue

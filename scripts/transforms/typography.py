@@ -183,6 +183,19 @@ def convert_latex_dashes(text: str) -> str:
             else:
                 kind = 'verbatim'  # plain code fence
             stack.append((ticks, kind))
+            # A prose directive's opener carries its argument on the SAME
+            # line (e.g. a ``{prf:theorem} Bolzano--Weierstrass`` title),
+            # which is prose and may hold ``--``/``---`` ligatures (#174).
+            # Substitute that argument — protecting any ``$…$`` / inline
+            # code in the title via ``_dash_sub_line`` — while the
+            # ``{directive}`` token and every verbatim opener (code fences,
+            # ``{math}``) stay byte-identical.
+            if kind == 'prose' and '}' in rest:
+                head, _, arg = rest.partition('}')
+                line = (
+                    line[:m.start(1)] + m.group(1)
+                    + head + '}' + _dash_sub_line(arg)
+                )
             out.append(line)
             continue
 
