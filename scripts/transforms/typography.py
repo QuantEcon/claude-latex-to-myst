@@ -79,6 +79,18 @@ _DASH_VERBATIM_DIRECTIVES = frozenset({
     'code', 'code-block', 'code-cell', 'eval-rst', 'math',
 })
 
+# Directives whose opener ARGUMENT is a prose **title** the dash pass should
+# convert (#174): every ``prf:*`` (theorem family, proof, algorithm, …) plus
+# the admonitions and ``exercise``. The substitution is a strict whitelist —
+# fail-closed — because most other directives carry a **path or label** in
+# that slot (``{figure} a--b.png``, ``{image} …``, ``{include} …``,
+# ``{solution} ex--label``); rewriting ``--``/``---`` there would corrupt the
+# reference. ``prf:*`` is matched by prefix, so the list is admonitions only.
+_DASH_TITLE_DIRECTIVES = frozenset({
+    'admonition', 'attention', 'caution', 'danger', 'error', 'hint',
+    'important', 'note', 'seealso', 'tip', 'warning', 'exercise',
+})
+
 # Within a prose line, spans the dash substitution must never enter:
 # inline code, single-line HTML comments (the ``<!--``/``-->`` delimiters
 # themselves contain ``--``), dollar math, autolinks / raw HTML tags,
@@ -171,6 +183,7 @@ def convert_latex_dashes(text: str) -> str:
                 out.append(line)
                 continue
             rest_stripped = rest.lstrip()
+            first_word = ''
             if rest_stripped.startswith('{'):
                 close = rest_stripped.find('}')
                 name = rest_stripped[1:close].strip() if close > 0 else ''
@@ -183,14 +196,20 @@ def convert_latex_dashes(text: str) -> str:
             else:
                 kind = 'verbatim'  # plain code fence
             stack.append((ticks, kind))
-            # A prose directive's opener carries its argument on the SAME
-            # line (e.g. a ``{prf:theorem} Bolzano--Weierstrass`` title),
+            # A title-bearing directive's opener carries its argument on the
+            # SAME line (e.g. a ``{prf:theorem} Bolzano--Weierstrass`` title),
             # which is prose and may hold ``--``/``---`` ligatures (#174).
-            # Substitute that argument — protecting any ``$…$`` / inline
-            # code in the title via ``_dash_sub_line`` — while the
-            # ``{directive}`` token and every verbatim opener (code fences,
-            # ``{math}``) stay byte-identical.
-            if kind == 'prose' and '}' in rest:
+            # Substitute that argument — protecting any ``$…$`` / inline code
+            # in the title via ``_dash_sub_line`` — while the ``{directive}``
+            # token stays byte-identical. Restricted to the title whitelist
+            # (``prf:*`` + admonitions + ``exercise``): other prose directives
+            # carry a path / label in this slot (``{figure} a--b.png``,
+            # ``{solution} ex--label``) that must NOT be rewritten.
+            is_title_directive = (
+                first_word.startswith('prf:')
+                or first_word in _DASH_TITLE_DIRECTIVES
+            )
+            if is_title_directive and '}' in rest:
                 head, _, arg = rest.partition('}')
                 line = (
                     line[:m.start(1)] + m.group(1)

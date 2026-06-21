@@ -4573,12 +4573,34 @@ def test_dashes_directive_title_protects_math_and_keeps_token():
     assert "```{prf:theorem} Range $a_{i}$ for i–j" in out
 
 
+def test_dashes_admonition_title_argument_converted():
+    """Admonition openers also carry a prose title argument (#174)."""
+    for directive in ("note", "admonition", "exercise"):
+        src = f"```{{{directive}}} A long---title\nBody.\n```\n"
+        out = postprocess.convert_latex_dashes(src)
+        assert f"```{{{directive}}} A long—title" in out
+
+
 def test_dashes_verbatim_directive_opener_argument_untouched():
     """A code-bearing opener's argument stays verbatim — its body is code,
     so a dash-looking token on the opener line must not be rewritten."""
     src = "```{code-cell} ipython3 --no-pager\nx = 1\n```\n"
     out = postprocess.convert_latex_dashes(src)
     assert "```{code-cell} ipython3 --no-pager" in out
+
+
+def test_dashes_path_and_label_directive_opener_args_untouched():
+    """Opener-argument substitution is a strict title whitelist: directives
+    whose argument is a PATH or LABEL ({figure}, {image}, {include},
+    {solution}) must stay byte-identical or the reference breaks (Copilot
+    review on #175)."""
+    for src in (
+        "```{figure} figures/my--image.png\n:name: fig-x\n```\n",
+        "```{image} a--b.png\n```\n",
+        "```{include} ../part--two.md\n```\n",
+        "```{solution} ex--label\n```\n",
+    ):
+        assert postprocess.convert_latex_dashes(src) == src
 
 
 def test_dashes_frontmatter_and_table_rules_skipped():
