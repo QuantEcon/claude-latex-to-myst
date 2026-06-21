@@ -123,7 +123,14 @@ derive_regen_config() {
   cp "$src_mystmd/config.yaml" "$dst/regen/config.yaml"
   case "$tikz_mode" in
     reuse-mystmd)
-      sedi 's|^tikz_overrides:.*|tikz_overrides: ../mystmd/tikz_overrides.py|' \
+      # Point the override key at the mystmd/ copy (a sibling of regen/).
+      # Match BOTH the Phase-5 ``project_overrides:`` key and its retained
+      # one-release alias ``tikz_overrides:`` — the DL config was renamed to
+      # the former (R18), and matching only the latter silently no-ops, which
+      # left the override unloaded and dropped every inline-TikZ figure.
+      # ``-E`` + ``#`` delimiter so the ``|`` alternation isn't the delimiter;
+      # ``\1`` preserves whichever key name was present.
+      sedi -E 's#^(project_overrides|tikz_overrides):.*#\1: ../mystmd/tikz_overrides.py#' \
         "$dst/regen/config.yaml" ;;
     copy)
       # tikz_overrides.py is referenced relative to the config dir, so it must

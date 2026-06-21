@@ -103,7 +103,7 @@
       ],
       "figures": [
         14,
-        15
+        14
       ],
       "theorems": [
         17,
@@ -187,7 +187,7 @@
       ],
       "equations": [
         57,
-        57
+        58
       ],
       "figures": [
         4,
@@ -288,7 +288,7 @@
     }
   },
   "totals": {
-    "type_mismatches": 1,
+    "type_mismatches": 0,
     "unresolved": 0
   }
 }
