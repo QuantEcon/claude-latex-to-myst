@@ -57,9 +57,15 @@ closer to the right opener; only a `(ticks, kind)` stack can.
   `collapse_inline_math_newlines` and `join_split_inline_math`. Only `kind ==
   'code'` frames are opaque; `{prf:*}` bodies are descended into, so the inline
   span collapses there too.
-- typography.py: in `convert_latex_dashes`, a `prose`-kind opener now has the
-  text after its `}` run through `_dash_sub_line` (which still protects `$…$` /
-  inline code in the title). The `{directive}` token and verbatim openers stay
+- typography.py: in `convert_latex_dashes`, a **title-bearing** opener
+  (`_DASH_TITLE_DIRECTIVES` = every `prf:*` by prefix, plus the admonitions and
+  `exercise`) has the text after its `}` run through `_dash_sub_line` (which
+  still protects `$…$` / inline code in the title). The whitelist is
+  fail-closed: directives whose opener argument is a **path or label**
+  (`{figure} a--b.png`, `{image}`, `{include}`, `{solution} ex--label`) keep it
+  byte-identical, or the reference would be corrupted to a Unicode dash —
+  figures resolve before the dash pass, so this was reachable (Copilot review
+  on PR #175). The `{directive}` token and verbatim openers also stay
   byte-identical.
 
 Both are count-neutral and pass the dp2 render gate unchanged.

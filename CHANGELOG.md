@@ -31,9 +31,11 @@ the dangling-`$` continuation line (off-by-one `$`-pairing) or skip it as a
 directive-body cases leaked. Both passes now share `_update_fence_stack` (the
 lesson-040 `(ticks, kind)` stack already used by `fix_spacing_superscript`):
 only genuine code fences and `_CODE_DIRECTIVE_NAMES` directives are opaque, so
-`{prf:*}` bodies are descended into; and a prose opener's argument (the title)
-is dash-substituted with `$…$`/inline-code protection. Count-neutral; dp2
-render gate unchanged. See lesson 050. Reported in QuantEcon/book-dp-public#29.
+`{prf:*}` bodies are descended into; and a title-bearing opener's argument
+(`prf:*` / admonition / `exercise` titles — a fail-closed whitelist that keeps
+path/label directives like `{figure}` / `{solution}` byte-identical) is
+dash-substituted with `$…$`/inline-code protection. Count-neutral; dp2 render
+gate unchanged. See lesson 050. Reported in QuantEcon/book-dp-public#29.
 
 ### Fixed — `multicols` paired two-column layout reproduced as a MyST `{grid}` (#170)
 
