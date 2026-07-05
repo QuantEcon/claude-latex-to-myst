@@ -1,0 +1,10 @@
+# #178: an itemize whose every \item carries an explicit [label] flattens to
+# labelled paragraphs, exactly like the enumerate case (#111). Pandoc would
+# otherwise drop the (a)-(d) markers and leave plain bullets, orphaning the
+# prose below that refers back to "Condition (a)", "Conditions (b) and (c)".
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Custom Label Itemize" }

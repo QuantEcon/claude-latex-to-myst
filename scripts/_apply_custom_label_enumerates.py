@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
-r"""Flatten enumerates whose every ``\item`` carries an explicit
-``[label]`` into labelled paragraphs (GH #111).
+r"""Flatten enumerate/itemize lists whose every ``\item`` carries an
+explicit ``[label]`` into labelled paragraphs (GH #111, #178).
 
-Pandoc's enumerate reader silently DROPS the optional arg of
-``\item[(a)]``, renumbering the list 1..N — book-dp1's norm properties
-(§1.2.1.2) render "1.–8." in HTML against the PDF's "(a)–(d)". A list
-where **every** top-level ``\item`` has an explicit ``[…]`` arg (some
-possibly empty — dp1's ``\item[] (nonnegativity)`` description-column
-idiom) isn't an auto-counter list at all: the author chose the labels.
-Markdown ordered lists can't carry non-numeric markers, so the closest
-faithful form is blank-line-separated paragraphs, each opening with its
-literal label text. The rewrite runs pre-pandoc; pandoc then converts
-each paragraph's content (math, macros) normally and the labels survive
-verbatim.
+Pandoc's list readers silently DROP the optional arg of ``\item[(a)]``:
+an ``enumerate`` gets renumbered 1..N and an ``itemize`` collapses to
+plain bullets — book-dp1's norm properties (§1.2.1.2) render "1.–8." in
+HTML against the PDF's "(a)–(d)", and §8.3.2.1's fully-labelled itemize
+of assumptions loses the ``(a)``–``(d)`` markers its prose then refers
+back to (#178). A list where **every** top-level ``\item`` has an
+explicit ``[…]`` arg (some possibly empty — dp1's ``\item[]
+(nonnegativity)`` description-column idiom) isn't an auto-counter or
+bullet list at all: the author chose the labels, and ``enumerate`` vs
+``itemize`` is immaterial to that. Markdown lists can't carry arbitrary
+non-numeric markers, so the closest faithful form is blank-line-
+separated paragraphs, each opening with its literal label text. The
+rewrite runs pre-pandoc; pandoc then converts each paragraph's content
+(math, macros) normally and the labels survive verbatim.
 
 Conservative bails (the marker-preprocessor doctrine — pre-pandoc
 passes can't see post-pandoc config, so bail on any shape not fully
 modelled): any top-level ``\item`` without a ``[…]`` arg, a nested
 list env inside the body, real content before the first ``\item``, or
-an unclosed ``[`` → leave the whole enumerate for pandoc.
+an unclosed ``[`` → leave the whole list for pandoc.
 
 Usage:
     _apply_custom_label_enumerates.py TEX_FILE
@@ -31,23 +34,30 @@ import sys
 from pathlib import Path
 
 
-_ENUM_OPEN_RE = re.compile(r'\\begin\{enumerate\}(?:\[[^\]]*\])?')
-_ENUM_CLOSE_RE = re.compile(r'\\end\{enumerate\}')
+# Outer candidates are ``enumerate`` **and** ``itemize`` (#178): a fully
+# manually-labelled list is not an auto-counter list regardless of which
+# env opened it. Both accept an enumitem ``[…]`` option after the name.
+# Pairing is by pure depth (any list open ++, any list close --); since
+# LaTeX envs are properly nested/balanced, name-matching isn't needed to
+# find the outermost block, and a genuinely nested list still bails via
+# ``_NEST_RE`` in ``parse_custom_label_items``.
+_LIST_OPEN_RE = re.compile(r'\\begin\{(?:enumerate|itemize)\}(?:\[[^\]]*\])?')
+_LIST_CLOSE_RE = re.compile(r'\\end\{(?:enumerate|itemize)\}')
 _NEST_RE = re.compile(r'\\begin\{(?:itemize|enumerate|description)\}')
 _ITEM_RE = re.compile(r'\\item\b\s*')
 
 
-def _iter_top_level_enumerates(text: str):
+def _iter_top_level_lists(text: str):
     """Yield ``(block_start, body_start, body_end, block_end)`` for each
-    outermost enumerate, pairing begin/end by depth (mirrors
+    outermost enumerate/itemize, pairing begin/end by depth (mirrors
     ``_apply_enumerate_markers``, lesson 039). Tokens on ``%``-commented
-    lines are not events (#138) — a commented ``\\end{enumerate}`` would
+    lines are not events (#138) — a commented ``\\end{…}`` would
     otherwise close the block early."""
     events = sorted(
         (start, end, kind)
         for start, end, kind in (
-            [(m.start(), m.end(), 'open') for m in _ENUM_OPEN_RE.finditer(text)]
-            + [(m.start(), m.end(), 'close') for m in _ENUM_CLOSE_RE.finditer(text)]
+            [(m.start(), m.end(), 'open') for m in _LIST_OPEN_RE.finditer(text)]
+            + [(m.start(), m.end(), 'close') for m in _LIST_CLOSE_RE.finditer(text)]
         )
         if not _starts_in_comment(text, start)
     )
@@ -89,8 +99,9 @@ _SETLENGTH_RE = re.compile(r'\\setlength\{[^}]*\}\{[^}]*\}')
 def parse_custom_label_items(
     body: str,
 ) -> tuple[list[tuple[str, str]], list[str]] | None:
-    """Parse an enumerate body into ``([(label, content), …], head_labels)``
-    when every top-level ``\\item`` carries an explicit ``[…]`` arg.
+    """Parse an enumerate/itemize body into
+    ``([(label, content), …], head_labels)`` when every top-level
+    ``\\item`` carries an explicit ``[…]`` arg.
     ``head_labels`` are any ``\\label{}`` anchors that preceded the first
     ``\\item`` (hoisted out by the caller). Returns ``None`` — leave the
     block to pandoc — on any bail condition.
@@ -138,7 +149,7 @@ def parse_custom_label_items(
     for i, m in enumerate(item_matches):
         rest_start = m.end()
         if rest_start >= len(body) or body[rest_start] != '[':
-            return None  # an item without [label] — auto-counter list
+            return None  # an item without [label] — auto-counter / bullet list
         close = body.find(']', rest_start)
         if close == -1:
             return None
@@ -154,10 +165,11 @@ def parse_custom_label_items(
 
 
 def process_text(text: str) -> str:
-    """Rewrite every all-custom-label enumerate into labelled paragraphs."""
+    """Rewrite every all-custom-label enumerate/itemize into labelled
+    paragraphs."""
     out: list[str] = []
     cursor = 0
-    for block_start, body_start, body_end, block_end in _iter_top_level_enumerates(text):
+    for block_start, body_start, body_end, block_end in _iter_top_level_lists(text):
         if block_start < cursor:
             continue
         if _starts_in_comment(text, block_start):

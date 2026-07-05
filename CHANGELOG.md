@@ -15,6 +15,22 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — fully-labelled `itemize` lists keep their `\item[...]` labels (#178)
+
+The custom-label flattener (#111) only recognised `enumerate`, so an `itemize`
+whose **every** `\item` carried an explicit `[label]` fell through to pandoc,
+which silently drops the optional arg and renders plain bullets — book-dp1
+§8.3.2.1 lost the `(a)`–`(d)` markers on a list of assumptions, orphaning the
+prose that refers back to "Condition (a)", "Conditions (b) and (c)". The
+predicate ("a fully, manually labelled list is not an auto-counter/bullet list,
+regardless of which env opened it") and the output (blank-line-separated
+labelled paragraphs) were already env-agnostic; only `_apply_custom_label_enumerates.py`'s
+outer opener/closer regexes were `enumerate`-specific. They now pair
+`enumerate` **and** `itemize` by depth, with the same conservative bails
+(nested list env, pre-item content, unclosed `[`, mixed labelled/unlabelled
+items). Golden case `custom_label_itemize`. See lesson 051. Reported in
+QuantEcon/book-dp-public#34.
+
 ### Fixed — dashes in `{prf:*}` titles and inside theorem/proof bodies now convert (#174)
 
 `--`/`---` ligatures still rendered literally in three contexts that share a

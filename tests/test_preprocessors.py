@@ -1756,6 +1756,85 @@ def test_custom_label_enumerate_commented_leading_label_not_hoisted():
     assert "\n\n\\label{enum:dead}" not in out
 
 
+def test_custom_label_itemize_flattened_to_labelled_paragraphs():
+    """#178: an ``itemize`` whose every ``\\item`` carries an explicit
+    [label] flattens the same way as the ``enumerate`` case — pandoc
+    would otherwise drop the labels and leave plain bullets, orphaning
+    the prose that refers back to (a)-(d) (book-dp1 §8.3.2.1)."""
+    tex = (
+        "\\begin{itemize}\n"
+        "    \\item[(a)] $M$ is monotone\n"
+        "    \\item[(b)] $M$ is a contraction\n"
+        "    \\item[(c)] $M$ has a fixed point\n"
+        "\\end{itemize}\n"
+    )
+    out = clbl.process_text(tex)
+    assert "\\begin{itemize}" not in out
+    assert "\\item" not in out
+    assert "(a) $M$ is monotone" in out
+    assert "(b) $M$ is a contraction" in out
+    assert "(c) $M$ has a fixed point" in out
+
+
+def test_custom_label_itemize_bails_on_plain_bullets():
+    """A plain bullet list (no ``[label]`` on any item) is a real
+    itemize — leave it for pandoc to render as bullets."""
+    tex = (
+        "\\begin{itemize}\n"
+        "    \\item first\n"
+        "    \\item second\n"
+        "\\end{itemize}\n"
+    )
+    assert clbl.process_text(tex) == tex
+
+
+def test_custom_label_itemize_bails_on_mixed_items():
+    """One unlabelled ``\\item`` disqualifies the itemize — it's a real
+    bullet list, pandoc handles it."""
+    tex = (
+        "\\begin{itemize}\n"
+        "    \\item[(a)] labelled\n"
+        "    \\item unlabelled\n"
+        "\\end{itemize}\n"
+    )
+    assert clbl.process_text(tex) == tex
+
+
+def test_custom_label_itemize_bails_on_nested_list():
+    """A nested list env inside a labelled itemize body is not modelled
+    — bail (same conservative rule as the enumerate case)."""
+    tex = (
+        "\\begin{itemize}\n"
+        "    \\item[(a)] outer\n"
+        "    \\begin{enumerate}\n"
+        "        \\item inner\n"
+        "    \\end{enumerate}\n"
+        "    \\item[(b)] more\n"
+        "\\end{itemize}\n"
+    )
+    assert clbl.process_text(tex) == tex
+
+
+def test_custom_label_mixed_envs_both_flattened_independently():
+    """An itemize and an enumerate, each fully custom-labelled, both
+    flatten; depth-based pairing keeps their boundaries distinct."""
+    tex = (
+        "\\begin{itemize}\n"
+        "    \\item[(a)] alpha\n"
+        "\\end{itemize}\n"
+        "Some prose between.\n"
+        "\\begin{enumerate}\n"
+        "    \\item[(i)] one\n"
+        "\\end{enumerate}\n"
+    )
+    out = clbl.process_text(tex)
+    assert "\\begin{itemize}" not in out
+    assert "\\begin{enumerate}" not in out
+    assert "(a) alpha" in out
+    assert "(i) one" in out
+    assert "Some prose between." in out
+
+
 # ── PRF title markers (#112) ───────────────────────────────────────────────────
 
 import _apply_prf_title_markers as prft
