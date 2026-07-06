@@ -15,6 +15,24 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — email `@` in `mailto:` / `\nolinkurl` / `\url` no longer misparsed as a citation (#179)
+
+`\href{mailto:jane.doe@unil.ch}{\nolinkurl{jane.doe@unil.ch}}` came out as
+`` [`jane.doe{cite:t}`unil`.ch`](mailto:jane.doe{cite:t}`unil`.ch) `` — a broken
+address plus an unresolvable `` {cite:t}`unil` `` that trips the citation
+validator. Contrary to the report, pandoc (3.8, the CI pin) emits the `@`
+verbatim inside links/autolinks/inline code; the misparse was entirely on our
+side. `convert_citations`'s textual-`@key` pass had a lookbehind
+(`` (?<![`\[@]) ``) that only rejected a preceding `` ` ``/`[`/`@`, so an `@`
+glued to a word char — every email local-part and URL — still matched
+(`jane.doe@unil` → cite key `unil`). The lookbehind now also rejects a preceding
+word char or email/URL local-part punctuation (`\w . + % / -`), which is
+pandoc's own rule for telling a `@key` citation from an email. Genuine textual
+cites (preceded by a boundary — start, whitespace, `(`) still convert. This lets
+the deep-learning book drop its book-local `@`-restore stopgap. Golden case
+`mailto_email_not_citation`; lesson 052. Reported in
+mmcky/Deep_Learning_for_Solving_And_Estimating_Dynamic_Economic_Models#2.
+
 ### Fixed — fully-labelled `itemize` lists keep their `\item[...]` labels (#178)
 
 The custom-label flattener (#111) only recognised `enumerate`, so an `itemize`

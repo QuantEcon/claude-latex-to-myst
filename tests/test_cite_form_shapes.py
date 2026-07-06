@@ -85,21 +85,43 @@ def test_textual_cite_at_end_of_string(key_label: str, key: str):
 
 
 def test_textual_cite_does_not_match_email():
-    r"""``foo@example.com`` is an email address, not a citation. The
-    lookbehind on ``(?<![\`\[@])`` doesn't cover this case (the
-    char before ``@`` is a letter), but the boundary on a period or
-    other domain-character would terminate the match at the wrong
-    place. Documented as a known limitation."""
-    # Today's behaviour: the @ followed by alpha-num matches and
-    # captures up to the next non-key char. ``example`` becomes a
-    # bogus cite. This test locks the current behaviour so a future
-    # narrow-the-cite-regex change is visible — it's a *known
-    # imperfection* the validator (P1a) catches via cross-ref
-    # resolution.
+    r"""``foo@example.com`` is an email address, not a citation (#179).
+    The ``@`` is glued to a preceding word char, so the widened
+    lookbehind rejects it — matching pandoc's own rule for telling a
+    ``@key`` citation apart from an email."""
     src = 'Contact me at foo@example.com'
     out = postprocess.convert_citations(src)
-    # Current behaviour: ``@example`` is treated as a cite.
-    assert '{cite:t}`example`' in out
+    assert '{cite:t}' not in out
+    assert 'foo@example.com' in out  # email survives verbatim
+
+
+def test_textual_cite_does_not_match_mailto_link_or_url():
+    r"""#179: an email inside a ``mailto:`` link / autolink / inline
+    code, and a URL with an ``@``, all keep their ``@`` — pandoc emits
+    it verbatim; only our over-greedy cite regex mangled it."""
+    src = (
+        'Write to [`jane.doe@unil.ch`](mailto:jane.doe@unil.ch). '
+        'Or <jane.doe@unil.ch>. '
+        'Or visit <https://example.com/user@host>.'
+    )
+    out = postprocess.convert_citations(src)
+    assert '{cite' not in out
+    assert '[`jane.doe@unil.ch`](mailto:jane.doe@unil.ch)' in out
+    assert '<jane.doe@unil.ch>' in out
+    assert '<https://example.com/user@host>' in out
+
+
+def test_textual_cite_still_converts_real_citation():
+    r"""Guard: narrowing the email lookbehind (#179) must not stop a
+    genuine textual ``@key`` (preceded by a boundary) from converting."""
+    assert postprocess.convert_citations('see @smith2020 for details') == (
+        'see {cite:t}`smith2020` for details'
+    )
+    # start-of-string and after '(' are also boundaries
+    assert postprocess.convert_citations('@jones1999 shows') == (
+        '{cite:t}`jones1999` shows'
+    )
+    assert postprocess.convert_citations('(@doe2001)') == '({cite:t}`doe2001`)'
 
 
 @pytest.mark.parametrize("marker_role,decoded_role", [

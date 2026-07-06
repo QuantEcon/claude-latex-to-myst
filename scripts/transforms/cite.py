@@ -101,15 +101,23 @@ def convert_citations(text: str) -> str:
     text = re.sub(r'\[@[^\]]+\]', replace_multi_cite, text)
 
     # Inline/textual citation: @key (not preceded by [ or @, and not
-    # inside backticks). Guards against email addresses and
-    # already-converted citations. ``:`` is permitted *inside* keys
+    # inside backticks). ``:`` is permitted *inside* keys
     # (JabRef/Mendeley/ACM-style ``Author:Year:Tag`` — #32) but the
     # last char must be alphanumeric — otherwise a trailing ``:`` in
     # prose like ``\citet{key}: explanation`` gets swallowed into the
     # capture group (closes #36). Boundary lookahead stays at the
     # pre-#32 form so ``:`` in prose can still terminate the match.
+    #
+    # The lookbehind also rejects an ``@`` glued to a preceding word
+    # char or email/URL local-part punctuation (``\w . + % / -``), which
+    # is pandoc's own rule for distinguishing a ``@key`` citation from an
+    # email address or URL (#179): a real textual cite is preceded by a
+    # boundary (start, whitespace, ``(``), whereas ``jane.doe@unil.ch``
+    # and ``.../user@host`` always have a local-part char before the
+    # ``@``. Pandoc emits the ``@`` verbatim inside links/autolinks/code
+    # for those, so the misparse was entirely on our side, not pandoc's.
     text = re.sub(
-        r'(?<![`\[@])@([a-zA-Z][a-zA-Z0-9_:]*[a-zA-Z0-9_])(?=[^a-zA-Z0-9_]|$)',
+        r'(?<![`\[@\w.+%/-])@([a-zA-Z][a-zA-Z0-9_:]*[a-zA-Z0-9_])(?=[^a-zA-Z0-9_]|$)',
         r'{cite:t}`\1`',
         text
     )
