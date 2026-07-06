@@ -62,6 +62,7 @@ PANDOC = shutil.which('pandoc')
 # focused fixture is safe and keeps the harness faithful to the real pipeline.
 _MARKER_SCRIPTS = [
     '_apply_pifont_glyphs.py',
+    '_apply_lstlisting_options.py',
     '_apply_prf_title_markers.py',
     '_apply_algorithm_markers.py',
     '_apply_algorithmic_markers.py',

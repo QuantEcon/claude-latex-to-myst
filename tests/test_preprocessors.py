@@ -18,6 +18,7 @@ import _apply_chapter_splits as split
 import _apply_description_markers as desc
 import _apply_enumerate_markers as enum_m
 import _apply_listing_markers as lst
+import _apply_lstlisting_options as lstopt
 import _apply_rewrites as rew
 import _warn_dropped_text_macros as wdtm
 
@@ -1884,3 +1885,78 @@ def test_prf_title_balanced_brackets_in_title():
     out = _apply_prf(src)
     assert "<!--PRFTITLE-START-->Bound on $f[x]$ growth<!--PRFTITLE-END-->" in out
     assert "[Bound on" not in out
+
+
+# ── lstlisting brace-valued options (#185) ───────────────────────────────────
+#
+# Pandoc's lstlisting option parser reads a key's value as a single {...}
+# group; a value built from 2+ adjacent brace groups (escapeinside={(*}{*)},
+# literate={a}{b}1) derails the [...] scan and leaks the whole option group
+# into the code body. _apply_lstlisting_options strips those render-only
+# options pre-pandoc while preserving single-brace values (caption/label).
+
+
+def _first_line(out: str) -> str:
+    return out.splitlines()[0]
+
+
+def test_lstlisting_strips_escapeinside():
+    src = (
+        "\\begin{lstlisting}[language=Python, basicstyle=\\footnotesize, "
+        "numbers=none, escapeinside={(*}{*)}]\n"
+        "import numpy as np\n\\end{lstlisting}\n"
+    )
+    out = lstopt.process_text(src)
+    assert "escapeinside" not in out
+    assert _first_line(out) == (
+        "\\begin{lstlisting}[language=Python, basicstyle=\\footnotesize, numbers=none]"
+    )
+
+
+def test_lstlisting_strips_literate_multi_group():
+    src = "\\begin{lstlisting}[language=Python, literate={a}{b}1 {c}{d}1]\ncode\n\\end{lstlisting}\n"
+    out = lstopt.process_text(src)
+    assert "literate" not in out
+    assert _first_line(out) == "\\begin{lstlisting}[language=Python]"
+
+
+def test_lstlisting_keeps_single_brace_values():
+    # caption / label / morekeywords carry a single {...} group — pandoc
+    # parses them fine, so they must survive untouched.
+    src = (
+        "\\begin{lstlisting}[language=Python, caption={Hello example}, "
+        "label=lst:hello, morekeywords={foo,bar}]\ncode\n\\end{lstlisting}\n"
+    )
+    out = lstopt.process_text(src)
+    assert out == src
+
+
+def test_lstlisting_no_option_group_is_noop():
+    src = "\\begin{lstlisting}\ncode\n\\end{lstlisting}\n"
+    assert lstopt.process_text(src) == src
+
+
+def test_lstlisting_unbalanced_group_left_untouched():
+    # A missing closing ] means we can't safely locate the option group —
+    # bail rather than corrupt the source.
+    src = "\\begin{lstlisting}[language=Python, escapeinside={(*}{*)}\ncode\n"
+    assert lstopt.process_text(src) == src
+
+
+def test_lstlisting_multiple_blocks_independent():
+    src = (
+        "\\begin{lstlisting}[language=Python, escapeinside={(*}{*)}]\na\n\\end{lstlisting}\n\n"
+        "\\begin{lstlisting}[language=C, caption={keep me}]\nb\n\\end{lstlisting}\n"
+    )
+    out = lstopt.process_text(src)
+    assert "escapeinside" not in out
+    assert "caption={keep me}" in out
+    assert out.count("\\begin{lstlisting}") == 2
+
+
+def test_lstlisting_value_is_multi_brace_helper():
+    assert lstopt._value_is_multi_brace("escapeinside={(*}{*)}")
+    assert lstopt._value_is_multi_brace("literate={a}{b}1")
+    assert not lstopt._value_is_multi_brace("caption={one group}")
+    assert not lstopt._value_is_multi_brace("language=Python")
+    assert not lstopt._value_is_multi_brace("morekeywords={foo,bar}")

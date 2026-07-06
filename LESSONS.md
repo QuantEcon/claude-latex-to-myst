@@ -59,13 +59,14 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 050 | [fence-walking math/typography passes must treat `{prf:*}` content directives as transparent, not opaque code fences — else dashes/inline-math in theorem/proof titles and bodies are silently skipped](lessons/050-fence-walkers-must-descend-content-directive-bodies.md) | post-processing | 🟡 | codified |
 | 051 | [pandoc drops \\item[label] optional args on itemize too, not just enumerate/description — flatten any fully-labelled list to labelled paragraphs](lessons/051-custom-item-labels-dropped-on-itemize-too.md) | preprocess | 🟡 | codified |
 | 052 | [textual @key citation regex must reject an @ glued to a word char — else emails and URLs (`mailto:`, `\url`) become bogus citations](lessons/052-textual-cite-regex-must-reject-email-at-sign.md) | regex-safety | 🟡 | codified |
+| 053 | [an lstlisting option whose value is 2+ adjacent brace groups (`escapeinside={(*}{*)}`) derails pandoc's `[...]` scan and leaks the whole option group into the code body — strip it pre-pandoc](lessons/053-lstlisting-brace-valued-options-break-pandoc-scan.md) | preprocess | 🟡 | codified |
 
 ## By category
 
 - **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045, 049, 050
 - **regex-safety:** 002, 017, 024, 031, 035, 036, 052
 - **pandoc:** 027, 047
-- **preprocess:** 028, 029, 030, 039, 044, 048, 051
+- **preprocess:** 028, 029, 030, 039, 044, 048, 051, 053
 - **katex:** 003, 006, 042
 - **myst:** 013, 040, 041
 - **tooling:** 009, 010, 038
@@ -82,7 +83,8 @@ coverage.**
   construct. These *shrink* as constructs move onto the marker path (the
   marker bypasses pandoc for that construct), then survive only as a
   `golden_tex` lock: 007, 014, 015, 016, 017, 019, 020, 021, 022, 023, 026,
-  027, 028, 029, 030, 031, 032, 033, 034, 035, 036, 037, 043, 045, 048, 051.
+  027, 028, 029, 030, 031, 032, 033, 034, 035, 036, 037, 043, 045, 048, 051,
+  053.
 - **permanent** — a fact about MyST / KaTeX / sphinx-proof rendering, a
   property of our own transforms/architecture, or tooling. Not pandoc's
   fault; won't disappear by marker-izing anything: 001, 002, 003, 004, 005,
