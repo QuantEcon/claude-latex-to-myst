@@ -1,0 +1,10 @@
+# #179: an @ inside a mailto: URL / \nolinkurl / \url body (an email or URL,
+# not a citation key) must keep its literal @. Pandoc emits it verbatim inside
+# links/autolinks/code; only our textual-@key cite regex mangled it into a
+# bogus {cite:t}. A genuine \citet in the same file must still convert.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Contact" }

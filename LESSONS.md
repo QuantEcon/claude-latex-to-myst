@@ -58,11 +58,12 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 049 | [multicols two-column layout needs a MyST `{grid}` — pandoc mangles literal `:::` markup, so reproduce columns via the marker pattern (one cell per column, split column-first)](lessons/049-multicols-paired-layout-needs-grid.md) | post-processing | 🟡 | codified |
 | 050 | [fence-walking math/typography passes must treat `{prf:*}` content directives as transparent, not opaque code fences — else dashes/inline-math in theorem/proof titles and bodies are silently skipped](lessons/050-fence-walkers-must-descend-content-directive-bodies.md) | post-processing | 🟡 | codified |
 | 051 | [pandoc drops \\item[label] optional args on itemize too, not just enumerate/description — flatten any fully-labelled list to labelled paragraphs](lessons/051-custom-item-labels-dropped-on-itemize-too.md) | preprocess | 🟡 | codified |
+| 052 | [textual @key citation regex must reject an @ glued to a word char — else emails and URLs (`mailto:`, `\url`) become bogus citations](lessons/052-textual-cite-regex-must-reject-email-at-sign.md) | regex-safety | 🟡 | codified |
 
 ## By category
 
 - **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045, 049, 050
-- **regex-safety:** 002, 017, 024, 031, 035, 036
+- **regex-safety:** 002, 017, 024, 031, 035, 036, 052
 - **pandoc:** 027, 047
 - **preprocess:** 028, 029, 030, 039, 044, 048, 051
 - **katex:** 003, 006, 042
@@ -90,7 +91,8 @@ coverage.**
   not of any one construct's emission), 049 (MyST has no multicols
   primitive — a layout-mapping decision, not a pandoc emission quirk),
   050 (a property of our own fence-walking transforms — content directives
-  must be transparent, not opaque).
+  must be transparent, not opaque), 052 (our own textual-`@key` cite regex
+  over-matched emails/URLs — pandoc emits the `@` correctly, so not a quirk).
 
 ## Open (gaps to close on the next book)
 
