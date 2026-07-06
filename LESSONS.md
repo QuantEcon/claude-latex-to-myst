@@ -60,10 +60,11 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 051 | [pandoc drops \\item[label] optional args on itemize too, not just enumerate/description — flatten any fully-labelled list to labelled paragraphs](lessons/051-custom-item-labels-dropped-on-itemize-too.md) | preprocess | 🟡 | codified |
 | 052 | [textual @key citation regex must reject an @ glued to a word char — else emails and URLs (`mailto:`, `\url`) become bogus citations](lessons/052-textual-cite-regex-must-reject-email-at-sign.md) | regex-safety | 🟡 | codified |
 | 053 | [an lstlisting option whose value is 2+ adjacent brace groups (`escapeinside={(*}{*)}`) derails pandoc's `[...]` scan and leaks the whole option group into the code body — strip it pre-pandoc](lessons/053-lstlisting-brace-valued-options-break-pandoc-scan.md) | preprocess | 🟡 | codified |
+| 054 | [under qe-v8 `numbering.book` a chapter `{ref}` renders "Chapter N", so `Chapter~\ref{ch:x}` doubles to "Chapter Chapter N" — the `{ref}`-role doubled-noun table must be book-configurable (`doubled_noun_refs` + `role: ref`)](lessons/054-chapter-ref-doubles-under-book-mode-numbering.md) | post-processing | 🟡 | codified |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045, 049, 050
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045, 049, 050, 054
 - **regex-safety:** 002, 017, 024, 031, 035, 036, 052
 - **pandoc:** 027, 047
 - **preprocess:** 028, 029, 030, 039, 044, 048, 051, 053
@@ -94,7 +95,10 @@ coverage.**
   primitive — a layout-mapping decision, not a pandoc emission quirk),
   050 (a property of our own fence-walking transforms — content directives
   must be transparent, not opaque), 052 (our own textual-`@key` cite regex
-  over-matched emails/URLs — pandoc emits the `@` correctly, so not a quirk).
+  over-matched emails/URLs — pandoc emits the `@` correctly, so not a quirk),
+  054 (a fact about MyST numbering-mode rendering — a chapter `{ref}` renders
+  a noun under `numbering.book`, a title under qe-v5 heading numbering — plus
+  a config-surface decision, not a pandoc emission quirk).
 
 ## Open (gaps to close on the next book)
 

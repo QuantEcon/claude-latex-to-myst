@@ -193,6 +193,14 @@ class ConversionContext:
     # to a secondary label is rewritten to the primary — refs then render the
     # true section number. Global across the book (refs cross chapters).
     heading_label_aliases: dict = field(default_factory=dict)
+    # Prose nouns before ``{ref}``-routed targets that render a noun under
+    # qe-v8 book-mode numbering (#184). Mirrors the built-in
+    # ``refs._DOUBLED_SECTION_NOUN_REFS`` (``[(noun, (prefix, …)), …]``) but
+    # is populated per-book from ``doubled_noun_refs`` config entries carrying
+    # ``role: ref`` — whether a chapter/section ``{ref}`` auto-renders a noun
+    # depends on the book's ``myst.yml`` numbering mode, which the converter
+    # can't know unilaterally, so it must be opt-in at the config surface.
+    doubled_section_noun_refs: list = field(default_factory=list)
     # Optional book-side post-hook (Phase 5). ``callable(text, stem, ctx) ->
     # text``, contributed by a ``project_overrides.py`` and invoked once at a
     # documented point near the end of ``process_text``. ``None`` for books
@@ -288,7 +296,15 @@ class ConversionContext:
             cross_ref_routing.append((prefixes, role))
 
         # doubled-noun extras.
+        # ``doubled_noun_refs`` entries default to the ``{prf:ref}``/``{numref}``
+        # matcher (theorem-like + enumerable directives). An entry may carry
+        # ``role: ref`` to instead target the plain ``{ref}`` matcher — the
+        # chapter/section family that only renders a noun ("Chapter N") under
+        # qe-v8 book-mode numbering (#184). Those are collected separately into
+        # ``doubled_section_noun_refs`` (mirroring the built-in section table).
+        _ALLOWED_DOUBLED_ROLES = {'prf:ref', 'numref', 'ref'}
         doubled_noun_refs: list[tuple[str, str]] = []
+        doubled_section_noun_refs: list[tuple[str, tuple[str, ...]]] = []
         for i, rule in enumerate(config.get('doubled_noun_refs') or []):
             if not isinstance(rule, dict):
                 raise SystemExit(f"config.doubled_noun_refs[{i}] must be a mapping")
@@ -299,7 +315,16 @@ class ConversionContext:
                     f"config.doubled_noun_refs[{i}] requires string 'noun' "
                     "and 'prefix' keys"
                 )
-            doubled_noun_refs.append((noun, prefix))
+            role = rule.get('role', 'prf:ref')
+            if role not in _ALLOWED_DOUBLED_ROLES:
+                raise SystemExit(
+                    f"config.doubled_noun_refs[{i}].role must be one of "
+                    f"{sorted(_ALLOWED_DOUBLED_ROLES)} (got {role!r})"
+                )
+            if role == 'ref':
+                doubled_section_noun_refs.append((noun, (prefix,)))
+            else:
+                doubled_noun_refs.append((noun, prefix))
 
         style = config.get('frontmatter_style', 'absorbed')
         if style not in ('absorbed', 'standalone'):
@@ -410,6 +435,7 @@ class ConversionContext:
             tikzcd_inline_map={},
             cross_ref_routing=cross_ref_routing,
             doubled_noun_refs=doubled_noun_refs,
+            doubled_section_noun_refs=doubled_section_noun_refs,
             listing_source_base=listing_source_base,
             postprocess_rewrites=postprocess_rewrites,
             frontmatter_style=style,

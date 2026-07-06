@@ -200,6 +200,7 @@ def test_golden_tex_seeded():
         'cref_comma_split',               # 007
         'doubled_noun_ref',               # 011
         'doubled_section_noun_ref',       # 016 / #150
+        'doubled_chapter_noun_ref',       # 054 / #184
         'math_text_dollar',               # 003
         'math_percent_comment',           # 006
         'math_thin_space_superscript',    # 042

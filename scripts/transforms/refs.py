@@ -152,11 +152,18 @@ _DOUBLED_SECTION_SYMBOL_PREFIXES = ('s-', 'ss-', 'sss-', 'sec-', 'eg-')
 # ``{ref}`` (where the ref renders the target title and the prose noun
 # is needed).
 #
-# ``Chapter``/``ch-`` is deliberately absent: ``injectBookSectionDefaults``
-# enables ``numbering.heading_2``..``heading_6`` only (lesson 016), so a
-# ``{ref}`` to a chapter-level heading renders the chapter *title* — the
-# prose noun isn't doubled there and must stay (the
-# ``table_caption_with_inline_role_backticks`` golden pins this).
+# ``Chapter``/``ch-`` is deliberately absent from the *built-in* table:
+# under qe-v5 ``injectBookSectionDefaults`` (``numbering.heading_2``..
+# ``heading_6`` only, lesson 016) a ``{ref}`` to a chapter-level heading
+# renders the chapter *title*, so the prose noun isn't doubled and must
+# stay (the ``table_caption_with_inline_role_backticks`` golden pins this).
+# But under qe-v8 ``numbering.book.enabled`` + ``chapters.label: "Chapter
+# %s"`` the same ``{ref}`` renders "Chapter N", so ``Chapter {ref}`ch-x```
+# doubles to "Chapter Chapter N" (#184). Whether that holds depends on the
+# book's ``myst.yml`` numbering mode — which the converter can't know
+# unilaterally — so Chapter is opt-in per book via a ``doubled_noun_refs``
+# entry carrying ``role: ref`` (``ctx.doubled_section_noun_refs``), never a
+# built-in default here.
 _DOUBLED_SECTION_NOUN_REFS = [
     ('Section',  ('s-', 'ss-', 'sss-', 'sec-')),
     ('Sections', ('s-', 'ss-', 'sss-', 'sec-')),
@@ -272,14 +279,19 @@ def strip_doubled_noun_refs(text: str, ctx=None) -> str:
     ``Section``/``Sections`` before a ``{ref}`` to a section-style label
     doubles under qe-v5 book-mode heading numbering, which auto-renders
     "Section X.Y". These pairs live in ``_DOUBLED_SECTION_NOUN_REFS``
-    and match the ``ref`` role only (chapter-level refs render the
-    title, not a noun — see the table's comment).
+    and match the ``ref`` role only. A book can extend this ``ref``-role
+    family from config — a ``doubled_noun_refs`` entry with ``role: ref``
+    lands in ``ctx.doubled_section_noun_refs``. That is how ``Chapter``/
+    ``ch-`` opts in for a book under qe-v8 ``numbering.book`` mode, where a
+    chapter ``{ref}`` renders "Chapter N" and ``Chapter {ref}`ch-x``` would
+    otherwise double to "Chapter Chapter N" (#184).
 
     Matches either a regular space or a non-breaking space (U+00A0) between
     the noun and the ref, since pandoc emits NBSP for LaTeX ``~`` ties.
 
-    Reads ``ctx.doubled_noun_refs`` (Phase 3); falls back to the current
-    context when called without an explicit ``ctx``.
+    Reads ``ctx.doubled_noun_refs`` / ``ctx.doubled_section_noun_refs``
+    (Phase 3); falls back to the current context when called without an
+    explicit ``ctx``.
     """
     ctx = ctx if ctx is not None else current_context()
     extras = ctx.doubled_noun_refs
@@ -300,11 +312,13 @@ def strip_doubled_noun_refs(text: str, ctx=None) -> str:
             text,
         )
 
-    # Section nouns before plain {ref} targets (#150). Same
+    # Section/chapter nouns before plain {ref} targets (#150, #184). Same
     # separator and optional-§ handling as above, but matching the
     # ``ref`` role only — see _DOUBLED_SECTION_NOUN_REFS for why the
-    # role is constrained per noun family.
-    for noun, prefixes in _DOUBLED_SECTION_NOUN_REFS:
+    # role is constrained per noun family. Per-book extras
+    # (``ctx.doubled_section_noun_refs``, e.g. ``Chapter``/``ch-`` for a
+    # book under qe-v8 book-mode numbering) extend the built-in list.
+    for noun, prefixes in ctx.doubled_section_noun_refs + _DOUBLED_SECTION_NOUN_REFS:
         alternation = '|'.join(re.escape(p) for p in prefixes)
         text = re.sub(
             rf'(?<!\w){re.escape(noun)}[ \xa0]+(?:§[ \xa0]*)?'

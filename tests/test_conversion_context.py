@@ -102,3 +102,58 @@ def test_apply_config_registers_current_context():
     assert current_context() is ctx
     # The backward-compat proxy reflects the registered context.
     assert postprocess.ENV_MAP['Widget'] == 'prf:definition'
+
+
+# ── doubled_noun_refs role: ref (chapter-ref doubling, #184) ─────────────────
+
+
+def test_doubled_noun_refs_default_role_targets_prf_numref():
+    """A doubled_noun_refs entry with no explicit role keeps the historical
+    behaviour: it lands in ``doubled_noun_refs`` (the {prf:ref}/{numref}
+    matcher), not the {ref}-role section table."""
+    ctx = _ctx(doubled_noun_refs=[{'noun': 'Algorithm', 'prefix': 'alg-'}])
+    assert ('Algorithm', 'alg-') in ctx.doubled_noun_refs
+    assert ctx.doubled_section_noun_refs == []
+
+
+def test_doubled_noun_refs_role_ref_targets_section_table():
+    """``role: ref`` routes the entry to ``doubled_section_noun_refs`` (the
+    plain {ref} matcher) so Chapter/Chapters can opt in for a book under
+    qe-v8 numbering.book mode (#184)."""
+    ctx = _ctx(doubled_noun_refs=[
+        {'noun': 'Chapter',  'prefix': 'ch-', 'role': 'ref'},
+        {'noun': 'Chapters', 'prefix': 'ch-', 'role': 'ref'},
+    ])
+    assert ctx.doubled_noun_refs == []
+    assert ('Chapter', ('ch-',)) in ctx.doubled_section_noun_refs
+    assert ('Chapters', ('ch-',)) in ctx.doubled_section_noun_refs
+
+
+def test_doubled_noun_refs_bad_role_rejected():
+    import pytest
+    with pytest.raises(SystemExit):
+        _ctx(doubled_noun_refs=[{'noun': 'X', 'prefix': 'x-', 'role': 'bogus'}])
+
+
+def test_strip_chapter_noun_ref_with_role_ref_ctx():
+    """End-to-end: with the Chapter/ch- role:ref opt-in, prose 'Chapter
+    {ref}`ch-x`' (and the ~-tie NBSP form) is de-doubled; a genuine section
+    ref and an unrelated longer word are left alone."""
+    ctx = _ctx(doubled_noun_refs=[
+        {'noun': 'Chapter',  'prefix': 'ch-', 'role': 'ref'},
+        {'noun': 'Chapters', 'prefix': 'ch-', 'role': 'ref'},
+    ])
+    assert postprocess.strip_doubled_noun_refs(
+        'proceed to Chapter\xa0{ref}`ch-deqn`, where', ctx
+    ) == 'proceed to {ref}`ch-deqn`, where'
+    assert postprocess.strip_doubled_noun_refs(
+        'Chapters {ref}`ch-a`–{ref}`ch-b`', ctx
+    ) == '{ref}`ch-a`–{ref}`ch-b`'
+    # Word-boundary guard: 'Subchapter' must not be truncated to 'Sub'.
+    assert postprocess.strip_doubled_noun_refs(
+        'Subchapter {ref}`ch-deqn`', ctx
+    ) == 'Subchapter {ref}`ch-deqn`'
+    # Without the opt-in, the built-in table leaves Chapter alone.
+    assert postprocess.strip_doubled_noun_refs(
+        'Chapter {ref}`ch-deqn`', _ctx()
+    ) == 'Chapter {ref}`ch-deqn`'
