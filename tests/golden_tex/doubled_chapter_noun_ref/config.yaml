@@ -1,0 +1,15 @@
+# Issue #184: under qe-v8 numbering.book mode a chapter {ref} renders
+# "Chapter N" (chapters.label: "Chapter %s"), so prose "Chapter~\ref{ch:x}"
+# doubles to "Chapter Chapter N". The built-in section-noun table omits
+# Chapter (it renders the *title* under qe-v5 heading-only numbering), so a
+# book opts in via a doubled_noun_refs entry carrying role: ref.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Doubled Chapter Noun Ref" }
+
+doubled_noun_refs:
+  - { noun: Chapter,  prefix: ch-, role: ref }
+  - { noun: Chapters, prefix: ch-, role: ref }

@@ -15,6 +15,26 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Added — `doubled_noun_refs` config entries can target the `{ref}` role (`role: ref`), fixing "Chapter Chapter N" under book-mode numbering (#184)
+
+Under qe-v8 `numbering.book.enabled` with `chapters.label: "Chapter %s"`, a
+`{ref}` to a chapter heading renders "Chapter N", so prose `Chapter~\ref{ch:x}`
+doubled to "Chapter **Chapter N**" (180 sites in the deep-learning book,
+appendix ToC included). `strip_doubled_noun_refs` couldn't catch it: the
+`{ref}`-role table (`_DOUBLED_SECTION_NOUN_REFS`) deliberately omits Chapter —
+correct for qe-v5 heading-only numbering, where a chapter ref renders the
+*title* — and `doubled_noun_refs` config entries only fed the
+`{prf:ref}`/`{numref}` matcher, never `{ref}`. Whether a chapter ref renders a
+noun depends on the book's `myst.yml` numbering mode, which the converter can't
+know unilaterally, so a `doubled_noun_refs` entry may now carry `role: ref` to
+route it to the `{ref}` matcher (parsed into
+`ConversionContext.doubled_section_noun_refs`). Books opt in with
+`{ noun: Chapter, prefix: ch-, role: ref }`; entries without a role keep their
+historical `{prf:ref}`/`{numref}` behaviour. This lets the deep-learning book
+drop its book-local `postprocess.rewrites` stopgap. Golden case
+`doubled_chapter_noun_ref`; lesson 054. Reported in
+mmcky/Deep_Learning_for_Solving_And_Estimating_Dynamic_Economic_Models#184.
+
 ### Fixed — lstlisting `escapeinside={(*}{*)}` option no longer leaks into the code body (#185)
 
 An `lstlisting` whose option group carried `escapeinside={(*}{*)}` (or
