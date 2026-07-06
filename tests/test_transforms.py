@@ -4747,6 +4747,25 @@ def test_collapse_inline_math_span_open_across_three_lines():
     assert "$a + b + c$" in out
 
 
+def test_collapse_inline_math_blockquote_continuation_with_inner_gt():
+    """#177: the continuation line starts with ``>`` (a blockquote marker) AND
+    line 1 also carries a *closed* ``$r > -1$`` whose ``>`` is a math operator —
+    the same character in both roles. The running-parity detector must ignore
+    the in-math ``>``, still see the trailing ``$\\beta`` as an open span, and
+    pull ``> 0$`` up. Otherwise markdown parses the leading ``>`` as a
+    blockquote, fracturing the paragraph and orphaning the span — verified at
+    render: the unjoined form emits a ``blockquote`` node plus a runaway
+    inline-math span (``'. For simplicity, …'``). Already handled by the #168
+    collapse pass; this locks the exact reported shape (book-dp2#164)."""
+    src = "We require that $r > -1$, so that $\\beta\n> 0$. For simplicity.\n"
+    out = postprocess.collapse_inline_math_newlines(src)
+    assert "$\\beta > 0$" in out
+    assert "\n> 0$" not in out
+    # closed span with the in-math ``>`` is untouched; whole para on one line
+    assert "$r > -1$" in out
+    assert out.strip().count("\n") == 0
+
+
 def test_collapse_inline_math_ignores_dollar_in_code_span():
     """A lone ``$`` inside an inline-code span isn't a math delimiter, so the
     line's true parity is even and nothing merges (#168)."""
