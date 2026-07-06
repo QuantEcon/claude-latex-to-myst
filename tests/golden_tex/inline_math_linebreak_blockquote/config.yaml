@@ -1,0 +1,15 @@
+# #177: a hard source line break inside an inline $…$ span whose continuation
+# line starts with a block marker (here `>`) must be joined onto one logical
+# line, so markdown never re-parses the `> 0$` as a blockquote (which would
+# fracture the paragraph and leave the math span unclosed → KaTeX error). The
+# extra wrinkle over inline_math_hard_linebreak: line 1 also carries a *closed*
+# `$r > -1$` with an in-math `>`, so the running-parity detector must ignore the
+# `>` and still see the trailing `$\beta` as an open span. Resolved by the
+# #168/#172 collapse pass (+ #175 directive-body descent); this locks the exact
+# shape reported in QuantEcon/book-dp-public#29 / book-dp2#164.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Discounting" }
