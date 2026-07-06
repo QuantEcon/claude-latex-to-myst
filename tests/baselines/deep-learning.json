@@ -465,7 +465,7 @@
     "preface": {
       "citations": [
         26,
-        27
+        26
       ],
       "cross_refs": [
         0,
@@ -487,6 +487,6 @@
   },
   "totals": {
     "type_mismatches": 0,
-    "unresolved": 1
+    "unresolved": 0
   }
 }
