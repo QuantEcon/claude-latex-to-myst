@@ -15,6 +15,24 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — lstlisting `escapeinside={(*}{*)}` option no longer leaks into the code body (#185)
+
+An `lstlisting` whose option group carried `escapeinside={(*}{*)}` (or
+`literate={a}{b}1`) rendered the whole `[...]` option string as the code
+block's first line, before the real code. Pandoc's option parser reads a
+key's value as a single `{...}` group; a value made of 2+ *adjacent* brace
+groups leaves the extra group where pandoc expects a comma or the closing
+`]`, so the `[...]` scan never terminates and the group leaks as an indented
+code block. A new pre-pandoc pass, `_apply_lstlisting_options.py`, uses a
+brace-/bracket-aware scan to find the true option-group boundary and drops
+any option whose value is a multi-brace group — all render-only directives
+(`escapeinside`, `literate`, …) with no MyST equivalent, so removal is
+loss-free. Single-brace values (`caption={…}`, `label={…}`,
+`morekeywords={…}`) parse fine and are preserved. This lets the
+deep-learning book drop its book-local option-line stopgap. Golden case
+`lstlisting_escapeinside`; lesson 053. Reported in
+mmcky/Deep_Learning_for_Solving_And_Estimating_Dynamic_Economic_Models#185.
+
 ### Fixed — email `@` in `mailto:` / `\nolinkurl` / `\url` no longer misparsed as a citation (#179)
 
 `\href{mailto:jane.doe@unil.ch}{\nolinkurl{jane.doe@unil.ch}}` came out as

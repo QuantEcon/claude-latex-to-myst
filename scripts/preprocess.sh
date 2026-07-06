@@ -141,6 +141,14 @@ for ch in "${CHAPTER_STEMS[@]}"; do
   # where the batch pandoc pass drops it. No-op for sources without \ding.
   python3 "$SCRIPT_DIR/_apply_pifont_glyphs.py" "$dst"
 
+  # Strip render-only lstlisting options whose value is 2+ adjacent brace
+  # groups (escapeinside={(*}{*)}, literate={a}{b}1). Pandoc's option parser
+  # reads a value as one {...} group; the extra group derails the [...] scan,
+  # so the whole option group leaks verbatim as the code block's first body
+  # line (#185). These are PDF-rendering directives with no MyST equivalent —
+  # dropping them is loss-free. No-op for sources without the shape.
+  python3 "$SCRIPT_DIR/_apply_lstlisting_options.py" "$dst"
+
   # Preserve the optional [title] of theorem-family environments. Pandoc
   # drops the optional arg of a \begin{theorem}[Title] it can't resolve (and
   # renders \begin{proof}[Proof of …] inline, duplicating the auto heading),

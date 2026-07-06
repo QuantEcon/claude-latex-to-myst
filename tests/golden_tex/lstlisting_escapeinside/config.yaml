@@ -1,0 +1,10 @@
+# Issue #185: an lstlisting option whose value is 2+ adjacent brace groups
+# (escapeinside={(*}{*)}) defeats pandoc's [...] option scan, leaking the
+# whole option group as the code body's first line. _apply_lstlisting_options
+# strips the render-only option pre-pandoc so the body starts at the code.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Escapeinside Option" }
