@@ -1954,6 +1954,21 @@ def test_lstlisting_multiple_blocks_independent():
     assert out.count("\\begin{lstlisting}") == 2
 
 
+def test_lstlisting_commented_out_block_untouched():
+    # A %-commented lstlisting is a non-event: pandoc drops it, so this pass
+    # must not edit it either (repo convention; matches _apply_listing_markers).
+    src = "% \\begin{lstlisting}[language=Python, escapeinside={(*}{*)}]\n% code\n% \\end{lstlisting}\n"
+    assert lstopt.process_text(src) == src
+
+
+def test_lstlisting_scan_does_not_cross_comment_boundary():
+    # A commented opener whose option group's ] is on a later *uncommented*
+    # line must NOT be rewritten — the brace scan bailing on the comment guard
+    # keeps it from collapsing live source into the commented line.
+    src = "% \\begin{lstlisting}[language=Python,\nescapeinside={(*}{*)}]\nreal code\n\\end{lstlisting}\n"
+    assert lstopt.process_text(src) == src
+
+
 def test_lstlisting_value_is_multi_brace_helper():
     assert lstopt._value_is_multi_brace("escapeinside={(*}{*)}")
     assert lstopt._value_is_multi_brace("literate={a}{b}1")

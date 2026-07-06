@@ -34,6 +34,29 @@ from pathlib import Path
 _OPEN_RE = re.compile(r'\\begin\{lstlisting\}[ \t]*\[')
 
 
+def _starts_in_comment(text: str, pos: int) -> bool:
+    """Return True if ``text[pos]`` sits in a LaTeX line-comment — i.e.
+    the same physical line has an unescaped ``%`` before ``pos``.
+
+    Other preprocessors in this repo treat commented-out source as a
+    non-event; this pass follows suit so it never edits a
+    ``%\\begin{lstlisting}[…]`` the author has commented out (and so the
+    brace scan can't cross a ``%`` line boundary into live source — a
+    contrived but real edge). Mirrors the guard in
+    ``_apply_listing_markers._starts_in_comment``
+    (FOLLOWUP-014-algorithm-parser-edge-cases.md, Gap A)."""
+    line_start = text.rfind('\n', 0, pos) + 1
+    i = line_start
+    while i < pos:
+        if text[i] == '\\':
+            i += 2          # skip escaped char (including ``\%``)
+            continue
+        if text[i] == '%':
+            return True
+        i += 1
+    return False
+
+
 def _match_option_group(text: str, start: int) -> int | None:
     """``text[start]`` must be ``[``. Return the index just past the
     matching ``]`` (bracket-depth and brace-depth both back to 0), or
@@ -143,6 +166,8 @@ def process_text(text: str) -> str:
     result: list[str] = []
     pos = 0
     for m in _OPEN_RE.finditer(text):
+        if _starts_in_comment(text, m.start()):
+            continue                          # commented-out block — non-event
         bracket_start = m.end() - 1          # index of the opening ``[``
         group_end = _match_option_group(text, bracket_start)
         if group_end is None:
