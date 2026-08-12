@@ -24,7 +24,6 @@ fi
 (cd "$PROJECT_DIR" && uv sync --quiet)
 
 cd "$PROJECT_DIR"
-# Coverage is informational only — no minimum enforced. The baseline is
-# documented in QUALITY-REVIEW.md (P0a). Override with --no-cov for a
-# faster run when iterating on a single test.
+# Coverage is informational only — no minimum enforced. Override with
+# --no-cov for a faster run when iterating on a single test.
 exec uv run --quiet pytest --cov=scripts --cov-report=term-missing:skip-covered "$@"

@@ -5,9 +5,9 @@ captures a pandoc-output snippet and the current expected MyST output.
 The full transform pipeline runs on the input; the output is compared
 byte-for-byte against the expected.
 
-These tests are the safety net for cross-cutting refactors (P0c in
-QUALITY-REVIEW.md). The 155 unit tests call individual transforms; this
-file is the one place an unintended interaction regression is caught.
+These tests are the safety net for cross-cutting refactors. The unit
+tests call individual transforms; this file is the one place an
+unintended interaction regression is caught.
 
 ## When to update fixtures
 
@@ -97,6 +97,5 @@ def test_golden_dir_is_populated():
     names = _golden_names()
     assert len(names) >= 8, (
         f'tests/golden/ has only {len(names)} fixture(s); the safety net '
-        'should cover all major transform families. See QUALITY-REVIEW.md '
-        '§P0c for the canonical fixture list.'
+        'should cover all major transform families.'
     )

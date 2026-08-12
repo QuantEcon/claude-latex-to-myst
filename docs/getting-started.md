@@ -6,9 +6,9 @@ This guide assumes you have:
 
 - A LaTeX source tree for an academic book (chapters in separate `.tex` files, or a single file split by `\chapter{}`).
 - [Claude Code](https://claude.com/claude-code) installed and configured.
-- The mechanical prerequisites installed: `pandoc` ≥ 3.0, [`uv`](https://docs.astral.sh/uv/), and `mystmd` (`npm install -g mystmd`). See [README](README.md#requirements) for details.
+- The mechanical prerequisites installed: `pandoc` ≥ 3.0, [`uv`](https://docs.astral.sh/uv/), and `mystmd` (`npm install -g mystmd`). See [README](../README.md#requirements) for details.
 
-If you just want the mechanical "how do I run the script" answer, see the [README](README.md#quick-start). This guide is about **what to ask Claude to do** and **how to work with it iteratively** to get a clean conversion.
+If you just want the mechanical "how do I run the script" answer, see the [README](../README.md#quick-start). This guide is about **what to ask Claude to do** and **how to work with it iteratively** to get a clean conversion.
 
 ## The collaboration model
 
@@ -21,7 +21,7 @@ This pipeline is built to be **driven by Claude Code**, not hand-edited. The tra
 | Decide what's good enough to ship | Capture lessons, propose pipeline upgrades |
 | Approve risky/visible actions (commits, PRs, releases) | Stay inside its lane until told otherwise |
 
-The tool ships with a [`CLAUDE.md`](CLAUDE.md) that teaches Claude how the pipeline is organized, where to add transforms, when to capture lessons, and which architectural decisions not to re-litigate. You don't need to feed Claude this context — it loads automatically when you start a session in this repo or any book repo that has its own `CLAUDE.md` pointing at the pipeline.
+The tool ships with a [`CLAUDE.md`](../CLAUDE.md) that teaches Claude how the pipeline is organized, where to add transforms, when to capture lessons, and which architectural decisions not to re-litigate. You don't need to feed Claude this context — it loads automatically when you start a session in this repo or any book repo that has its own `CLAUDE.md` pointing at the pipeline.
 
 ## Your first conversion
 
@@ -32,7 +32,7 @@ In your **book's** repo (not this repo), start a Claude Code session and try som
 Claude will typically:
 
 1. **Survey the source.** Look at `*.tex` to find chapters, the bib file, custom macros, TikZ figures.
-2. **Bootstrap `mystmd/`.** Either using [`new-book.sh`](scripts/new-book.sh) from the tool, or by hand if your layout is non-standard. This produces `mystmd/config.yaml`, `mystmd/convert.sh`, `mystmd/.tool-version`, and a chapter list.
+2. **Bootstrap `mystmd/`.** Either using [`new-book.sh`](../scripts/new-book.sh) from the tool, or by hand if your layout is non-standard. This produces `mystmd/config.yaml`, `mystmd/convert.sh`, `mystmd/.tool-version`, and a chapter list.
 3. **Fill in the config.** Chapter titles, bib filename, custom-macro rewrites, TikZ overrides — Claude reads these out of your `.tex` and proposes values; you review and confirm.
 4. **Run the pipeline.** `bash mystmd/convert.sh` — preprocess → pandoc → postprocess → validate.
 5. **Build and survey.** `cd mystmd && myst build --html`, then summarize the warnings.
@@ -76,9 +76,9 @@ When you and Claude hit a non-obvious bug, ask Claude to **capture a lesson**:
 
 > "/capture-lesson"
 
-This adds a structured entry to [`lessons/`](lessons/) so the same hour of debugging never happens twice. The lessons catalogue is the institutional memory of the pipeline; every transform in `postprocess.py` traces back to a lesson.
+This adds a structured entry to [`lessons/`](../lessons/) so the same hour of debugging never happens twice. The lessons catalogue is the institutional memory of the pipeline; every transform in `postprocess.py` traces back to a lesson.
 
-If the bug is mechanically fixable and would affect another book, ask Claude to **codify it in the pipeline**, not just document it. The CLAUDE.md guide tells Claude [when to do which](CLAUDE.md#when-to-capture-a-lesson-vs-fix-the-pipeline).
+If the bug is mechanically fixable and would affect another book, ask Claude to **codify it in the pipeline**, not just document it. The CLAUDE.md guide tells Claude [when to do which](../CLAUDE.md#when-to-capture-a-lesson-vs-fix-the-pipeline).
 
 ## Working in parallel
 
@@ -90,9 +90,9 @@ The two sessions share the same `.git` repository (so commits are immediately vi
 
 | If you want to… | Read |
 |---|---|
-| Understand the pipeline mechanics (`convert.sh`, transforms, file tour) | [README.md](README.md) |
-| See a working config side-by-side with the LaTeX it converts | [`examples/book-dp1/`](examples/book-dp1/), [`examples/book-dp2/`](examples/book-dp2/) |
-| Browse the catalogue of known pitfalls | [LESSONS.md](LESSONS.md) |
-| See what Claude has been told about working in this repo | [CLAUDE.md](CLAUDE.md) |
-| Track what changed in a given release | [CHANGELOG.md](CHANGELOG.md) |
+| Understand the pipeline mechanics (`convert.sh`, transforms, file tour) | [README.md](../README.md) |
+| See a working config side-by-side with the LaTeX it converts | [`examples/book-dp1/`](../examples/book-dp1/), [`examples/book-dp2/`](../examples/book-dp2/) |
+| Browse the catalogue of known pitfalls | [LESSONS.md](../LESSONS.md) |
+| See what Claude has been told about working in this repo | [CLAUDE.md](../CLAUDE.md) |
+| Track what changed in a given release | [CHANGELOG.md](../CHANGELOG.md) |
 | Find an unresolved issue or contribute a fix | [GitHub issues](https://github.com/QuantEcon/claude-latex-to-myst/issues) |

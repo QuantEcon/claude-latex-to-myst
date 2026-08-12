@@ -1,4 +1,4 @@
-"""`.tex`-rooted golden tier (Phase 1 — see ``notes/design/phase-1-validation-gate.md``).
+"""`.tex`-rooted golden tier (Phase 1 — see ``docs/design/phase-1-validation-gate.md``).
 
 Unlike ``tests/golden/`` — which starts from *pandoc output* and exercises
 only ``process_text`` — each case here runs the **whole** pipeline against a

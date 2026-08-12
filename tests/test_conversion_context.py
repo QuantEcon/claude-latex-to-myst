@@ -1,5 +1,5 @@
 """Phase 3 reentrancy proofs for ``ConversionContext`` (see
-``notes/design/phase-3-conversion-context.md``).
+``docs/design/phase-3-conversion-context.md``).
 
 The whole point of threading state through a context instead of mutating
 module globals is that two books can convert in one process without one

@@ -190,9 +190,9 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   plugin framework (no registration, no arbitrary lifecycle/ordering) — a
   closed override file with documented insertion points. The mechanism is
   built on the `ConversionContext` from
-  [phase 3](notes/design/phase-3-conversion-context.md) (overrides
+  [phase 3](docs/design/phase-3-conversion-context.md) (overrides
   contribute to the context, never mutate module globals); design in
-  [phase 5](notes/design/phase-5-book-overrides.md).
+  [phase 5](docs/design/phase-5-book-overrides.md).
 - **Route every fix by repo tier.** Three repos can hold a change; pick
   deliberately, because the tier decides *where* it's committed and whether
   it's a code change at all.
@@ -275,7 +275,7 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   path per construct) is the Phase-4 payoff; the boundary is locked now so
   it stops moving by accretion.
 - **No custom LaTeX → AST → MyST rewrite (Phase 4 decision record).**
-  Evaluated in [DESIGN-REVIEW §2](notes/DESIGN-REVIEW.md) and declined.
+  Evaluated in [DESIGN-REVIEW §2](docs/DESIGN-REVIEW.md) and declined.
   Pandoc's math/cite/prose reader is ~15 years hardened and would take
   multiple quarters to match; a from-scratch parser is pure new bug surface.
   The marker-hybrid already replaces pandoc exactly where it's weak

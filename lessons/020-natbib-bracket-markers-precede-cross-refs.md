@@ -19,7 +19,7 @@ pipeline emitted `{cite}`-style parenthetical form. ch_egs had
 as broken `[-{cite:t}\`bellman1957dynamic\`]` — neither `{cite:year}`
 nor parenthesized.
 
-Filed as Issue 3 of [`FIX-frontmatter-and-tables.md`](../FIX-frontmatter-and-tables.md).
+Filed as Issue 3 of [`FIX-frontmatter-and-tables.md`](../reports/2026-05-20-fix-frontmatter-and-tables.md).
 
 After landing a preprocess rewrite layer to mark these variants with
 `[[CITEP:keys]]` sentinels, a worse failure surfaced: some

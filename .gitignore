@@ -17,4 +17,4 @@ QUALITY-REVIEW.md
 
 # Transitional session prompts / handover briefings stay local (user pref):
 # work-plan artifacts, not durable architecture docs.
-notes/SESSION-PROMPT-*.md
+docs/SESSION-PROMPT-*.md

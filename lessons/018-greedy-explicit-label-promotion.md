@@ -13,7 +13,7 @@ date: 2026-05-20
 ## Symptom
 
 While fixing lesson [017](017-pandoc-class-attrs-leak-into-labels.md)
-(Issue 2 of [`FIX-frontmatter-and-tables.md`](../FIX-frontmatter-and-tables.md)),
+(Issue 2 of [`FIX-frontmatter-and-tables.md`](../reports/2026-05-20-fix-frontmatter-and-tables.md)),
 the first cut of "prefer the explicit `\label{}` body anchor over the
 heading auto-id" caused a regression in `ch_apps.md`:
 

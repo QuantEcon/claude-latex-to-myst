@@ -1,6 +1,6 @@
 """``ConversionContext`` — the post-pandoc pipeline's run state, threaded as
 an argument instead of mutated module globals (Phase 3 — see
-``notes/design/phase-3-conversion-context.md``).
+``docs/design/phase-3-conversion-context.md``).
 
 ## Why this exists
 
