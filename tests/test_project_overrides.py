@@ -1,5 +1,5 @@
 """Phase 5 — book-side ``project_overrides.py`` (see
-``notes/design/phase-5-book-overrides.md``).
+``docs/design/phase-5-book-overrides.md``).
 
 The override file is a **closed** surface read by ``load_overrides`` into the
 ``ConversionContext``: ``TIKZ_FIGURE_MAP`` / ``TIKZCD_INLINE_MAP`` (already

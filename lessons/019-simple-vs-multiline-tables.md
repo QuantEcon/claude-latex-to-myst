@@ -30,7 +30,7 @@ instead of:
   - the second letter
 ```
 
-Filed as Issue 1 of [`FIX-frontmatter-and-tables.md`](../FIX-frontmatter-and-tables.md).
+Filed as Issue 1 of [`FIX-frontmatter-and-tables.md`](../reports/2026-05-20-fix-frontmatter-and-tables.md).
 The visible table boundary (dash rules top + bottom) looks the same in both
 formats pandoc emits — but they require opposite parsing strategies.
 

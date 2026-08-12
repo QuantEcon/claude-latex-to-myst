@@ -102,5 +102,5 @@ the structural count is unchanged. Seed `tests/golden_tex/` with the real book
 shapes the construct takes, and treat any byte diff from the old path as a
 regression until explicitly reviewed and re-pinned. See lesson
 [043](043-pandoc-figure-caption-content-loss.md) for the bug class this
-migration was closing, and `notes/design/phase-1-validation-gate.md` for the
+migration was closing, and `docs/design/phase-1-validation-gate.md` for the
 gate's design.

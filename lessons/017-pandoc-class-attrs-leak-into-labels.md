@@ -31,7 +31,7 @@ Two things wrong:
 2. The author's explicit `\label{c:cs}` survived as an orphan body anchor
    `(c-cs)=` below the heading, with no link to the frontmatter label.
 
-Filed as Issue 2 of [`FIX-frontmatter-and-tables.md`](../FIX-frontmatter-and-tables.md).
+Filed as Issue 2 of [`FIX-frontmatter-and-tables.md`](../reports/2026-05-20-fix-frontmatter-and-tables.md).
 Blocked dp2 from a clean `common_symbols.md` regen — every re-run reintroduced
 the corruption.
 

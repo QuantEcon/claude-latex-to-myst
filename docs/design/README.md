@@ -83,11 +83,10 @@ phase doc carries a "LANDED" banner with its result. Highlights: the Phase-1
 worked-on baseline 166→20 lines, proving the architecture generalizes to a
 third, different book.
 
-ROADMAP.md's "Architecture evolution — LANDED" section summarizes the phases
-and the **forward plan** (consolidation of the Phase-3/5 shims, validator
-honesty for split-source books, adoption + parity). This directory is the
-design substrate; new large efforts get a design doc here before
-implementation.
+The **forward plan** (consolidation of the Phase-3/5 shims, validator
+honesty for split-source books, adoption + parity) lives in
+[ROADMAP.md](../../ROADMAP.md). This directory is the design substrate;
+new large efforts get a design doc here before implementation.
 
 ### Diagnostic principle (from #98)
 

@@ -6,7 +6,7 @@ tags: [python, modules, late-import, regression, state, p3a-refactor]
 source_project: external book (Deep_Learning_for_Solving_And_Estimating_Dynamic_Economic_Models)
 status: superseded
 codified_in: scripts/postprocess.py (top-of-file ``sys.modules`` aliasing)
-superseded_by: "Phase 3 ConversionContext (notes/design/phase-3-conversion-context.md); scripts/conversion_context.py"
+superseded_by: "Phase 3 ConversionContext (docs/design/phase-3-conversion-context.md); scripts/conversion_context.py"
 severity: high
 date: 2026-05-25
 ---

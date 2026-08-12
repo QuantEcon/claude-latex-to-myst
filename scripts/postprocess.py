@@ -36,7 +36,7 @@ from pathlib import Path
 # state no longer lives in ``postprocess`` (so a second module copy can't
 # freeze it) — it lives in ``conversion_context`` (imported once) and is
 # threaded explicitly through ``process_text``. See
-# ``notes/design/phase-3-conversion-context.md``.
+# ``docs/design/phase-3-conversion-context.md``.
 import types  # noqa: E402  (module-proxy install, bottom of file)
 
 import conversion_context as _ctxmod  # noqa: E402

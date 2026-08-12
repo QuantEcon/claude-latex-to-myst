@@ -3,11 +3,12 @@
 Configuration for converting [`book-dp1`](https://github.com/QuantEcon/book-dp1)
 (Dynamic Programming Volume I — Finite States) from LaTeX to MyST.
 
-dp1 already has a parallel MyST conversion in
-[PR #336](https://github.com/QuantEcon/book-dp1/pull/336) (forked from
-the dp2 pipeline). This config + the latest `claude-latex-to-myst`
-reproduces that PR's algorithm and listing directives byte-for-byte
-across all five chapters that use them.
+`book-dp1` now runs this pipeline directly: its `mystmd-conversion`
+branch carries a vendored `mystmd/convert.sh` + `.tool-version` pin, and
+the live config lives there. This directory is the frozen reference
+config from the original migration (which reproduced dp1's earlier
+hand-forked conversion byte-for-byte on its algorithm and listing
+directives).
 
 ## Files
 

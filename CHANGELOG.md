@@ -15,6 +15,31 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Changed — docs reorganized under `docs/`; README/CLAUDE dedup; ROADMAP refresh
+
+`GETTING-STARTED.md` → `docs/getting-started.md` and `notes/` →
+`docs/` (`docs/DESIGN-REVIEW.md` + `docs/design/`), with all path
+references updated (scripts, tests, CI, lessons, reports). README's
+"What's in here" table condensed to a short repo tour — `CLAUDE.md` is
+now the single canonical home of the detailed code layout. ROADMAP
+rewritten against verified current state: all three consumer books run
+the pipeline on `mystmd-conversion` branches (dp1 `16f7a3d`, dp2
+`9d8367b`, DL `cfbe3e9`); "migrate book-dp1" marked done, closed issue
+#1 dropped, #189 (tex-to-myst evaluation) added as the strategic
+architecture question. Stale comment references to the local-only
+`QUALITY-REVIEW.md` removed; four lessons' dead links to
+`FIX-frontmatter-and-tables.md` repointed at
+`reports/2026-05-20-fix-frontmatter-and-tables.md`. A follow-up content
+review of all docs: CLAUDE.md's transform-module list gains `multicols.py`
+and the module-proxy note now says ~900 tests; `lessons/README.md`'s
+schema comment documents the `superseded` status; `examples/book-dp1`'s
+README no longer describes dp1's pre-migration hand-forked conversion as
+current; design-doc pointers to the removed ROADMAP "Architecture
+evolution" section repointed. The local-only `QUALITY-REVIEW.md` and
+session-prompt artifacts were deleted and their `.gitignore` entries
+dropped (LESSONS.md index verified consistent: 54 lessons, no dead
+links).
+
 ### Added — `doubled_noun_refs` config entries can target the `{ref}` role (`role: ref`), fixing "Chapter Chapter N" under book-mode numbering (#184)
 
 Under qe-v8 `numbering.book.enabled` with `chapters.label: "Chapter %s"`, a
@@ -650,7 +675,7 @@ re-pinned after a reviewed equal-or-better diff); dp1/dp2 byte-identical.
   fix appA_glossary citations go `1/20 → 20/20`, ch02 figures `10/11 → 11/11`,
   ch01 citations `61 → 111` (residual = multi-key `\citet{a,b}` → 2 roles,
   inherent). dp1/dp2 read pristine source (no markers) → counts unchanged.
-  See `notes/design/phase-6-dl-parity.md`.
+  See `docs/design/phase-6-dl-parity.md`.
 
 ### Added — Phase 5: book-side project_overrides + graduation rule (architecture evolution 5/5)
 
@@ -801,7 +826,7 @@ pipeline and locked by a `tests/golden_tex/` case:
   → `process_text`) against a hand-authored `input.tex` and byte-diffs the
   committed `expected.md`. Seeded with the four #98 reproducers — the gate
   that would have caught them pre-merge. See lesson 044 and
-  `notes/design/phase-1-validation-gate.md`.
+  `docs/design/phase-1-validation-gate.md`.
 - **`deep-learning` target in `scripts/setup_fixtures.sh`** + a `regen/`
   config for the DL fixture (separate `output_dir`, reuses the rendered
   `tikz_overrides.py` map) so it follows the dp1/dp2 regen pattern.

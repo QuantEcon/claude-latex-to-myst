@@ -7,8 +7,8 @@ set of questions and observations that *started* the conversation.
 > **superseded by [`design/`](design/)**. The implementation review turned
 > it into a **five-phase plan** (validation gate → marker shared base →
 > `ConversionContext` → surface reduction → book-side overrides) — see
-> [`design/README.md`](design/README.md) and the "Architecture evolution"
-> section of [`../ROADMAP.md`](../ROADMAP.md). This file is retained for
+> [`design/README.md`](design/README.md); all phases landed in PR #103
+> (recorded in [`../CHANGELOG.md`](../CHANGELOG.md)). This file is retained for
 > **provenance only**; where it differs from `design/`, **`design/` is
 > authoritative.** In particular:
 >

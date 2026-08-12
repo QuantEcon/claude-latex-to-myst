@@ -3,7 +3,8 @@
 A reusable pipeline for converting academic LaTeX (books, monographs, long
 papers) to high-fidelity MyST Markdown. Extracted from the
 [`book-dp2`](https://github.com/QuantEcon/book-dp2) conversion and
-generalized so a new book is a config change rather than a re-implementation.
+generalized so a new book is a config change rather than a re-implementation;
+it now drives the `book-dp1`, `book-dp2`, and Deep-Learning book conversions.
 
 The pipeline is **pandoc + post-processing**:
 
@@ -12,20 +13,21 @@ LaTeX (.tex) ──► preprocess.sh ──► pandoc ──► postprocess.py �
                   (sanitize)        (parse)     (transforms)
 ```
 
-Pandoc handles the hard parsing. A Python post-processor (25 transform
-stages and counting) turns its output into proper MyST syntax —
+Pandoc handles the hard parsing — inline prose, math, native citations.
+Everything structural (floats, tabulars, algorithms, listings,
+description/enumerate lists) is extracted to marker comments before pandoc
+and decoded after it, bypassing pandoc's lossy readers. A Python
+post-processor (~40 transform stages) turns the result into proper MyST —
 sphinx-proof directives, MyST cross-refs, figure directives, KaTeX-safe
-math, natbib citation variant decoding, structured table conversion
-(`\begin{tabular}` variants → MyST `{table}` / pipe-table via a marker
-preprocessor that bypasses pandoc's lossy table reader), etc. The
-transforms encode every lesson learned over a 26K-line book conversion
-— see [`lessons/`](lessons/) for the catalogue and
-[`CHANGELOG.md`](CHANGELOG.md) for what changed when.
+math, natbib citation variant decoding, structured tables. The transforms
+encode every lesson learned across three book conversions — see
+[`lessons/`](lessons/) for the catalogue and [`CHANGELOG.md`](CHANGELOG.md)
+for what changed when.
 
-> **New here?** [`GETTING-STARTED.md`](GETTING-STARTED.md) is a short guide
-> to running a first conversion in collaboration with Claude Code. The rest
-> of this README is the tool reference — bootstrap mechanics, file tour,
-> and sanity checks.
+> **New here?** [`docs/getting-started.md`](docs/getting-started.md) is a
+> short guide to running a first conversion in collaboration with Claude
+> Code. The rest of this README is the tool reference — bootstrap
+> mechanics, repo tour, and sanity checks.
 
 ## Quick start
 
@@ -99,37 +101,31 @@ No venv activation, no `pip install`, no `PATH=…` prefix — the shell script
 bootstraps everything via `uv sync`. The lockfile (`uv.lock`) is committed
 so installs are reproducible across machines.
 
-## What's in here
+## Repo tour
 
 | Path | Purpose |
 |------|---------|
-| `scripts/postprocess.py` | Orchestrator: `process_text` chains the ~25 transform stages. Holds no mutable run state (a back-compat module-proxy forwards the legacy `ENV_MAP` etc. names to the context). |
-| `scripts/conversion_context.py` | `ConversionContext` — the threaded run state (env map, tikz map, rewrites, per-file counters, the `POST_CONVERT` hook); `from_config` builds it. Makes the pipeline reentrant. |
-| `scripts/transforms/` | Themed transform modules (`math`, `refs`, `cite`, `figures`, `code`, `envs`, `tables`, `frontmatter`, …). A stateful transform takes `ctx`. |
-| `scripts/transforms/_markers.py` | Shared marker base (`pandoc_batch_convert`, `encode_payload`/`decode_payload`, `reassemble`) used by the figure + table preprocessors. |
-| `scripts/preprocess.sh` | LaTeX sanitization before pandoc (config-driven). Calls helpers for chapter-split, rewrites, algorithm / listing / description / enumerate / table / figure markers. |
-| `scripts/convert.sh` | Pipeline driver: preprocess → pandoc → postprocess → validate. |
-| `scripts/validate.py`, `scripts/count_baseline.py` | Structural diff (equations, refs, theorems, figures, citations — source vs output; marker-aware; flags broken math) + per-book count baselines. |
-| `scripts/validate_fixture.sh`, `scripts/setup_fixtures.sh` | Two-baseline fixture harness: `--against snapshot` (refactor-safety byte-identity) vs the default parity gap against the worked-on `mystmd/`. |
-| `tests/golden_tex/`, `tests/test_marker_differential.py` | `.tex`-rooted golden tier + the §1b differential migration gate (Phase 1 safety net). `.github/workflows/test.yml` runs them in CI with a pinned pandoc. |
-| `scripts/templates/book-convert.sh`, `scripts/new-book.sh` | Vendored book wrapper + the scaffolder for a book's `mystmd/`. |
-| Book-side `project_overrides.py` | Optional closed surface a consumer book supplies: `TIKZ_FIGURE_MAP`, `EXTRA_REWRITES`, one `POST_CONVERT(text, stem, ctx)` hook (the graduation-rule "one book → book-side" tier). |
-| `config.example.yaml` | Per-project config (chapter list, bib, preprocess/postprocess rewrites, TikZ map, validation toggles). |
-| `lessons/` + `LESSONS.md` | One markdown file per lesson learned, plus the index. |
-| `CHANGELOG.md`, `ROADMAP.md`, `notes/design/` | What changed, what's next, and the architecture design substrate. |
-| `examples/book-dp1/`, `examples/book-dp2/` | Reference configurations from the originating conversions. |
-| `.claude/commands/capture-lesson.md` | `/capture-lesson` slash command to add a new lesson. |
+| `scripts/` | The pipeline: `convert.sh` (driver), `preprocess.sh` + `_apply_*.py` marker preprocessors (pre-pandoc), `postprocess.py` + `transforms/` (post-pandoc), `validate.py` (structural counts), `new-book.sh` (book scaffolder). |
+| `config.example.yaml` | Per-project config: chapter list, bib, preprocess/postprocess rewrites, TikZ map, validation toggles. |
+| `lessons/` + `LESSONS.md` | The pitfall catalogue — one file per lesson (54 and counting), plus the index. |
+| `tests/` | ~900 unit tests, the `.tex`-rooted golden tier (52 cases), and the marker differential gate; run in CI with a pinned pandoc. |
+| `docs/` | [`getting-started.md`](docs/getting-started.md) (guided first conversion) and [`design/`](docs/design/) (architecture design records). |
+| `reports/` | Parity reports against the consumer books ([`reports/README.md`](reports/README.md)). |
+| `examples/` | Reference configurations from the originating `book-dp1` / `book-dp2` conversions. |
+
+For the detailed code layout — which module owns which transform family,
+how to add a transform, the pandoc/marker boundary, and the settled
+architectural decisions — see [`CLAUDE.md`](CLAUDE.md), the repo's working
+guide (written for Claude Code sessions, equally useful to humans).
 
 ## The lessons catalogue
 
 Every non-obvious pitfall encountered while converting books goes into
-`lessons/` as a structured markdown file. Each lesson has a lifecycle:
-
-- **`status: open`** — known issue, documented but not yet fixed in the pipeline. Surfaced as a warning in the README and as a comment near related code.
-- **`status: codified`** — the pipeline now handles this automatically. The lesson stays for posterity; future readers can grep for it.
-
-Use `/capture-lesson` inside this repo to add a new entry without remembering
-the format. See [`lessons/README.md`](lessons/README.md) for the schema.
+`lessons/` as a structured markdown file, marked `open` (documented, not
+yet automated) or `codified` (the pipeline now handles it). Use
+`/capture-lesson` in a Claude Code session to add one; see
+[`LESSONS.md`](LESSONS.md) for the index and
+[`lessons/README.md`](lessons/README.md) for the schema.
 
 ## Scope (what this tool is and isn't)
 

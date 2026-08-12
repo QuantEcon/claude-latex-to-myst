@@ -1,5 +1,5 @@
 """Shared marker-preprocessor base (Phase 2 — see
-``notes/design/phase-2-marker-shared-base.md``).
+``docs/design/phase-2-marker-shared-base.md``).
 
 The figure and table preprocessors are the two closest cousins of the
 marker pattern: each extracts a LaTeX construct *pre-pandoc*, hides it in a

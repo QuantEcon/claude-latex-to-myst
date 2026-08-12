@@ -8,7 +8,7 @@
 # than three bespoke invocations. Used by the architecture-phase work and by
 # hand.
 #
-# TWO BASELINES, two purposes (see notes/design + the architecture-phases
+# TWO BASELINES, two purposes (see docs/design + the architecture-phases
 # session prompt):
 #
 #   --against baseline   (default)  diff regen vs the committed, human-worked-on

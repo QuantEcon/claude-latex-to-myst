@@ -1,6 +1,6 @@
 name: test
 
-# Phase 1 keystone gate (notes/design/phase-1-validation-gate.md).
+# Phase 1 keystone gate (docs/design/phase-1-validation-gate.md).
 #
 # Triggers on BOTH push and pull_request deliberately: the architecture
 # evolution lands as one PR after five phase commits, so a pull_request-only

@@ -1,5 +1,5 @@
 """§1b differential migration-parity gate (Phase 1 — see
-``notes/design/phase-1-validation-gate.md`` §1b; lesson 044).
+``docs/design/phase-1-validation-gate.md`` §1b; lesson 044).
 
 A *golden* corpus catches regressions against a frozen ``expected.md``. The
 subtler failure mode — the one that produced all four GH #98 regressions — is

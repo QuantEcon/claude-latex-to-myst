@@ -24,12 +24,12 @@ done — see `scripts/postprocess.py`, `scripts/preprocess.sh`, `scripts/convert
   wrapper: validate → `ConversionContext.from_config` → register. It holds
   **no mutable run state** — the legacy `postprocess.ENV_MAP` (etc.) names
   still resolve via a module-proxy at the bottom of the file that forwards to
-  the current context (a backward-compat shim for the ~600 tests; the
+  the current context (a backward-compat shim for the ~900-test suite; the
   lesson-038 `sys.modules` alias is gone).
 - `scripts/transforms/` — themed transform modules: `math.py`, `refs.py`,
   `cite.py`, `figures.py`, `figures_from_latex.py`, `code.py`, `envs.py`,
   `tables.py`, `tables_from_latex.py`, `typography.py`, `algorithms.py`,
-  `frontmatter.py`. Each owns one family; a stateful transform takes `ctx`
+  `multicols.py`, `frontmatter.py`. Each owns one family; a stateful transform takes `ctx`
   (falling back to `current_context()` when called without one); pure ones
   (most `math`/`cite`) stay pure. Tests import via `postprocess.convert_X`
   (re-exported from the top of `postprocess.py`).
@@ -190,9 +190,9 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   plugin framework (no registration, no arbitrary lifecycle/ordering) — a
   closed override file with documented insertion points. The mechanism is
   built on the `ConversionContext` from
-  [phase 3](notes/design/phase-3-conversion-context.md) (overrides
+  [phase 3](docs/design/phase-3-conversion-context.md) (overrides
   contribute to the context, never mutate module globals); design in
-  [phase 5](notes/design/phase-5-book-overrides.md).
+  [phase 5](docs/design/phase-5-book-overrides.md).
 - **Route every fix by repo tier.** Three repos can hold a change; pick
   deliberately, because the tier decides *where* it's committed and whether
   it's a code change at all.
@@ -275,7 +275,7 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   path per construct) is the Phase-4 payoff; the boundary is locked now so
   it stops moving by accretion.
 - **No custom LaTeX → AST → MyST rewrite (Phase 4 decision record).**
-  Evaluated in [DESIGN-REVIEW §2](notes/DESIGN-REVIEW.md) and declined.
+  Evaluated in [DESIGN-REVIEW §2](docs/DESIGN-REVIEW.md) and declined.
   Pandoc's math/cite/prose reader is ~15 years hardened and would take
   multiple quarters to match; a from-scratch parser is pure new bug surface.
   The marker-hybrid already replaces pandoc exactly where it's weak

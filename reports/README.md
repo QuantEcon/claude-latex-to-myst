@@ -46,7 +46,7 @@ Override the upstream locations with `BOOK_DP1_SRC=/path` /
 
 The canonical parity check is `scripts/validate_fixture.sh`, which runs one
 common regen → validate → diff process for any book against **two distinct
-baselines** (see [`notes/design/`](../notes/design/) + CLAUDE.md):
+baselines** (see [`docs/design/`](../docs/design/) + CLAUDE.md):
 
 ```bash
 bash scripts/validate_fixture.sh all                     # parity gap vs the
