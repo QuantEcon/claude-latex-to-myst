@@ -13,8 +13,4 @@ tmp/
 # repos). See reports/README.md for the verification workflow.
 fixtures/
 .coverage
-QUALITY-REVIEW.md
 
-# Transitional session prompts / handover briefings stay local (user pref):
-# work-plan artifacts, not durable architecture docs.
-docs/SESSION-PROMPT-*.md

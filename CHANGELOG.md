@@ -29,7 +29,16 @@ the pipeline on `mystmd-conversion` branches (dp1 `16f7a3d`, dp2
 architecture question. Stale comment references to the local-only
 `QUALITY-REVIEW.md` removed; four lessons' dead links to
 `FIX-frontmatter-and-tables.md` repointed at
-`reports/2026-05-20-fix-frontmatter-and-tables.md`.
+`reports/2026-05-20-fix-frontmatter-and-tables.md`. A follow-up content
+review of all docs: CLAUDE.md's transform-module list gains `multicols.py`
+and the module-proxy note now says ~900 tests; `lessons/README.md`'s
+schema comment documents the `superseded` status; `examples/book-dp1`'s
+README no longer describes dp1's pre-migration hand-forked conversion as
+current; design-doc pointers to the removed ROADMAP "Architecture
+evolution" section repointed. The local-only `QUALITY-REVIEW.md` and
+session-prompt artifacts were deleted and their `.gitignore` entries
+dropped (LESSONS.md index verified consistent: 54 lessons, no dead
+links).
 
 ### Added — `doubled_noun_refs` config entries can target the `{ref}` role (`role: ref`), fixing "Chapter Chapter N" under book-mode numbering (#184)
 

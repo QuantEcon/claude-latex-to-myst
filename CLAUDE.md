@@ -24,12 +24,12 @@ done — see `scripts/postprocess.py`, `scripts/preprocess.sh`, `scripts/convert
   wrapper: validate → `ConversionContext.from_config` → register. It holds
   **no mutable run state** — the legacy `postprocess.ENV_MAP` (etc.) names
   still resolve via a module-proxy at the bottom of the file that forwards to
-  the current context (a backward-compat shim for the ~600 tests; the
+  the current context (a backward-compat shim for the ~900-test suite; the
   lesson-038 `sys.modules` alias is gone).
 - `scripts/transforms/` — themed transform modules: `math.py`, `refs.py`,
   `cite.py`, `figures.py`, `figures_from_latex.py`, `code.py`, `envs.py`,
   `tables.py`, `tables_from_latex.py`, `typography.py`, `algorithms.py`,
-  `frontmatter.py`. Each owns one family; a stateful transform takes `ctx`
+  `multicols.py`, `frontmatter.py`. Each owns one family; a stateful transform takes `ctx`
   (falling back to `current_context()` when called without one); pure ones
   (most `math`/`cite`) stay pure. Tests import via `postprocess.convert_X`
   (re-exported from the top of `postprocess.py`).

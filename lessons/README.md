@@ -20,7 +20,7 @@ title: "One-line summary"
 category: post-processing     # see categories below
 tags: [katex, equations, regex]
 source_project: book-dp2      # which project surfaced this
-status: codified              # open | codified
+status: codified              # open | codified | superseded (see below)
 codified_in: postprocess.py::convert_equations    # only if status=codified
 severity: high                # low | medium | high — by impact when missed
 date: 2026-04-09              # ISO date discovered
