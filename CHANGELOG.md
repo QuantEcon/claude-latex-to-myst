@@ -42,8 +42,9 @@ separate `(X)=` anchor, which would collide with the row target.
 `_align_needs_split` already claimed keeps the per-row split path, because
 each exclusion is a measured regression under passthrough: with 2+ `\tag`,
 mystmd emits the tag text raw so `{eq}` renders `(\text{(capital Euler)})`;
-with 2+ `\label`, every row inherits the *block's* `html_id` so references
-scroll to the block; `\intertext` becomes a hard render failure that still
+with 2+ `\label`, only the first row's identifier becomes a DOM anchor, so a
+later-row reference resolves to the right number and then links to an id that
+is not in the page (QuantEcon/mystmd#85); `\intertext` becomes a hard render failure that still
 consumes numbers; and a labelled `align*` would take a real number, so the
 #113 wrapper stays. This costs nothing — 9 of the 10 collapsing blocks carry
 no label, so the split-path set contributes **0** of the 17 recovered
