@@ -370,6 +370,141 @@ def _lift_tag(content: str) -> tuple[str, str | None]:
     return stripped.strip(), normalized
 
 
+# ── #193: depth-aware math-row scanner ────────────────────────────────────
+_CONTROL_WORD_RE = re.compile(r'\\[a-zA-Z]+')
+_INTERTEXT_RE = re.compile(r'\\(?:short)?intertext\s*\{')
+
+
+def _scan_top_level(text: str):
+    r"""Yield ``(kind, start, end)`` for every *depth-0* structural token."""
+    i, n = 0, len(text)
+    env_depth = brace_depth = 0
+    while i < n:
+        c = text[i]
+        if c == '\\':
+            nxt = text[i + 1] if i + 1 < n else ''
+            if nxt == '\\':
+                j = i + 2
+                if j < n and text[j] == '*':
+                    j += 1
+                if j < n and text[j] == '[':
+                    close = text.find(']', j)
+                    if close != -1:
+                        j = close + 1
+                if env_depth == 0 and brace_depth == 0:
+                    yield ('rowbreak', i, j)
+                i = j
+                continue
+            m = _CONTROL_WORD_RE.match(text, i)
+            if m:
+                j = m.end()
+                if m.group(0) in ('\\begin', '\\end'):
+                    k = j
+                    while k < n and text[k] in ' \t\n':
+                        k += 1
+                    if k < n and text[k] == '{':
+                        close = text.find('}', k)
+                        if close != -1:
+                            env_depth += 1 if m.group(0) == '\\begin' else -1
+                            if env_depth < 0:
+                                env_depth = 0
+                            j = close + 1
+                i = j
+                continue
+            i += 2
+            continue
+        if c == '%':
+            nl = text.find('\n', i)
+            i = n if nl == -1 else nl + 1
+            continue
+        if c == '{':
+            brace_depth += 1
+        elif c == '}':
+            brace_depth = max(brace_depth - 1, 0)
+        elif c == '&' and env_depth == 0 and brace_depth == 0:
+            yield ('amp', i, i + 1)
+        i += 1
+
+
+def _split_math_rows(body: str) -> list[str]:
+    rows, start = [], 0
+    for kind, s, e in _scan_top_level(body):
+        if kind == 'rowbreak':
+            rows.append(body[start:s])
+            start = e
+    rows.append(body[start:])
+    return rows
+
+
+def _neutralize_top_level_amps(row: str) -> str:
+    out: list[str] = []
+    pos = 0
+    for kind, s, e in _scan_top_level(row):
+        if kind != 'amp':
+            continue
+        a = s
+        while a > pos and row[a - 1] in ' \t\n':
+            a -= 1
+        b = e
+        while b < len(row) and row[b] in ' \t\n':
+            b += 1
+        out.append(row[pos:a])
+        out.append(' ')
+        pos = b
+    out.append(row[pos:])
+    return ''.join(out).strip()
+
+
+def _renderable(content: str) -> str:
+    r"""The part of a row that would actually typeset. A row reduced to
+    nothing but ``%`` comments still looks non-empty to a naive truth test,
+    but renders as an empty equation and draws a mystmd ``commentAtEnd``
+    warning, so it counts as empty here.
+
+    Every "is there anything here?" test goes through this — the empty-row
+    test and ``_mathless`` both — so that a comment is non-rendering
+    everywhere rather than only where someone remembered."""
+    return re.sub(r'(?<!\\)%.*$', '', content, flags=re.MULTILINE).strip()
+
+
+def _mathless(fragment: str) -> str:
+    """Reduce a row fragment to the characters that would actually render —
+    used only to decide whether an ``\\intertext`` had any real math before
+    it in its row."""
+    fragment = _AMSMATH_NONUMBER_RE.sub('', fragment)
+    fragment = re.sub(r'\\label\{[^}]*\}', '', fragment)
+    fragment = re.sub(r'\\tag\*?\s*\{[^}]*\}', '', fragment)
+    return _renderable(fragment.replace('&', ''))
+
+
+def _extract_intertext(row: str) -> tuple[str, list[tuple[bool, str]]]:
+    """Strip every ``\\intertext{}`` / ``\\shortintertext{}`` out of ``row``,
+    returning the row without them plus ``(leading, payload)`` pairs.
+    ``leading`` is ``True`` when nothing renderable preceded the macro in the
+    row — amsmath's canonical position, right after a ``\\\\``."""
+    found: list[tuple[bool, str]] = []
+    while True:
+        m = _INTERTEXT_RE.search(row)
+        if not m:
+            return row, found
+        open_brace = m.end() - 1
+        depth = 0
+        end = None
+        for i in range(open_brace, len(row)):
+            if row[i] == '{':
+                depth += 1
+            elif row[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        if end is None:
+            return row, found
+        found.append((not _mathless(row[:m.start()]),
+                      row[open_brace + 1:end].strip()))
+        row = row[:m.start()] + row[end + 1:]
+
+
 def convert_equations(text: str) -> str:
     """Convert pandoc equation blocks to MyST format.
 
@@ -510,6 +645,8 @@ def convert_equations(text: str) -> str:
         # the split path and collapse, stranding the second tag raw in the
         # body next to the first one's ``:enumerator:``.
         n_tags = len(_AMSMATH_TAG_RE.findall(body))
+        if _INTERTEXT_RE.search(body):
+            return True
         return n_labels >= 2 or n_tags >= 2
 
     def _make_row_group(group: list[str]) -> dict:
@@ -528,8 +665,12 @@ def convert_equations(text: str) -> str:
         enumerator: str | None = None
         tag_in_body = False
         cleaned: list[str] = []
+        pre_prose: list[str] = []
+        post_prose: list[str] = []
+        seen_content = False
         for piece in group:
             piece = _strip_nonumber_tokens(piece)
+            piece, prose = _extract_intertext(piece)
             if _AMSMATH_TAG_RE.search(piece):
                 piece, lifted = _lift_tag(piece)
                 if lifted is None:
@@ -538,15 +679,21 @@ def convert_equations(text: str) -> str:
                     enumerator = lifted
             labels.extend(re.findall(r'\\label\{([^}]+)\}', piece))
             piece = re.sub(r'\\label\{[^}]+\}', '', piece).strip()
+            for leading, payload in prose:
+                target = pre_prose if (leading and not seen_content) else post_prose
+                target.append(payload)
+            seen_content = seen_content or bool(_renderable(piece))
             cleaned.append(piece)
         if fused:
             body = ' \\\\\n'.join(p for p in cleaned if p)
-            content = f'\\begin{{aligned}}\n{body}\n\\end{{aligned}}'
+            content = (f'\\begin{{aligned}}\n{body}\n\\end{{aligned}}'
+                       if body.strip() else '')
         else:
-            content = re.sub(r'\s*(?<!\\)&\s*', ' ', cleaned[0]).strip()
-            content = re.sub(r'[,;]\s*$', '', content).strip()
+            content = _neutralize_top_level_amps(cleaned[0])
+            content = re.sub(r'(?<!\\)[,;]\s*$', '', content).strip()
         return {'content': content, 'labels': labels, 'enumerator': enumerator,
-                'tag_in_body': tag_in_body, 'unnumbered': unnumbered}
+                'tag_in_body': tag_in_body, 'unnumbered': unnumbered,
+                'pre_prose': pre_prose, 'post_prose': post_prose}
 
     def _split_align_rows(body: str) -> list[dict]:
         """Split an align body on ``\\\\`` row terminators into emittable
@@ -560,7 +707,7 @@ def convert_equations(text: str) -> str:
         delimiters and left every ``\\eqref`` to it pointing at the tail
         fragment (#192). A trailing ``\\nonumber`` row has nothing to fuse
         into and is emitted forced-unnumbered instead."""
-        pieces = [p for p in re.split(r'\\\\(?:\[[^\]]*\])?', body) if p.strip()]
+        pieces = [p for p in _split_math_rows(body) if p.strip()]
 
         groups: list[list[str]] = []
         pending: list[str] = []
@@ -582,7 +729,31 @@ def convert_equations(text: str) -> str:
                 rows.extend(_make_row_group([piece]) for piece in group)
             else:
                 rows.append(_make_row_group(group))
-        return rows
+        # Emptiness is decided HERE, after every stripper has run — a row
+        # that was non-empty in the source can be empty by now (it held only
+        # a ``\label{}``, or only a ``%`` comment). Testing before stripping
+        # let such a row through as ``$$\n\n$$ (eq-x)``, which mystmd rejects
+        # with "No input for math node" while still consuming a number.
+        kept: list[dict] = []
+        for row in rows:
+            if _renderable(row['content']):
+                kept.append(row)
+            elif row['labels'] or row['enumerator'] or row['tag_in_body']:
+                # Nothing left to typeset, but the row still carries an
+                # identifier, so it cannot just be dropped — that would
+                # dangle every reference to it. An empty group is valid
+                # KaTeX and keeps the anchor addressable.
+                row['content'] = '{}'
+                kept.append(row)
+            elif row['pre_prose'] or row['post_prose']:
+                # An ``\intertext``-only row. Keep it so the prose survives;
+                # ``_emit_split_align`` emits the prose and no math block.
+                row['content'] = ''
+                kept.append(row)
+            # Anything else is genuinely empty and carries nothing to
+            # preserve — drop it. Note this does NOT reproduce LaTeX's
+            # numbering of an empty row; see lesson 056.
+        return kept
 
     def _emit_split_align(body: str, leading_label: str | None = None,
                           starred: bool = False) -> str:
@@ -593,33 +764,47 @@ def convert_equations(text: str) -> str:
         don't consume equation numbers under book-wide numbering (#113)."""
         rows = _split_align_rows(body)
         out_blocks: list[str] = []
-        for i, row in enumerate(rows):
+        # The leading ``\begin{align}\label{}`` anchor belongs above the first
+        # row that actually emits a block — an ``\intertext``-only row ahead
+        # of it produces prose, which an anchor must not attach to.
+        leading_pending = leading_label
+        for row in rows:
+            out_blocks.extend(row['pre_prose'])
             content = row['content']
-            labels = row['labels']
-            primary = convert_label_colons(labels[0]) if labels else None
-            if row['enumerator']:
-                # ``\tag`` replaces the number in LaTeX — lift it into the
-                # block's ``:enumerator:``, which mystmd does not count (#192).
-                block = _emit_tagged_math(content, primary, row['enumerator'],
-                                          unnumbered=starred)
-            elif starred or row['unnumbered'] or row['tag_in_body']:
-                # ``align*``; a trailing ``\nonumber`` row; or a tag we could
-                # not represent as literal text and so left in the body — all
-                # take no number, so force the block unnumbered rather than
-                # letting book-wide numbering invent one.
-                block = _emit_unnumbered_math(content, primary)
-            elif primary:
-                block = f'$$\n{content}\n$$ ({primary})'
-            else:
-                block = f'$$\n{content}\n$$'
-            # Multiple labels on the same row are rare but legal —
-            # stack any extras as ``(name)=`` anchors (one anchor
-            # → no collision risk).
-            for extra in labels[1:]:
-                block = f'({convert_label_colons(extra)})=\n\n{block}'
-            if i == 0 and leading_label:
-                block = f'({convert_label_colons(leading_label)})=\n\n{block}'
-            out_blocks.append(block)
+            if content:
+                labels = row['labels']
+                primary = convert_label_colons(labels[0]) if labels else None
+                if row['enumerator']:
+                    # ``\tag`` replaces the number in LaTeX — lift it into the
+                    # block's ``:enumerator:``, which mystmd does not count (#192).
+                    block = _emit_tagged_math(content, primary, row['enumerator'],
+                                              unnumbered=starred)
+                elif starred or row['unnumbered'] or row['tag_in_body']:
+                    # ``align*``; a trailing ``\nonumber`` row; or a tag we could
+                    # not represent as literal text and so left in the body — all
+                    # take no number, so force the block unnumbered rather than
+                    # letting book-wide numbering invent one.
+                    block = _emit_unnumbered_math(content, primary)
+                elif primary:
+                    block = f'$$\n{content}\n$$ ({primary})'
+                else:
+                    block = f'$$\n{content}\n$$'
+                # Multiple labels on the same row are rare but legal —
+                # stack any extras as ``(name)=`` anchors (one anchor
+                # → no collision risk).
+                for extra in labels[1:]:
+                    block = f'({convert_label_colons(extra)})=\n\n{block}'
+                if leading_pending:
+                    block = (f'({convert_label_colons(leading_pending)})='
+                             f'\n\n{block}')
+                    leading_pending = None
+                out_blocks.append(block)
+            out_blocks.extend(row['post_prose'])
+        if leading_pending and out_blocks:
+            # Every row was prose-only — the anchor has no block to sit above,
+            # but dropping it would dangle the outer label.
+            out_blocks.insert(
+                0, f'({convert_label_colons(leading_pending)})=')
         result = '\n\n'.join(out_blocks)
         # If the joined output begins with a ``(name)=`` anchor (from
         # ``leading_label`` or from the first row's stacked extras),

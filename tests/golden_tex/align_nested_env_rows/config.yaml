@@ -1,0 +1,9 @@
+# Seeded from lesson 056: row splitting is depth-aware over BOTH environments
+# and brace groups, the `&` neutralization and trailing-punctuation strip are
+# depth/escape aware, and \intertext is hoisted out as prose (#193).
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Nested Env Rows" }
