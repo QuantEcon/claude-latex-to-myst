@@ -356,6 +356,51 @@ def _normalize_tag_text(payload: str) -> str | None:
     return s
 
 
+def _normalize_labels_in_place(body: str) -> str:
+    r"""Rewrite ``\label{eq:x}`` → ``\label{eq-x}`` **without removing it**.
+
+    mystmd reads a row's reference target out of the math source itself, and
+    its ``normalizeLabel`` does not map ``:`` → ``-`` (only ``createHtmlId``
+    does). So a passed-through body must carry labels that are already in
+    MyST form, or every ``{eq}`` to a row dangles — verified against all 25
+    align-internal labels in the deep-learning book."""
+    return re.sub(
+        r'\\label\{([^}]+)\}',
+        lambda m: f'\\label{{{convert_label_colons(m.group(1))}}}',
+        body,
+    )
+
+
+def _can_passthrough_rows(body: str) -> bool:
+    r"""``True`` when a row-numbering env body is safe to hand to mystmd's
+    per-row numbering (#186, qe-v9) instead of collapsing it to ``aligned``.
+
+    Conservative by design, because every way mystmd's own row scan can fail
+    is **silent**: it drops ``node.rows``, the block falls back to a single
+    number, and any label after the first is destroyed with no diagnostic. So
+    we only pass through bodies our own depth-aware scan agrees about.
+
+    - a ``%`` comment survives into the body as a numbered row whose
+      injected ``\tag`` is commented out — the number is consumed but never
+      displayed, a silent gap in the sequence;
+    - ``tikzcd`` bodies keep the bare form so ``TIKZCD_INLINE_MAP`` matches;
+    - a body our scanner finds fewer than two top-level rows in has nothing
+      to gain and may be a shape either scanner mis-reads.
+    """
+    if re.search(r'(?<!\\)%', body):
+        return False
+    if '\\begin{tikzcd}' in body:
+        return False
+    return len([r for r in _split_math_rows(body) if _renderable(r)]) >= 2
+
+
+def _emit_passthrough_rows(body: str, env: str) -> str:
+    """Emit a row-numbering environment verbatim for mystmd to number
+    per-row, with labels left in place and colon-normalised."""
+    inner = _normalize_labels_in_place(body.strip())
+    return f'$$\n\\begin{{{env}}}\n{inner}\n\\end{{{env}}}\n$$'
+
+
 def _lift_tag(content: str) -> tuple[str, str | None]:
     """Lift a representable ``\\tag`` out of a math body, returning the body
     without it plus the literal enumerator. Leaves the body untouched (and
@@ -825,6 +870,16 @@ def convert_equations(text: str) -> str:
         body = m.group(2)
         if _align_needs_split(body):
             return _emit_split_align(body, leading_label=leading)
+        # qe-v9 numbers each row of a non-starred ``align`` natively, with the
+        # ``&`` axis preserved (#186 / QuantEcon/mystmd#81). Pass the env
+        # through rather than collapsing it to ``aligned``, which takes ONE
+        # number for N rows. The leading ``\label{}`` goes back into the body:
+        # in amsmath it labels the first row, and mystmd registers it from
+        # there — emitting a separate ``(name)=`` anchor as well is exactly
+        # how you get "Duplicate identifier in file".
+        rejoined = f'\\label{{{leading}}}\n{body.strip()}'
+        if _can_passthrough_rows(rejoined):
+            return _emit_passthrough_rows(rejoined, 'align')
         content, extra = _extract_math_labels(body.strip())
         content = _strip_nonumber_tokens(content)
         content, enumerator = _lift_tag(content)
@@ -856,6 +911,12 @@ def convert_equations(text: str) -> str:
         body = m.group(2)
         if _align_needs_split(body):
             return _emit_split_align(body, starred=bool(star))
+        # Non-starred ``align`` passes through for mystmd's per-row numbering
+        # (#186). ``align*`` does NOT: mystmd only forces ``enumerated: false``
+        # on a starred env with no identifier, so a *labelled* ``align*`` would
+        # take a real number — the opposite of amsmath. Keep the #113 wrapper.
+        if not star and _can_passthrough_rows(body):
+            return _emit_passthrough_rows(body, 'align')
         content, labels = _extract_math_labels(body.strip())
         content = _strip_nonumber_tokens(content)
         content, enumerator = _lift_tag(content)

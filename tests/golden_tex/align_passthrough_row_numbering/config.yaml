@@ -1,0 +1,11 @@
+# Seeded from lesson 057: a non-starred align is passed through verbatim so
+# mystmd (qe-v9+) numbers each row with the & axis preserved, instead of
+# collapsing to \begin{aligned} and taking ONE number for N rows (#186).
+# Labels stay IN the body — mystmd reads row targets from the math source —
+# but are colon-normalised in place.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Align Passthrough" }

@@ -16,6 +16,49 @@ Deep-Learning book) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — non-starred `align` is passed through for per-row numbering (#186)
+
+**The deep-learning book's HTML equation numbers now match the printed PDF
+exactly: 272/272, all twelve chapters.** Previously 255/272 — every equation
+after the first collapsed block in a chapter was shifted.
+
+The converter rewrote a multi-row `align` to `$$\begin{aligned}…$$`, which
+mystmd numbers **once** while LaTeX numbers each row. `qe-v9`
+(QuantEcon/mystmd#81) numbers rows natively **with the `&` axis preserved**,
+which dissolved the tradeoff this was built around — the old choice was
+numbering parity *or* alignment, and both are now available. So a non-starred
+`align` is emitted verbatim and the renderer numbers it.
+
+**Labels now stay IN the body, colon-normalised in place.** mystmd reads a
+row's reference target out of the math source and nowhere else, so the
+long-standing "extract every `\label{}`" rule (#30) is exactly backwards
+here — extracting leaves the row with no target. Leaving it verbatim is not
+enough either: mystmd's `normalizeLabel` does not map `:` to `-`, so
+`\label{eq:foo}` must be rewritten in place to `\label{eq-foo}`. A leading
+`\begin{align}\label{X}` goes back into the body too, rather than becoming a
+separate `(X)=` anchor, which would collide with the row target.
+
+**Narrowed to the shapes that used to collapse.** Everything
+`_align_needs_split` already claimed keeps the per-row split path, because
+each exclusion is a measured regression under passthrough: with 2+ `\tag`,
+mystmd emits the tag text raw so `{eq}` renders `(\text{(capital Euler)})`;
+with 2+ `\label`, every row inherits the *block's* `html_id` so references
+scroll to the block; `\intertext` becomes a hard render failure that still
+consumes numbers; and a labelled `align*` would take a real number, so the
+#113 wrapper stays. This costs nothing — 9 of the 10 collapsing blocks carry
+no label, so the split-path set contributes **0** of the 17 recovered
+numbers.
+
+`book-dp1` and `book-dp2` output is byte-identical (neither has a non-starred
+row-numbering environment). All three count baselines are unchanged — the
+block count is the same; only per-row enumerators moved, which `count_myst`
+does not measure.
+
+Requires `qe-v9` or later; `MYSTMD_REF` is bumped in the same change.
+
+Lesson [057](lessons/057-pass-row-numbering-envs-through-to-the-renderer.md);
+golden case `align_passthrough_row_numbering`.
+
 ### Fixed — math row splitting is now depth-aware (#193)
 
 The per-row align splitter cut on every `\\` with one flat regex and cleaned

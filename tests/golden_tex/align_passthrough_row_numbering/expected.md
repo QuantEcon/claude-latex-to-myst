@@ -1,0 +1,27 @@
+---
+title: "Align Passthrough"
+---
+
+# Per-row numbered align
+
+The Adam moment recursions are
+
+$$
+\begin{align}
+m_t &= \beta_1 m_{t-1} + (1-\beta_1) g_t,\\
+v_t &= \beta_2 v_{t-1} + (1-\beta_2) g_t^2,\\
+\hat{m}_t &= \frac{m_t}{1-\beta_1^t},\\
+\hat{v}_t &= \frac{v_t}{1-\beta_2^t}.
+\end{align}
+$$
+
+A single labelled row still passes through, with the label kept in the body:
+
+$$
+\begin{align}
+x &= y \label{eq-single}\\
+u &= v \notag
+\end{align}
+$$
+
+See {eq}`eq-single`.

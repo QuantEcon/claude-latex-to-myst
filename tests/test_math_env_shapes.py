@@ -110,12 +110,19 @@ def _has_anchor(text: str, label: str) -> bool:
     - ``(eq-X)=`` appears on its own line (stacked-anchor form, used
       by align extras / per-row), OR
     - ``$$ (eq-X)`` appears on its own line (trailing-paren form,
-      used by equation / multline / leading-label align).
+      used by equation / multline / leading-label align), OR
+    - ``\\label{eq-X}`` survives IN a passed-through row-numbering body
+      (#186). mystmd reads a row's reference target out of the math source
+      itself, so for a passed-through ``align`` the in-body label *is* the
+      anchor — extracting it, as every other env still does, would leave
+      the row with no target at all.
     """
     converted = label.replace(':', '-')
     if re.search(rf'^\({re.escape(converted)}\)=\s*$', text, re.MULTILINE):
         return True
     if re.search(rf'^\$\$\s+\({re.escape(converted)}\)\s*$', text, re.MULTILINE):
+        return True
+    if re.search(rf'\\label\{{{re.escape(converted)}\}}', text):
         return True
     return False
 
@@ -136,7 +143,11 @@ def test_math_env_shape(env: str, shape: str):
     1. Emit a MyST anchor for every declared ``\\label{}`` (in either
        the trailing-paren or stacked-anchor form).
     2. Strip every ``\\label{}`` from the math body — KaTeX silently
-       drops them otherwise, breaking ``\\eqref{}``.
+       drops them otherwise, breaking ``\\eqref{}``. The one exception
+       is a **passed-through** row-numbering env (#186): mystmd reads
+       row targets out of the math source, so there the label must stay
+       — but it must be colon-normalised in place, since mystmd's own
+       normalization does not map ``:`` to ``-``.
     3. Preserve a distinguishing token from the math content (sanity
        guard — the regex should not be eating the body).
     """
@@ -150,11 +161,22 @@ def test_math_env_shape(env: str, shape: str):
             f'output:\n{out}'
         )
 
-    # (2) No surviving \label{} in the output.
-    assert '\\label{' not in out, (
-        f'env={env} shape={shape}: \\label{{}} survived into output\n'
-        f'output:\n{out}'
-    )
+    # (2) No surviving \label{} in the output, EXCEPT in a passed-through
+    # row-numbering body, where the in-body label is the row's target.
+    passthrough = re.search(r'^\\begin\{(align|gather|alignat)\}', out,
+                            re.MULTILINE) is not None
+    if passthrough:
+        for stray in re.findall(r'\\label\{([^}]+)\}', out):
+            assert ':' not in stray, (
+                f'env={env} shape={shape}: in-body label {stray!r} was not '
+                f'colon-normalised — mystmd would register it verbatim and '
+                f'every {{eq}} to it would dangle\noutput:\n{out}'
+            )
+    else:
+        assert '\\label{' not in out, (
+            f'env={env} shape={shape}: \\label{{}} survived into output\n'
+            f'output:\n{out}'
+        )
 
     # (3) Math content survives — pick a token unique to this body.
     if env == 'equation' and shape != 'label_after_begin':
@@ -197,11 +219,17 @@ def test_labeled_align_star_anchor_not_fused_into_prose():
     )
 
 
-def test_labeled_align_extra_per_row_anchors_not_fused_into_prose():
-    """Same fusion concern for the labeled-align (non-`*`) extra-anchor path:
-    when ``\\begin{align}\\label{first}…\\label{second}\\end{align}``, the
-    leading label becomes the trailing ``(first)``, and ``second`` stacks
-    as an anchor above — which must also have blank-line isolation."""
+def test_labeled_align_labels_stay_in_body_and_never_fuse_with_prose():
+    """GH #186 — the labelled-align extra-anchor path is superseded by
+    passthrough: both labels now stay IN the body as row targets, so
+    there is no stacked ``(name)=`` anchor left to fuse into preceding
+    prose. The emitted block must still start on its own line.
+
+    The fusion hazard this test was written for (#48) is retired by
+    construction here rather than guarded — an in-body label cannot
+    fuse with prose. The equivalent guard for the shapes that still
+    emit anchors lives in
+    ``test_split_align_leading_label_anchor_not_fused_into_prose``."""
     src = (
         'preceding prose\n'
         '$$\\begin{align}\\label{eq:first}\n'
@@ -210,11 +238,10 @@ def test_labeled_align_extra_per_row_anchors_not_fused_into_prose():
         '\\end{align}$$\n'
     )
     out = postprocess.convert_equations(src)
-    assert not re.search(r'preceding prose[ \t]*\(eq-second\)=', out), (
-        f'extra anchor fused with prose:\n{out}'
-    )
-    assert re.search(r'\n\n\(eq-second\)=', out), (
-        f'expected block-isolated extra anchor:\n{out}'
+    assert '\\label{eq-first}' in out and '\\label{eq-second}' in out
+    assert '(eq-second)=' not in out
+    assert re.search(r'preceding prose\n\$\$', out), (
+        f'block not isolated from preceding prose:\n{out}'
     )
 
 
