@@ -150,7 +150,13 @@ yet automated) or `codified` (the pipeline now handles it). Use
 
 - [`uv`](https://docs.astral.sh/uv/) — manages the Python interpreter and `pyyaml`
 - `pandoc` ≥ 3.0
-- `mystmd` for building the output: `npm install -g mystmd`
+- `mystmd` for building the output — **the [QuantEcon fork](https://github.com/QuantEcon/mystmd) at `qe-v9` or later**, not upstream
+  npm `mystmd`. Since #186 the converter emits `align` verbatim and relies on
+  the fork's per-row equation numbering (QuantEcon/mystmd#81); on upstream or
+  an older fork build a multi-row `align` takes a single number, so the
+  chapter's equation numbers stop matching the source. Both report
+  `v1.10.1` — only the `(qe-v9)` suffix distinguishes them, so check
+  `myst --version` rather than assuming.
 - Optional, for TikZ: `xelatex` + `pdf2svg`
 
 Python itself is managed by `uv` — no system Python required, no virtualenv

@@ -150,9 +150,8 @@ golden cases `align_nonumber_continuation` and `align_tag_star_enumerator`.
 This is the converter-side share of #186 — the remaining half (a multi-row
 `align` collapsing to one enumerator) was a renderer gap tracked upstream in
 QuantEcon/mystmd#73, **closed 2026-08-13 by QuantEcon/mystmd#81** (`qe-v9`:
-per-row numbering with the `&` axis preserved, plus KaTeX `^0.16.21`). #186
-stays open here as the converter-side follow-up, gated on bumping
-`MYSTMD_REF` past qe-v8.
+per-row numbering with the `&` axis preserved, plus KaTeX `^0.16.21`). The
+converter adopted it in #201, which closed #186.
 
 ### Changed — docs reorganized under `docs/`; README/CLAUDE dedup; ROADMAP refresh
 

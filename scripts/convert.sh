@@ -220,7 +220,9 @@ echo ""
 if [[ "$RUN_BUILD" -eq 1 ]]; then
   echo "Stage 7: myst build --html..."
   if ! command -v myst &>/dev/null; then
-    echo "  WARN: 'myst' not on PATH; skipping. Install: npm install -g mystmd" >&2
+    echo "  WARN: 'myst' not on PATH; skipping. Needs the QuantEcon fork" >&2
+    echo "        (github.com/QuantEcon/mystmd) at qe-v9 or later — upstream" >&2
+    echo "        mystmd cannot render this pipeline's align output." >&2
   else
     BUILD_LOG="$OUTPUT_DIR/_build.log"
     (cd "$OUTPUT_DIR" && myst build --html 2>&1) > "$BUILD_LOG" || true
