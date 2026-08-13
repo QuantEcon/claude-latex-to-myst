@@ -4092,6 +4092,40 @@ def test_convert_equations_intertext_hoisted_as_prose():
     assert out.index("$$ (eq-a)") < out.index("and then") < out.index("$$ (eq-b)")
 
 
+def test_convert_equations_comment_does_not_displace_intertext_prose():
+    """GH #193 (Copilot review) — a ``%`` comment is non-rendering, so an
+    ``\\intertext`` preceded only by one is still in amsmath's canonical
+    leading position and its prose belongs ABOVE the block. Testing raw
+    truthiness instead of renderability pushed it below, landing the prose
+    between the wrong two equations."""
+    text = (
+        "$$\\begin{align}\n"
+        "% just a note\n"
+        "\\intertext{prose here}\n"
+        "x &= 1 \\label{eq:a}\\\\\n"
+        "y &= 2 \\label{eq:b}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert out.index("prose here") < out.index("$$ (eq-a)")
+
+
+def test_convert_equations_comment_row_does_not_displace_later_intertext():
+    """GH #193 (Copilot review) — same root cause on the fused path: a
+    comment-only earlier row must not flip the "have we seen content yet"
+    flag and route a later ``\\intertext`` payload to the trailing slot."""
+    text = (
+        "$$\\begin{align}\n"
+        "% note only \\nonumber\\\\\n"
+        "\\intertext{second prose}\n"
+        "z &= 3 \\label{eq:c}\\\\\n"
+        "w &= 4 \\label{eq:d}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert out.index("second prose") < out.index("$$ (eq-c)")
+
+
 def test_convert_equations_prose_only_align_keeps_its_prose():
     """GH #193 — an align whose every row is ``\\intertext`` has no block to
     attach the prose to. Dropping the rows silently deleted the words; the

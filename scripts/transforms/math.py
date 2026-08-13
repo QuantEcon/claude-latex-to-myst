@@ -456,10 +456,14 @@ def _neutralize_top_level_amps(row: str) -> str:
 
 
 def _renderable(content: str) -> str:
-    r"""The part of a row that would actually typeset — used only for the
-    empty-row test. A row reduced to nothing but ``%`` comments still looks
-    non-empty to a naive truth test, but renders as an empty equation and
-    draws a mystmd ``commentAtEnd`` warning, so it counts as empty here."""
+    r"""The part of a row that would actually typeset. A row reduced to
+    nothing but ``%`` comments still looks non-empty to a naive truth test,
+    but renders as an empty equation and draws a mystmd ``commentAtEnd``
+    warning, so it counts as empty here.
+
+    Every "is there anything here?" test goes through this — the empty-row
+    test and ``_mathless`` both — so that a comment is non-rendering
+    everywhere rather than only where someone remembered."""
     return re.sub(r'(?<!\\)%.*$', '', content, flags=re.MULTILINE).strip()
 
 
@@ -470,7 +474,7 @@ def _mathless(fragment: str) -> str:
     fragment = _AMSMATH_NONUMBER_RE.sub('', fragment)
     fragment = re.sub(r'\\label\{[^}]*\}', '', fragment)
     fragment = re.sub(r'\\tag\*?\s*\{[^}]*\}', '', fragment)
-    return fragment.replace('&', '').strip()
+    return _renderable(fragment.replace('&', ''))
 
 
 def _extract_intertext(row: str) -> tuple[str, list[tuple[bool, str]]]:
@@ -678,7 +682,7 @@ def convert_equations(text: str) -> str:
             for leading, payload in prose:
                 target = pre_prose if (leading and not seen_content) else post_prose
                 target.append(payload)
-            seen_content = seen_content or bool(piece)
+            seen_content = seen_content or bool(_renderable(piece))
             cleaned.append(piece)
         if fused:
             body = ' \\\\\n'.join(p for p in cleaned if p)
