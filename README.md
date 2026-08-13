@@ -141,9 +141,10 @@ yet automated) or `codified` (the pipeline now handles it). Use
   errors and layout reconstruction dominate)
 - LaTeX with no chapter structure — overkill for a single-file paper
 - Bespoke TikZ diagrams — these need per-project rendering scripts, which
-  live in the consuming book repo; the converter side is the
-  `TIKZ_FIGURE_MAP` / `TIKZCD_INLINE_MAP` wiring in
-  `examples/book-dp2/tikz_overrides.py` and `config.example.yaml`
+  live in the consuming book repo. The converter side is the
+  `TIKZ_FIGURE_MAP` / `TIKZCD_INLINE_MAP` wiring in that book's
+  `project_overrides.py`; see `config.example.yaml` for the keys and
+  [`examples/`](examples/) for worked configs
 
 ## Requirements
 
