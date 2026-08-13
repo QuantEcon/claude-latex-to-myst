@@ -58,8 +58,9 @@ def convert_section_labels(text: str) -> str:
     Pandoc may append class/property tokens after the slug for unnumbered
     or unlisted headings (``{#slug .unnumbered .unlisted}``); these are
     HTML class attributes and must be stripped before forming the MyST
-    label. Only the first whitespace-delimited token (the ``#slug``) is
-    treated as the identifier.
+    label. Only the first whitespace-delimited token of the attribute block
+    (``slug`` — the regex captures from after the ``{#``, so the token
+    carries no leading ``#``) is treated as the identifier.
 
     **Derived slugs are not promoted (#194).** Pandoc's ``auto_identifiers``
     mints an id for every heading, whether or not the author wrote a
