@@ -3738,8 +3738,14 @@ def test_convert_equations_align_2plus_tags_splits_to_avoid_multiple_tag_error()
     ``Multiple \\tag`` error (KaTeX allows at most one tag per equation
     env). Mirrors dp-deep-learning's ch11_climate IAM-loss block (8
     rows, 8 tags). The fix shares the per-row split with #70 — each
-    tag now lives in its own ``$$...$$`` block where one tag per env
-    is the supported shape."""
+    tag now lives in its own block where one tag per env is the
+    supported shape.
+
+    #192 revised what that per-row block looks like. ``\\tag*`` REPLACES
+    the number in LaTeX, so leaving it in the body next to a MyST
+    auto-number showed the reader both. Each tagged row is now a
+    ``{math}`` directive carrying the tag as ``:enumerator:``, which
+    mystmd renders in the number slot and does not count."""
     text = (
         "$$\\begin{align}\n"
         "l_1 &= F_1(x) \\tag*{(capital Euler)}\\\\\n"
@@ -3748,16 +3754,18 @@ def test_convert_equations_align_2plus_tags_splits_to_avoid_multiple_tag_error()
         "\\end{align}$$\n"
     )
     out = postprocess.convert_equations(text)
-    # Aligned wrapper is gone — each tagged row gets its own block.
+    # Aligned wrapper is gone — each tagged row gets its own block, so no
+    # KaTeX env ever sees two tags (the #46 guarantee).
     assert "\\begin{aligned}" not in out
-    # Three separate $$...$$ blocks emitted.
-    assert out.count("$$\n") + out.count("\n$$") >= 6  # 3 opens + 3 closes
-    # All three tags survive (the `\tag*{}` content itself is left
-    # intact in the per-row content — KaTeX renders it as the row's
-    # equation label).
-    assert "\\tag*{(capital Euler)}" in out
-    assert "\\tag*{(budget)}" in out
-    assert "\\tag*{(atm. carbon)}" in out
+    assert out.count("```{math}") == 3
+    # The tag text survives as the block's literal enumerator, with the
+    # LaTeX convention's enclosing parens stripped (mystmd re-adds them
+    # via the ``(%s)`` equation template).
+    assert ":enumerator: capital Euler" in out
+    assert ":enumerator: budget" in out
+    assert ":enumerator: atm. carbon" in out
+    # ...and no longer as a raw token in the math body.
+    assert "\\tag" not in out
 
 
 def test_convert_equations_align_leading_plus_2plus_per_row_splits():
@@ -3782,6 +3790,149 @@ def test_convert_equations_align_leading_plus_2plus_per_row_splits():
     # Outer-anchor sits before the first per-row block.
     assert out.index("(eq-outer)=") < out.index("$$ (eq-row_a)")
     assert "\\begin{aligned}" not in out
+
+
+def test_convert_equations_nonumber_row_fused_forward_not_split():
+    """GH #192 — a row carrying ``\\nonumber`` is unnumbered in amsmath and
+    is, in practice, a continuation of the row that follows it. Splitting
+    at that ``\\\\`` tore one equation into two blocks with unbalanced
+    delimiters and left the label on the tail fragment, so every
+    ``\\eqref`` to it pointed at half an expression. Mirrors
+    dp-deep-learning ch11_climate's capital-Euler FOC."""
+    text = (
+        "$$\\begin{align}\n"
+        "a &= b, \\label{eq:one}\\\\\n"
+        "c &= \\Bigl\\{ d \\nonumber\\\\\n"
+        "&\\quad + e \\Bigr\\} = 0, \\label{eq:two}\\\\\n"
+        "f &= g. \\label{eq:three}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    # Three blocks, not four — the \nonumber row fused into its successor.
+    assert out.count("$$ (eq-") == 3
+    # The fused rows share one block, so the delimiters balance again...
+    assert out.count("\\Bigl\\{") == out.count("\\Bigr\\}") == 1
+    fused = [b for b in out.split("\n\n") if "\\Bigl\\{" in b][0]
+    assert "\\Bigr\\}" in fused
+    # ...and that block carries the label, so refs resolve to the whole
+    # equation rather than to its tail.
+    assert "$$ (eq-two)" in fused
+    # Fused rows keep their `&` columns inside an aligned wrapper.
+    assert "\\begin{aligned}" in fused
+    assert "&\\quad + e" in fused
+    # The token itself never reaches the output.
+    assert "\\nonumber" not in out
+
+
+def test_convert_equations_trailing_nonumber_row_forced_unnumbered():
+    """GH #192 — a ``\\nonumber`` row with no following row has nothing to
+    fuse into. It must still not consume an equation number, so it is
+    emitted as a forced-unnumbered ``{math}`` directive."""
+    text = (
+        "$$\\begin{align}\n"
+        "a &= b, \\label{eq:one}\\\\\n"
+        "c &= d, \\label{eq:two}\\\\\n"
+        "e &= f \\nonumber\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert "```{math}" in out
+    assert ":enumerated: false" in out
+    assert "\\nonumber" not in out
+    # The two genuinely-numbered rows keep the plain numbered form.
+    assert out.count("$$ (eq-") == 2
+
+
+def test_convert_equations_tag_star_text_wrapper_normalized():
+    """GH #192 — the real dp-deep-learning tags are
+    ``\\tag*{\\text{(atm.\\ carbon)}}``. Normalization has to unwrap
+    ``\\text{}``, strip the LaTeX convention's parens (mystmd re-adds them
+    via its ``(%s)`` template) and only then resolve escapes — bailing on
+    the residual ``\\ `` before that step would leave real sites unfixed."""
+    text = (
+        "$$\\begin{align}\n"
+        "l_1 &= F_1(x) \\tag*{\\text{(atm.\\ carbon)}} \\label{eq:a}\\\\\n"
+        "l_2 &= F_2(x) \\tag*{\\text{(Fischer--Burmeister)}} \\label{eq:b}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert ":enumerator: atm. carbon" in out
+    # `--` is an en-dash in LaTeX text mode.
+    assert ":enumerator: Fischer\u2013Burmeister" in out
+    assert ":label: eq-a" in out
+    assert "\\tag" not in out
+
+
+def test_convert_equations_unrepresentable_tag_stays_in_body_unnumbered():
+    """GH #192 — a tag whose text can't be reduced to a plain string (a
+    residual control sequence, or one that normalizes to empty) is left in
+    the body, and the block is forced unnumbered. An empty
+    ``:enumerator:`` is silently ignored by mystmd, which would hand the
+    block a real number again — the failure mode this guards."""
+    text = (
+        "$$\\begin{align}\n"
+        "a &= b \\tag*{$\\star$} \\label{eq:a}\\\\\n"
+        "c &= d \\tag*{} \\label{eq:b}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert ":enumerator:" not in out
+    assert out.count(":enumerated: false") == 2
+    # The tag survives so the reader still sees it, rendered by KaTeX.
+    assert "\\tag*{$\\star$}" in out
+
+
+def test_convert_equations_nonumber_not_fused_into_second_tag():
+    """GH #192 — fusing must never put two ``\\tag``s inside one
+    ``aligned``: that is a hard mystmd ``Multiple \\tag`` failure, the very
+    #46 collision the split path exists to avoid. When the ``\\nonumber``
+    row and its fusion target are both tagged, fall back to separate
+    blocks."""
+    text = (
+        "$$\\begin{align}\n"
+        "a &= b \\tag*{(one)} \\nonumber\\\\\n"
+        "c &= d \\tag*{(two)} \\label{eq:b}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert ":enumerator: one" in out
+    assert ":enumerator: two" in out
+    # Two separate blocks — never one aligned wrapper holding both tags.
+    assert out.count("```{math}") == 2
+    assert "\\begin{aligned}" not in out
+
+
+def test_convert_equations_notag_stripped_on_collapsed_align():
+    """GH #192 — an align with a single ``\\label`` never reaches the split
+    path, so its body stays inside ``\\begin{aligned}``. ``\\notag`` leaked
+    verbatim into the published math there (dp-deep-learning ch01's
+    bias/variance decomposition). KaTeX swallows it silently, so this is
+    source hygiene rather than a visible defect — but the token has no
+    business in the output."""
+    text = (
+        "$$\\begin{align}\n"
+        "a &= b \\notag\\\\\n"
+        "c &= d \\label{eq:only}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert "\\notag" not in out
+    assert "\\begin{aligned}" in out
+    assert "(eq-only)=" in out
+
+
+def test_convert_equations_single_equation_env_tag_lifted():
+    """GH #192 — the lift is not confined to the split path. A lone
+    ``equation`` env carrying a ``\\tag`` showed tag *and* number too."""
+    text = (
+        "$$\\begin{equation}\n"
+        "x = y \\tag*{\\text{(budget)}} \\label{eq:solo}\n"
+        "\\end{equation}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert ":enumerator: budget" in out
+    assert ":label: eq-solo" in out
+    assert "\\tag" not in out
 
 
 def test_convert_equations_multline_trailing_label_extracted():

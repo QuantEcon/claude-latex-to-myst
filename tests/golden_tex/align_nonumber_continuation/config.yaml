@@ -1,0 +1,9 @@
+# Seeded from lesson 055: a \nonumber row is an unnumbered CONTINUATION of the
+# row that follows it, so the split path must fuse it forward rather than
+# treating its \\ as a row boundary (#192).
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Nonumber Continuation" }
