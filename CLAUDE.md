@@ -37,7 +37,10 @@ done — see `scripts/postprocess.py`, `scripts/preprocess.sh`, `scripts/convert
   (`_scan_top_level` → `_split_math_rows` / `_neutralize_top_level_amps` /
   `_renderable` / `_extract_intertext`, #193) and **row-numbering-token
   helpers** (`_strip_nonumber_tokens` / `_extract_row_tag` /
-  `_normalize_tag_text` / `_lift_tag` / `_emit_tagged_math`, #192). Reach
+  `_normalize_tag_text` / `_lift_tag` / `_emit_tagged_math`, #192), plus a
+  **passthrough layer** (`_can_passthrough_rows` / `_emit_passthrough_rows` /
+  `_normalize_labels_in_place`, #186) that decides whether a row-numbering
+  env is handed to the renderer verbatim or kept on the split path. Reach
   for the scan layer rather than adding a fourth flat regex over a math
   body.
 - `scripts/transforms/_markers.py` — the shared marker base (Phase 2):

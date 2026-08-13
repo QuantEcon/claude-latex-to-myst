@@ -125,3 +125,15 @@ The exclusion this justifies is unchanged and still correct. Recorded
 because the reasoning was published in PR #201 and the CHANGELOG, and a
 wrong mechanism in a codified lesson is how the next person reasons their
 way to a wrong conclusion.
+
+## Scope note — what #201 actually shipped
+
+Recorded so the next reader doesn't over-generalise: passthrough is
+**`align`-only**. Both `_emit_passthrough_rows` call sites pass the literal
+`'align'`, so `gather` (and `multline`, `equation`) still take their
+existing paths even though qe-v9 numbers `gather` rows natively too —
+extending that is open in #197.
+
+`_can_passthrough_rows` also bails on two shapes beyond the
+`_align_needs_split` set: a body containing a `%` comment, and a `tikzcd`
+body (which must keep the bare form for `TIKZCD_INLINE_MAP` to match).

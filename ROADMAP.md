@@ -14,7 +14,7 @@ All three consumer books run on the pipeline, each on its
 |------|--------------------|-------|
 | `book-dp1` | `16f7a3d` (2026-06-20) | Migrated — the former "in flight" migration is done; dp1's bespoke conversion scripts retired. |
 | `book-dp2` | `9d8367b` (2026-06-18) | Originating book; validation batches complete. |
-| Deep Learning | `cfbe3e9` (2026-07-06) | Most current pin, but now well behind `main` — #192/#193/#186 (`0ed21a9`, `79bb072`, `490df4d`) not yet pulled in. Picking them up **requires the book to build with `qe-v9`+**. |
+| Deep Learning | `cfbe3e9` (2026-07-06) | Most current pin, but now well behind `main` — #192/#193/#186 (`0ed21a9`, `79bb072`, `490df4d`) not yet pulled in. Picking them up **requires the book to build with `qe-v9`+** — on an older build the passed-through `align` takes one number, i.e. the fix is silently forfeited (measured: qe-v8 output is identical to today's, not worse). |
 
 No conversion branch has merged to a book's **default** branch yet. That
 merge is the bar for tagging the first release (see CHANGELOG
@@ -113,9 +113,6 @@ it yet (tier-3 routing). Nothing to do here but track:
   headings.
 - [#169](https://github.com/QuantEcon/claude-latex-to-myst/issues/169) →
   mystmd#70 — algorithm line numbering restarts inside loop bodies.
-- mystmd#51 — fancy-list render bug (found in the Deep-Learning book);
-  the theme-side fix is quantecon-theme.mystmd#100. (mystmd#74 was closed
-  as a duplicate of #51.)
 
 ### Later
 

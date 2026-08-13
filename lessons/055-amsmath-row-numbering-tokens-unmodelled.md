@@ -126,3 +126,16 @@ The lesson's reasoning still describes what the converter does **today** —
 the `qe-v8` CI pin (`MYSTMD_REF` in `.github/workflows/test.yml`) predates
 mystmd#81. Once that pin moves, the right question is not "is this still
 correct?" but "is this still *needed*?" — see ROADMAP §2 and #186.
+
+## Update 2026-08-13 (b) — the pin moved, and the scope narrowed
+
+`MYSTMD_REF` is now qe-v9 (`24f6ae8`) and #201 shipped `align` passthrough,
+so the open question above is answered: this modelling is **still needed,
+but no longer on the `align` path**.
+
+A passed-through `align` now forwards `\nonumber` / `\notag` / `\tag`
+verbatim, because qe-v9 honours them natively — the lesson's headline
+("the converter must resolve them") holds for every path passthrough does
+*not* cover: `equation`, `multline`, `gather`, `align*`, and the tagged /
+multi-label / `\intertext` aligns that stay on the split path. See lesson
+057 for which is which.

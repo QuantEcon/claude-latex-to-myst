@@ -150,7 +150,26 @@ yet automated) or `codified` (the pipeline now handles it). Use
 
 - [`uv`](https://docs.astral.sh/uv/) — manages the Python interpreter and `pyyaml`
 - `pandoc` ≥ 3.0
-- `mystmd` for building the output: `npm install -g mystmd`
+- `mystmd` for building the output — **the [QuantEcon fork](https://github.com/QuantEcon/mystmd) at `qe-v9` or
+  later**, not upstream npm `mystmd`. Since #201 the converter emits `align`
+  verbatim and relies on the fork's per-row equation numbering
+  (QuantEcon/mystmd#81). Older builds — upstream included — render the math
+  fine, but number a multi-row `align` as a *single* equation, so a chapter's
+  numbering silently drifts from the LaTeX source. Both report `v1.10.1`;
+  only the `(qe-v9)` suffix tells them apart, so check `myst --version`
+  rather than assuming.
+
+  The fork isn't published to npm, so build it from source (this is what CI
+  does — see `MYSTMD_REF` in `.github/workflows/test.yml` for the pinned ref):
+
+  ```bash
+  git clone https://github.com/QuantEcon/mystmd.git && cd mystmd
+  git checkout qe-v9
+  bun install && bun run build      # needs bun; see the fork's package.json
+  # then put packages/mystmd/dist/myst.cjs on PATH as `myst`, e.g.
+  printf '#!/bin/sh\nexec node "%s/packages/mystmd/dist/myst.cjs" "$@"\n' "$PWD" \
+    > ~/.local/bin/myst && chmod +x ~/.local/bin/myst
+  ```
 - Optional, for TikZ: `xelatex` + `pdf2svg`
 
 Python itself is managed by `uv` — no system Python required, no virtualenv
