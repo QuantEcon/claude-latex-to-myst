@@ -140,3 +140,13 @@ before MyST sees it; otherwise the cross-ref target vanishes.
 Multi-row `align` is the most common shape, but the same problem
 applies to `gather` (legitimately per-row labelled) and any custom
 align-like macro.
+
+## Later lessons that amend this one
+
+- Lesson [055](055-amsmath-row-numbering-tokens-unmodelled.md) (#192) —
+  the split path *modelled* `\nonumber` / `\notag` / `\tag*` instead of
+  forwarding them into its output: a `\nonumber` row is a continuation to
+  be fused forward, and a `\tag` replaces the number rather than joining it.
+- Lesson [056](056-math-row-splitting-must-be-depth-aware.md) (#193) —
+  made the row split itself depth-aware, so a nested `cases` / `bmatrix` /
+  `\substack` is no longer shredded by the flat `\\` regex.

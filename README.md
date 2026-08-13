@@ -107,8 +107,8 @@ so installs are reproducible across machines.
 |------|---------|
 | `scripts/` | The pipeline: `convert.sh` (driver), `preprocess.sh` + `_apply_*.py` marker preprocessors (pre-pandoc), `postprocess.py` + `transforms/` (post-pandoc), `validate.py` (structural counts), `new-book.sh` (book scaffolder). |
 | `config.example.yaml` | Per-project config: chapter list, bib, preprocess/postprocess rewrites, TikZ map, validation toggles. |
-| `lessons/` + `LESSONS.md` | The pitfall catalogue — one file per lesson (54 and counting), plus the index. |
-| `tests/` | ~900 unit tests, the `.tex`-rooted golden tier (52 cases), and the marker differential gate; run in CI with a pinned pandoc. |
+| `lessons/` + `LESSONS.md` | The pitfall catalogue — one file per lesson (56 and counting), plus the index. |
+| `tests/` | ~900 unit tests, the `.tex`-rooted golden tier (54 cases), and the marker differential gate; run in CI with a pinned pandoc. |
 | `docs/` | [`getting-started.md`](docs/getting-started.md) (guided first conversion) and [`design/`](docs/design/) (architecture design records). |
 | `reports/` | Parity reports against the consumer books ([`reports/README.md`](reports/README.md)). |
 | `examples/` | Reference configurations from the originating `book-dp1` / `book-dp2` conversions. |
@@ -140,8 +140,10 @@ yet automated) or `codified` (the pipeline now handles it). Use
 - PDF input — use a separate tool (the failure modes are different; OCR
   errors and layout reconstruction dominate)
 - LaTeX with no chapter structure — overkill for a single-file paper
-- Bespoke TikZ diagrams — these need per-project rendering scripts; see
-  `examples/book-dp2/render_tikz.py` for the pattern
+- Bespoke TikZ diagrams — these need per-project rendering scripts, which
+  live in the consuming book repo; the converter side is the
+  `TIKZ_FIGURE_MAP` / `TIKZCD_INLINE_MAP` wiring in
+  `examples/book-dp2/tikz_overrides.py` and `config.example.yaml`
 
 ## Requirements
 

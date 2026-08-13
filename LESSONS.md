@@ -100,7 +100,11 @@ coverage.**
   over-matched emails/URLs — pandoc emits the `@` correctly, so not a quirk),
   054 (a fact about MyST numbering-mode rendering — a chapter `{ref}` renders
   a noun under `numbering.book`, a title under qe-v5 heading numbering — plus
-  a config-surface decision, not a pandoc emission quirk).
+  a config-surface decision, not a pandoc emission quirk), 055 (a fact about
+  what KaTeX and mystmd do *not* understand about amsmath's row-numbering
+  tokens, so the converter has to resolve them before emission), 056 (a
+  property of our own transforms — a structure-bearing body needs a
+  depth-tracking scan, never a flat regex).
 
 ## Open (gaps to close on the next book)
 

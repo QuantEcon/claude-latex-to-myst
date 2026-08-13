@@ -32,7 +32,14 @@ done — see `scripts/postprocess.py`, `scripts/preprocess.sh`, `scripts/convert
   `multicols.py`, `frontmatter.py`. Each owns one family; a stateful transform takes `ctx`
   (falling back to `current_context()` when called without one); pure ones
   (most `math`/`cite`) stay pure. Tests import via `postprocess.convert_X`
-  (re-exported from the top of `postprocess.py`).
+  (re-exported from the top of `postprocess.py`). `math.py` has two
+  module-level layers under its transforms: a **scan layer**
+  (`_scan_top_level` → `_split_math_rows` / `_neutralize_top_level_amps` /
+  `_renderable` / `_extract_intertext`, #193) and **row-numbering-token
+  helpers** (`_strip_nonumber_tokens` / `_extract_row_tag` /
+  `_normalize_tag_text` / `_lift_tag` / `_emit_tagged_math`, #192). Reach
+  for the scan layer rather than adding a fourth flat regex over a math
+  body.
 - `scripts/transforms/_markers.py` — the shared marker base (Phase 2):
   `pandoc_batch_convert` (one batch pandoc call over `<!--CELL_N-->`-joined
   cells, with the `~` paren-guard + adjacency scrub), `encode_payload` /
@@ -41,7 +48,9 @@ done — see `scripts/postprocess.py`, `scripts/preprocess.sh`, `scripts/convert
   class. The audited per-construct bail predicates are documented at its top.
 - `scripts/_apply_*.py` — preprocess scripts that run BEFORE pandoc.
   Each rewrites a specific LaTeX construct (algorithms, listings,
-  description lists, enumerate, tables, figures) into a marker comment that
+  description lists, enumerate, tables, figures, multicols grids, pifont
+  glyphs, lstlisting options, theorem titles — see the directory for the
+  current set) into a marker comment that
   pandoc passes through verbatim; the post-pandoc pass decodes the marker
   back into the target MyST shape. The figure + table preprocessors share
   `transforms/_markers.py`. Use this pattern when pandoc's reader drops or
@@ -169,7 +178,7 @@ overrides file, not in `postprocess.py`.
 Don't re-litigate these without checking. Each was resolved deliberately:
 
 - **Per-project config + generic transforms.** Chapter list, custom-macro
-  rewrites, TikZ overrides live in `config.yaml` / `tikz_overrides.py`.
+  rewrites, TikZ overrides live in `config.yaml` / `project_overrides.py`.
   Transforms live in `postprocess.py`. If something feels "too dp1-specific"
   or "too dp2-specific" inside `postprocess.py`, it probably belongs in
   config. Editorial decisions the tool can't infer from LaTeX (e.g.
@@ -240,8 +249,8 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   `scripts/setup_fixtures.sh`). Never run the pipeline directly inside
   `../book-dp1` or `../book-dp2` — those may have in-progress branches
   you'd disturb.
-- **Fence-aware transforms use a fence-stack state machine, not regex
-  pairing of openers and closers.** Any transform that needs to know
+- **Structure-aware transforms use a single left-to-right scan carrying
+  explicit state, not regex pairing.** Any transform that needs to know
   whether a line is inside a fenced code block / inline-code span /
   content directive walks the text line-by-line, maintaining
   `[(tick_count, kind), …]` on a stack. Closers are identified by the
@@ -252,7 +261,15 @@ Don't re-litigate these without checking. Each was resolved deliberately:
   Established by `fix_spacing_superscript` (math.py) after four
   iterations of regex-pairing bugs (#84, #85, #86, #87); see lesson
   [042](lessons/042-katex-thin-space-superscript-needs-empty-base.md)
-  for the rationale.
+  for the rationale. The same rule governs **math bodies**: `\\` is a row
+  terminator and `&` a column separator only at the *top level*, so
+  `_scan_top_level` (math.py) walks the body once tracking environment
+  depth **and** brace depth, and everything — the row split, the `&`
+  neutralization, the emptiness test — is built on that one scan. Both
+  counters are needed: `\substack{…}` and `\text{…}` are macros with
+  brace groups that a `\begin`/`\end` counter never sees, while the
+  braces of `\begin{cases}` balance before its inner `\\`. See lesson
+  [056](lessons/056-math-row-splitting-must-be-depth-aware.md).
 - **The pandoc/marker boundary is explicit (Phase 2).** *Pandoc owns
   inline prose, paragraph/inline math, native inline citations
   (`\cite`/`\citet`/`\citep`), and cross-ref plumbing (the
