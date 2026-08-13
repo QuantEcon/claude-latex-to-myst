@@ -22,6 +22,34 @@ from conversion_context import current_context
 from ._helpers import convert_label_colons
 
 
+def _pandoc_auto_id(title: str) -> str:
+    """Re-derive pandoc's ``auto_identifiers`` slug from a converted heading
+    title, or ``''`` when it can't be determined (#194).
+
+    Pandoc's documented algorithm, applied to the heading's stringified
+    inlines: strip formatting and footnotes → remove every character except
+    alphanumerics, ``_``, ``-``, ``.`` and spaces → spaces to hyphens →
+    lowercase → drop everything up to the first letter.
+
+    We run it against the *markdown* title rather than the original LaTeX,
+    so the reconstruction is approximate: a title carrying a footnote
+    reference, a non-ASCII letter, or markdown the character filter can't
+    reduce the same way will not round-trip. **Every such mismatch is
+    fail-safe** — the caller only ever uses equality to *suppress* an
+    anchor, so a bad reconstruction keeps the anchor and reproduces the
+    pre-#194 behaviour rather than dropping a live target.
+    """
+    # Links: pandoc stringifies to the label text, not the destination.
+    t = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', title)
+    # Keep alphanumerics (``\w`` also covers ``_``), period, hyphen, space.
+    # This also disposes of the ``*``/``` ` ```/``$`` markdown carries —
+    # pandoc never saw them, and they are non-alphanumeric either way.
+    t = re.sub(r'[^\w.\- ]', '', t, flags=re.UNICODE)
+    t = re.sub(r'\s+', '-', t.strip())
+    t = t.lower()
+    return re.sub(r'^[^a-z]+', '', t)
+
+
 def convert_section_labels(text: str) -> str:
     """Convert pandoc section header IDs to MyST label syntax.
 
@@ -32,11 +60,53 @@ def convert_section_labels(text: str) -> str:
     HTML class attributes and must be stripped before forming the MyST
     label. Only the first whitespace-delimited token (the ``#slug``) is
     treated as the identifier.
+
+    **Derived slugs are not promoted (#194).** Pandoc's ``auto_identifiers``
+    mints an id for every heading, whether or not the author wrote a
+    ``\\label{}``, and normally omits the attribute block when it can
+    re-derive that id itself — but a *starred* sectioning command forces an
+    attribute block (for ``.unnumbered``) that drags the derived id along.
+    Promoting those to ``(slug)=`` makes an anchor out of a section title,
+    and two chapters with a "Further reading" section then collide
+    project-wide ("Duplicate identifier in project"). So an anchor is
+    suppressed when the slug is exactly what pandoc would derive from the
+    title — the case where mystmd's ``headingLabelTransform`` mints an
+    *implicit* identifier with the same string, making the anchor redundant
+    (implicit headings are also exempt from the duplicate-identifier
+    warning, which is what clears the collisions).
+
+    Two guards keep this from eating real targets:
+
+    - **Author labels can't match.** A ``\\label{sec:foo}`` reaches us as
+      ``sec:foo``, and ``_pandoc_auto_id`` never emits a colon, so the whole
+      ``sec:``/``ss:``/``c:`` labelling convention is protected by the
+      equality test alone. A label that *does* coincide with its title slug
+      is indistinguishable from a derived one — and dropping it is
+      harmless, because the implicit identifier is that same string.
+    - **Depth 1 is never suppressed.** ``add_frontmatter`` keys on the
+      ``(label)=`` + ``# Title`` pair to build a page's ``label:``
+      (``absorbed``) or to detect that the body already has its heading
+      (``standalone``). Suppressing an H1 anchor therefore drops the page
+      target in one style and emits a *duplicate* H1 in the other. H1 slugs
+      are per-file chapter titles and don't collide anyway, so the gate is
+      free.
+
+    Pandoc's within-file dedup suffixes (``optimality-1``) are deliberately
+    left alone: they are unique by construction, so they never produce the
+    warning this addresses, and suppressing one is *not* identifier-neutral
+    (mystmd would mint ``optimality``, a different string).
     """
     def replace_header(m):
         hashes = m.group(1)
         title = m.group(2).strip()
-        slug = m.group(3).split()[0]
+        attrs = m.group(3)
+        slug = attrs.split()[0]
+        derived = _pandoc_auto_id(title)
+        if len(hashes) >= 2 and derived and slug == derived:
+            # Drop the whole attribute block along with the anchor —
+            # leaving ``{#slug .unnumbered}`` on the line would render as
+            # literal text.
+            return f'{hashes} {title}'
         label = convert_label_colons(slug)
         return f'({label})=\n{hashes} {title}'
 

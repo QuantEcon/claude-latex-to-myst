@@ -1,0 +1,17 @@
+# Issue #194: pandoc's auto_identifiers mints an id for every heading, and a
+# *starred* sectioning command forces an attribute block (for .unnumbered)
+# that drags the derived id along. Promoting those to (slug)= turns a section
+# title into a project-wide anchor, so two chapters with an "Exercises"
+# section collide ("Duplicate identifier in project").
+#
+# This case pins all four outcomes in one file: derived slug suppressed
+# (background-reading, exercises), author label promoted whether the command
+# is starred (sec-conv) or not (sec-vi), depth-1 never suppressed (the
+# preface H1 still supplies the page label:), and pandoc's within-file dedup
+# suffix left alone (exercises-1).
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Derived Heading Anchor Suppressed" }

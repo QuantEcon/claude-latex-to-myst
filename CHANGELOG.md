@@ -16,6 +16,38 @@ Deep-Learning book) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — pandoc-derived heading slugs are no longer promoted to anchors (#194)
+
+**The deep-learning book's two recurring `Duplicate identifier in project`
+warnings are gone**, and with them 35 anchors that were never cross-reference
+targets in the first place.
+
+`convert_section_labels` promoted every heading id pandoc emitted, including
+the slugs pandoc *derives* for headings that carried no `\label{}`. Those are
+only as unique as the section title, so `(exercises)=` was emitted in 12
+files and `(further-reading)=` in 11 — of which mystmd registered exactly one
+each and silently dropped the rest.
+
+An anchor is now promoted only when the slug is something the author could
+have chosen; when it is exactly what pandoc would derive from the heading
+title, it is dropped along with its attribute block. That costs nothing:
+mystmd mints an *implicit* identifier for an unlabelled heading with the same
+string, so identifier, `html_id` and in-page anchor are unchanged — implicit
+headings are just exempt from the duplicate-identifier check.
+
+Two carve-outs. **Depth 1 is never suppressed**, because `add_frontmatter`
+keys on the `(label)=` + `# Title` pair to build a page's `label:` — removing
+an H1 anchor drops the page target in `absorbed` style and emits a duplicate
+H1 in `standalone`. **Pandoc's within-file dedup suffixes** (`optimality-1`)
+are left alone: unique by construction, so they never collide, and dropping
+one would not be identifier-neutral.
+
+Effect, isolated against `main`: exactly **3 / 8 / 24 anchor-line deletions
+and zero additions** across dp1 / dp2 / deep-learning, **0 newly-dangling
+cross-references** in any book, and all three render gates pass. Lesson
+[058](lessons/058-derived-heading-slugs-must-not-become-anchors.md); golden
+case `derived_heading_anchor_suppressed`.
+
 ### Fixed — non-starred `align` is passed through for per-row numbering (#186)
 
 **The deep-learning book's HTML equation numbers now match the printed PDF
