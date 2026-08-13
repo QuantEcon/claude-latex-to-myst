@@ -14,7 +14,7 @@ All three consumer books run on the pipeline, each on its
 |------|--------------------|-------|
 | `book-dp1` | `16f7a3d` (2026-06-20) | Migrated — the former "in flight" migration is done; dp1's bespoke conversion scripts retired. |
 | `book-dp2` | `9d8367b` (2026-06-18) | Originating book; validation batches complete. |
-| Deep Learning | `cfbe3e9` (2026-07-06) | Most current pin; two commits behind `main` — #192/#193 (`0ed21a9`, `79bb072`) not yet pulled in. |
+| Deep Learning | `cfbe3e9` (2026-07-06) | Most current pin, but now well behind `main` — #192/#193/#186 (`0ed21a9`, `79bb072`, `490df4d`) not yet pulled in. Picking them up **requires the book to build with `qe-v9`+**. |
 
 No conversion branch has merged to a book's **default** branch yet. That
 merge is the bar for tagging the first release (see CHANGELOG
@@ -31,34 +31,7 @@ gate for the first release tag and the real-world validation of the
 pipeline contract. Refresh the book's `.tool-version` pin as part of the
 ship.
 
-### 2. Adopt qe-v9 and re-validate the align path — [#186](https://github.com/QuantEcon/claude-latex-to-myst/issues/186)
-
-**The upstream blocker landed.** `QuantEcon/mystmd#73` was closed
-2026-08-13 by QuantEcon/mystmd#81, released as `qe-v9`: a multi-row
-non-starred `align` / `gather` / `alignat` now numbers **each `\\` row**,
-honouring per-row `\label` / `\tag` / `\nonumber` — and, crucially,
-**with the shared `&` alignment axis preserved**. That option did not
-exist when #186 was triaged, so the numbering-parity-vs-alignment
-tradeoff the issue is written around no longer applies.
-
-The work is now converter-side, and gated on bumping `MYSTMD_REF` past
-qe-v8 ([`.github/workflows/test.yml`](.github/workflows/test.yml)) and
-re-validating all three build baselines in the same commit. Two things
-to re-examine rather than assume:
-
-1. Whether the converter should stop rewriting `align` → `aligned` and
-   pass the environment through verbatim (mystmd#81's own stated
-   downstream payoff).
-2. Whether the #70/#46 per-row split path (`_align_needs_split` /
-   `_emit_split_align`) and parts of the #192 token handling are still
-   needed once the renderer models the same semantics natively. The
-   split path discards the `&` axis; the renderer no longer has to.
-
-Note qe-v9 also bumps KaTeX `^0.15.2` → `^0.16.21` (mystmd#80) and makes
-`align*` unnumbered, matching amsmath — both are behaviour changes the
-baseline re-validation has to absorb.
-
-### 3. Fix auto-slug heading-anchor collisions — [#194](https://github.com/QuantEcon/claude-latex-to-myst/issues/194)
+### 2. Fix auto-slug heading-anchor collisions — [#194](https://github.com/QuantEcon/claude-latex-to-myst/issues/194)
 
 `convert_section_labels` promotes every pandoc heading id to a `(slug)=`
 anchor, including the slugs pandoc derives for headings that carried no
@@ -69,7 +42,7 @@ for unlabelled headings, or disambiguate on collision with the chapter
 stem. Either needs a golden case and a count-neutrality check, since
 anchors feed the xref half of `validate.py`.
 
-### 4. Decide the long-term architecture question — [#189](https://github.com/QuantEcon/claude-latex-to-myst/issues/189)
+### 3. Decide the long-term architecture question — [#189](https://github.com/QuantEcon/claude-latex-to-myst/issues/189)
 
 Evaluate `tex-to-myst` (mystmd's native LaTeX parser) as a long-term
 alternative or complement to the pandoc + marker hybrid. This is a
@@ -79,7 +52,7 @@ regardless). The prior "no custom AST" decision record
 ([phase 4](docs/design/phase-4-surface-reduction.md)) covers building
 our own parser, not adopting mystmd's.
 
-### 5. Consolidation — pay down the Phase-3/5 shims
+### 4. Consolidation — pay down the Phase-3/5 shims
 
 Intentional compatibility shims; retiring them changes no conversion
 output.
@@ -93,7 +66,7 @@ output.
 3. **Retire the `tikz_overrides.py` filename alias** (Phase 5 kept it for
    one release; books have moved to `project_overrides.py`).
 
-### 6. Measurement honesty
+### 5. Measurement honesty
 
 - **Clean up `validate.py` for `preprocess.split` books**: count the
   pristine monolithic source rather than the marker-aware patch, so the
@@ -104,7 +77,7 @@ output.
   [#156](https://github.com/QuantEcon/claude-latex-to-myst/issues/156)
   (always-on mini-project smoke build).
 
-### 7. Feature backlog (open issues)
+### 6. Feature backlog (open issues)
 
 - [#56](https://github.com/QuantEcon/claude-latex-to-myst/issues/56) —
   `\multicolumn` / `\multirow` merged-cell tabulars in the table marker
@@ -118,6 +91,17 @@ output.
   colon-fence emission for `prf:*` directives whose titles carry roles
   (the alternative to #122's bold lead-in fallback); low priority, wants
   a book where role-bearing theorem titles are common.
+- [#197](https://github.com/QuantEcon/claude-latex-to-myst/issues/197) —
+  no handler for `flalign` / `alignat` / `eqnarray`, and `gather` with
+  2+ labels bypasses the split path. Entirely latent (zero occurrences
+  in any of the three books); note `qe-v9` splits these into different
+  cases — `alignat` is row-numbered natively, `flalign` and `eqnarray`
+  are not supported by KaTeX at all.
+- [#199](https://github.com/QuantEcon/claude-latex-to-myst/issues/199) —
+  `examples/` and `scripts/new-book.sh` still scaffold the legacy
+  `tikz_overrides.py` filename and config key, so a book created today
+  contradicts the docs. The alias must keep working (dp1 and dp2 both
+  carry the legacy file on their conversion branches).
 
 ### Upstream trackers — blocked on `QuantEcon/mystmd`
 
