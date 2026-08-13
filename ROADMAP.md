@@ -31,18 +31,7 @@ gate for the first release tag and the real-world validation of the
 pipeline contract. Refresh the book's `.tool-version` pin as part of the
 ship.
 
-### 2. Fix auto-slug heading-anchor collisions — [#194](https://github.com/QuantEcon/claude-latex-to-myst/issues/194)
-
-`convert_section_labels` promotes every pandoc heading id to a `(slug)=`
-anchor, including the slugs pandoc derives for headings that carried no
-`\label{}`. Repeated section titles then collide project-wide — the
-Deep-Learning book has `(exercises)=` in 12 files and
-`(further-reading)=` in 11. Two candidate behaviours: suppress anchors
-for unlabelled headings, or disambiguate on collision with the chapter
-stem. Either needs a golden case and a count-neutrality check, since
-anchors feed the xref half of `validate.py`.
-
-### 3. Decide the long-term architecture question — [#189](https://github.com/QuantEcon/claude-latex-to-myst/issues/189)
+### 2. Decide the long-term architecture question — [#189](https://github.com/QuantEcon/claude-latex-to-myst/issues/189)
 
 Evaluate `tex-to-myst` (mystmd's native LaTeX parser) as a long-term
 alternative or complement to the pandoc + marker hybrid. This is a
@@ -52,7 +41,7 @@ regardless). The prior "no custom AST" decision record
 ([phase 4](docs/design/phase-4-surface-reduction.md)) covers building
 our own parser, not adopting mystmd's.
 
-### 4. Consolidation — pay down the Phase-3/5 shims
+### 3. Consolidation — pay down the Phase-3/5 shims
 
 Intentional compatibility shims; retiring them changes no conversion
 output.
@@ -66,7 +55,7 @@ output.
 3. **Retire the `tikz_overrides.py` filename alias** (Phase 5 kept it for
    one release; books have moved to `project_overrides.py`).
 
-### 5. Measurement honesty
+### 4. Measurement honesty
 
 - **Clean up `validate.py` for `preprocess.split` books**: count the
   pristine monolithic source rather than the marker-aware patch, so the
@@ -77,7 +66,7 @@ output.
   [#156](https://github.com/QuantEcon/claude-latex-to-myst/issues/156)
   (always-on mini-project smoke build).
 
-### 6. Feature backlog (open issues)
+### 5. Feature backlog (open issues)
 
 - [#56](https://github.com/QuantEcon/claude-latex-to-myst/issues/56) —
   `\multicolumn` / `\multirow` merged-cell tabulars in the table marker

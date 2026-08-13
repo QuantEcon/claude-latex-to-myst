@@ -1377,6 +1377,101 @@ def test_section_label_strips_multiple_classes():
     assert ".unlisted" not in out
 
 
+# ── Derived heading anchors are not promoted (#194) ─────────────────────────
+
+
+def test_derived_section_slug_is_not_promoted():
+    """A ``\\section*{Exercises}`` reaches us as ``## Exercises {#exercises
+    .unnumbered}``. The slug is exactly pandoc's auto-id for the title, so
+    it's derived, not author-chosen — no ``(exercises)=`` anchor, and the
+    attribute block must not survive as literal text."""
+    body = "## Exercises {#exercises .unnumbered}\n\nBody.\n"
+    out = postprocess.convert_section_labels(body)
+    assert out == "## Exercises\nBody.\n"
+    assert "(exercises)=" not in out
+    assert "{#" not in out
+    assert ".unnumbered" not in out
+
+
+def test_derived_slug_suppression_clears_cross_file_collision():
+    """The #194 symptom: the same unlabelled section title in two chapters
+    minted the same project-wide anchor."""
+    for title, slug in (("Further reading", "further-reading"),
+                        ("Exercises", "exercises")):
+        out = postprocess.convert_section_labels(
+            f"### {title} {{#{slug} .unnumbered}}\n\nBody.\n"
+        )
+        assert out == f"### {title}\nBody.\n"
+
+
+def test_author_section_label_still_promoted():
+    """``\\label{sec:foo}`` arrives as ``sec:foo``; pandoc never emits a
+    colon, so an author label can't collide with its title slug."""
+    body = "## Further reading {#sec:further .unnumbered}\n\nBody.\n"
+    out = postprocess.convert_section_labels(body)
+    assert out == "(sec-further)=\n## Further reading\nBody.\n"
+
+
+def test_author_label_unlike_title_still_promoted():
+    """Colon-free author labels are kept too, as long as they aren't what
+    pandoc would have derived from the title."""
+    body = "## Further reading {#background-notes}\n\nBody.\n"
+    out = postprocess.convert_section_labels(body)
+    assert out == "(background-notes)=\n## Further reading\nBody.\n"
+
+
+def test_derived_h1_anchor_is_never_suppressed():
+    """Depth-1 anchors feed ``add_frontmatter``: the page ``label:`` in
+    ``absorbed`` style, and the "body already has its heading" test in
+    ``standalone``. Suppressing one loses the page target in the first
+    style and duplicates the H1 in the second, so H1 is gated out."""
+    body = "# Preface {#preface .unnumbered}\n\nBody.\n"
+    out = postprocess.convert_section_labels(body)
+    assert out == "(preface)=\n# Preface\nBody.\n"
+
+
+def test_pandoc_dedup_suffix_slug_is_kept():
+    """Pandoc's within-file dedup ids are unique by construction, so they
+    never collide — and dropping one is not identifier-neutral (mystmd
+    would mint ``optimality``, a different string)."""
+    body = "## Optimality {#optimality-1 .unnumbered}\n\nBody.\n"
+    out = postprocess.convert_section_labels(body)
+    assert out == "(optimality-1)=\n## Optimality\nBody.\n"
+
+
+def test_derived_slug_suppression_is_frontmatter_safe():
+    """End-to-end guard for the depth gate: an unlabelled chapter H1 must
+    still produce a page ``label:`` in ``absorbed`` style and exactly one
+    ``# Title`` in ``standalone``."""
+    body = postprocess.convert_section_labels(
+        "# Preface {#preface .unnumbered}\n\nBody.\n"
+    )
+    absorbed = postprocess.add_frontmatter(body, "Preface", style="absorbed")
+    assert "label: preface" in absorbed
+
+    standalone = postprocess.add_frontmatter(body, "Preface", style="standalone")
+    assert standalone.count("# Preface") == 1
+
+
+def test_pandoc_auto_id_reconstruction():
+    """The reconstruction follows pandoc's documented algorithm, and every
+    shape it can't reproduce must fail *safe* (no suppression)."""
+    from transforms.frontmatter import _pandoc_auto_id
+
+    assert _pandoc_auto_id("Further reading") == "further-reading"
+    assert _pandoc_auto_id("Exercises") == "exercises"
+    # Punctuation dropped; period, hyphen and underscore survive.
+    assert _pandoc_auto_id("What's next? A_b.c") == "whats-next-a_b.c"
+    # Identifiers may not begin with a number or punctuation mark.
+    assert _pandoc_auto_id("3 Ways to Fail") == "ways-to-fail"
+    # Emphasis/code markers never reached pandoc's stringify.
+    assert _pandoc_auto_id("The **hard** `case`") == "the-hard-case"
+    # Links stringify to the label, not the destination.
+    assert _pandoc_auto_id("See [the notes](ch01.md)") == "see-the-notes"
+    # Nothing left → no reconstruction → caller keeps the anchor.
+    assert _pandoc_auto_id("42") == ""
+
+
 def test_frontmatter_prefers_explicit_label_over_heading_autoid():
     """When ``\\chapter*{Title}`` + separate ``\\label{c:cs}`` produces
     a heading auto-id slug AND a body anchor, the explicit body anchor
