@@ -64,8 +64,9 @@ timidity; each exclusion is a measured regression:
 - **≥2 `\tag`** — mystmd sets `row.enumerator = row.tag` **raw**, with no
   equivalent of `_normalize_tag_text`, so a `{eq}` reference renders
   `(\text{(capital Euler)})` instead of `(capital Euler)`.
-- **≥2 `\label`** — `registerRowTarget` gives every row the *block's*
-  `html_id`, so row references scroll to the block rather than the row.
+- **≥2 `\label`** — a per-row reference has no anchor to land on. (See
+  the dated correction below: the mechanism stated here originally was
+  wrong, the exclusion is not.)
   Keeping these on the split path preserves the distinct anchors, and costs
   nothing: 9 of the 10 collapsing blocks carry no label, so the split-path
   set contributes **0** of the 17 recovered numbers.
@@ -100,3 +101,27 @@ outside the pipeline — the compiled PDF, not our own counter.
   depth-aware scan, still the guard deciding what is safe to pass through.
 - Lesson [032](032-per-row-align-labels-lost-as-anchors.md) — the
   extract-the-label rule this narrows.
+
+
+## Correction 2026-08-13 — the row-anchor mechanism, restated
+
+The `≥2 \label` exclusion above originally said *"`registerRowTarget`
+gives every row the block's `html_id`, so row references scroll to the
+block rather than the row."* **That mechanism is wrong.** Probed directly
+against qe-v9:
+
+- in the **AST**, each row gets its own target with its own `html_id`
+  (`eq-rowp`, `eq-rowq`) — they do *not* inherit the block's;
+- the **block** adopts the *first row's* `html_id`;
+- in the **rendered HTML**, only that one id is emitted. `eq-rowq` appears
+  nowhere in the page.
+
+So a later-row reference resolves to the correct *number* and then links
+to an id that does not exist — worse than landing on the block, not
+better. Nothing warns, because resolution succeeds; only the anchor is
+missing. Filed upstream as QuantEcon/mystmd#85.
+
+The exclusion this justifies is unchanged and still correct. Recorded
+because the reasoning was published in PR #201 and the CHANGELOG, and a
+wrong mechanism in a codified lesson is how the next person reasons their
+way to a wrong conclusion.
