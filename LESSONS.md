@@ -61,10 +61,11 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 052 | [textual @key citation regex must reject an @ glued to a word char — else emails and URLs (`mailto:`, `\url`) become bogus citations](lessons/052-textual-cite-regex-must-reject-email-at-sign.md) | regex-safety | 🟡 | codified |
 | 053 | [an lstlisting option whose value is 2+ adjacent brace groups (`escapeinside={(*}{*)}`) derails pandoc's `[...]` scan and leaks the whole option group into the code body — strip it pre-pandoc](lessons/053-lstlisting-brace-valued-options-break-pandoc-scan.md) | preprocess | 🟡 | codified |
 | 054 | [under qe-v8 `numbering.book` a chapter `{ref}` renders "Chapter N", so `Chapter~\ref{ch:x}` doubles to "Chapter Chapter N" — the `{ref}`-role doubled-noun table must be book-configurable (`doubled_noun_refs` + `role: ref`)](lessons/054-chapter-ref-doubles-under-book-mode-numbering.md) | post-processing | 🟡 | codified |
+| 055 | [amsmath row-numbering tokens (`\nonumber`, `\notag`, `\tag*`) are invisible to KaTeX and mystmd, so the converter must resolve them — a `\nonumber` row is a CONTINUATION (fuse it forward), and a `\tag` REPLACES the number (lift it to `:enumerator:`)](lessons/055-amsmath-row-numbering-tokens-unmodelled.md) | post-processing | 🔴 | codified |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045, 049, 050, 054
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045, 049, 050, 054, 055
 - **regex-safety:** 002, 017, 024, 031, 035, 036, 052
 - **pandoc:** 027, 047
 - **preprocess:** 028, 029, 030, 039, 044, 048, 051, 053

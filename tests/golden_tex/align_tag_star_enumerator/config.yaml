@@ -1,0 +1,9 @@
+# Seeded from lesson 055: \tag* REPLACES a row's number in amsmath, so it is
+# lifted into the block's :enumerator: rather than left in the body beside a
+# MyST auto-number (#192).
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Tag Star Enumerator" }

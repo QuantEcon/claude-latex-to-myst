@@ -266,6 +266,110 @@ def _emit_unnumbered_math(content: str, label: str | None = None) -> str:
     return '\n'.join(lines)
 
 
+def _emit_tagged_math(content: str, label: str | None, enumerator: str,
+                      unnumbered: bool = False) -> str:
+    """Emit display math whose equation identifier is a LaTeX ``\\tag`` text
+    rather than an auto-number (issue #192).
+
+    ``\\tag{}`` / ``\\tag*{}`` *replace* a row's number in amsmath and do not
+    advance the counter. Left in the body they render alongside the number
+    mystmd assigns, so the reader sees both. mystmd's ``:enumerator:`` is the
+    only field that sets a literal identifier without advancing the counter
+    (``ReferenceState.incrementCount`` returns early once ``node.enumerator``
+    is set), and it is what a ``{eq}`` cross-reference renders — so lifting
+    the tag there keeps the tag, the count and the refs all correct."""
+    lines = ['```{math}']
+    if label:
+        lines.append(f':label: {label}')
+    if unnumbered:
+        lines.append(':enumerated: false')
+    lines.append(f':enumerator: {enumerator}')
+    lines.append('')
+    lines.append(content)
+    lines.append('```')
+    return '\n'.join(lines)
+
+
+# amsmath row-numbering tokens (#192). Neither mystmd nor KaTeX models them:
+# KaTeX silently swallows ``\nonumber`` / ``\notag``, and a ``\tag`` inside an
+# emitted block renders *next to* the auto-number instead of replacing it. The
+# converter therefore has to resolve both before emission.
+_AMSMATH_NONUMBER_RE = re.compile(r'\\(?:nonumber|notag)(?![a-zA-Z])')
+_AMSMATH_TAG_RE = re.compile(r'\\tag\*?\s*\{')
+
+
+def _strip_nonumber_tokens(text: str) -> str:
+    """Drop ``\\nonumber`` / ``\\notag``. Once the converter has decided
+    whether the block is numbered the token carries no further meaning, and
+    leaving it in ships a stray control sequence into published math."""
+    return _AMSMATH_NONUMBER_RE.sub('', text)
+
+
+def _extract_row_tag(row: str) -> tuple[str, str | None]:
+    """Split a ``\\tag{…}`` / ``\\tag*{…}`` off ``row``, returning the row
+    without it plus the raw brace payload (``None`` when absent).
+
+    Brace-matched rather than regex-terminated so a nested payload such as
+    ``\\tag*{\\text{(atm.\\ carbon)}}`` comes back whole."""
+    m = _AMSMATH_TAG_RE.search(row)
+    if not m:
+        return row, None
+    open_brace = m.end() - 1
+    depth = 0
+    for i in range(open_brace, len(row)):
+        if row[i] == '{':
+            depth += 1
+        elif row[i] == '}':
+            depth -= 1
+            if depth == 0:
+                return (row[:m.start()] + row[i + 1:]), row[open_brace + 1:i]
+    return row, None
+
+
+def _normalize_tag_text(payload: str) -> str | None:
+    """Reduce a ``\\tag`` payload to a literal ``:enumerator:`` value, or
+    ``None`` when it cannot be represented as plain text.
+
+    ``:enumerator:`` is a plain-text field which mystmd wraps in the equation
+    template ``(%s)``, so the parens of the usual LaTeX convention
+    ``\\tag*{\\text{(budget)}}`` have to come off or the reader gets
+    ``((budget))``. Order is load-bearing: unwrap, strip parens, resolve text
+    escapes, and only *then* bail — payloads like ``\\text{(atm.\\ carbon)}``
+    (real, dp-deep-learning ch11) still carry a ``\\ `` at the point where an
+    earlier bail would reject them."""
+    s = payload.strip()
+    while True:
+        m = re.fullmatch(r'\\(?:text|textrm|mathrm|mbox)\s*\{(.*)\}', s, re.DOTALL)
+        if not m:
+            break
+        s = m.group(1).strip()
+    if s.startswith('(') and s.endswith(')'):
+        s = s[1:-1].strip()
+    s = s.replace('\\ ', ' ').replace('~', ' ')
+    s = s.replace('---', '\u2014').replace('--', '\u2013')
+    s = re.sub(r'\s+', ' ', s).strip()
+    # An *empty* ``:enumerator:`` is silently ignored by mystmd, which would
+    # hand the block a real number again; a residual control sequence or math
+    # shift would render literally. Both fall back to the caller's shape.
+    if not s or '\\' in s or '$' in s:
+        return None
+    return s
+
+
+def _lift_tag(content: str) -> tuple[str, str | None]:
+    """Lift a representable ``\\tag`` out of a math body, returning the body
+    without it plus the literal enumerator. Leaves the body untouched (and
+    returns ``None``) when the tag text cannot be represented — the caller
+    then keeps the tag in the body and forces the block unnumbered."""
+    stripped, raw = _extract_row_tag(content)
+    if raw is None:
+        return content, None
+    normalized = _normalize_tag_text(raw)
+    if normalized is None:
+        return content, None
+    return stripped.strip(), normalized
+
+
 def convert_equations(text: str) -> str:
     """Convert pandoc equation blocks to MyST format.
 
@@ -340,6 +444,11 @@ def convert_equations(text: str) -> str:
         # ``$$ … tikzcd … $$`` shape and replaces the block with an image —
         # the ``{math}`` form broke that match, leaking tikzcd to KaTeX and
         # losing the mapped figure (found in the dp1 ch_fps build test).
+        body = _strip_nonumber_tokens(body)
+        body, enumerator = _lift_tag(body)
+        if enumerator and '\\begin{tikzcd}' not in body:
+            return _emit_tagged_math(body, label, enumerator,
+                                     unnumbered=bool(star))
         if star and '\\begin{tikzcd}' not in body:
             return _emit_unnumbered_math(body, label)
         if label:
@@ -394,28 +503,85 @@ def convert_equations(text: str) -> str:
         """``True`` when the body has 2+ per-row labels or 2+ per-row
         ``\\tag*{}`` calls — the collision triggers from #70 / #46."""
         n_labels = len(re.findall(r'\\label\{', body))
-        n_tags = len(re.findall(r'\\tag\*?\{', body))
+        # Share the emission-side tag pattern rather than a second copy of
+        # it: TeX skips whitespace between a control sequence and its
+        # argument, so ``\tag* {…}`` is legal. Counting with a tighter regex
+        # than the one that later *lifts* the tag let a spaced body slip past
+        # the split path and collapse, stranding the second tag raw in the
+        # body next to the first one's ``:enumerator:``.
+        n_tags = len(_AMSMATH_TAG_RE.findall(body))
         return n_labels >= 2 or n_tags >= 2
 
-    def _split_align_rows(body: str) -> list[tuple[str, list[str]]]:
-        """Split an align body on ``\\\\`` row terminators. Return
-        per-row ``(content_clean, [labels])`` tuples. ``content_clean``
-        has ``\\label{}`` calls stripped, ``&`` alignment markers
-        replaced with whitespace, and bridging trailing punctuation
-        (``,``, ``;``) removed (a common LaTeX convention is
-        ``y = x + 1, \\label{eq:foo}`` where the comma is a
-        sentence-style separator, not part of the equation)."""
-        pieces = re.split(r'\\\\(?:\[[^\]]*\])?', body)
-        rows: list[tuple[str, list[str]]] = []
+    def _make_row_group(group: list[str]) -> dict:
+        """Build one emittable block from a list of source rows.
+
+        A single-row group gets the historical cleaners: ``&`` alignment
+        markers become whitespace and bridging trailing punctuation is
+        dropped (``y = x + 1, \\label{eq:foo}`` — the comma is
+        sentence-style, not part of the equation). A *fused* group keeps
+        both: its ``&`` columns and its trailing punctuation sit **inside**
+        one equation, where they are content rather than row-separator
+        artefacts."""
+        unnumbered = bool(_AMSMATH_NONUMBER_RE.search(group[-1]))
+        fused = len(group) > 1
+        labels: list[str] = []
+        enumerator: str | None = None
+        tag_in_body = False
+        cleaned: list[str] = []
+        for piece in group:
+            piece = _strip_nonumber_tokens(piece)
+            if _AMSMATH_TAG_RE.search(piece):
+                piece, lifted = _lift_tag(piece)
+                if lifted is None:
+                    tag_in_body = True
+                elif enumerator is None:
+                    enumerator = lifted
+            labels.extend(re.findall(r'\\label\{([^}]+)\}', piece))
+            piece = re.sub(r'\\label\{[^}]+\}', '', piece).strip()
+            cleaned.append(piece)
+        if fused:
+            body = ' \\\\\n'.join(p for p in cleaned if p)
+            content = f'\\begin{{aligned}}\n{body}\n\\end{{aligned}}'
+        else:
+            content = re.sub(r'\s*(?<!\\)&\s*', ' ', cleaned[0]).strip()
+            content = re.sub(r'[,;]\s*$', '', content).strip()
+        return {'content': content, 'labels': labels, 'enumerator': enumerator,
+                'tag_in_body': tag_in_body, 'unnumbered': unnumbered}
+
+    def _split_align_rows(body: str) -> list[dict]:
+        """Split an align body on ``\\\\`` row terminators into emittable
+        groups — normally one per row.
+
+        A row carrying ``\\nonumber`` / ``\\notag`` is **fused forward** into
+        the row that follows it (transitively, for chains) rather than
+        becoming its own block. amsmath drops such a row's number, and in
+        practice it is a continuation of the next row's expression, so
+        splitting there tore one equation into two blocks with unbalanced
+        delimiters and left every ``\\eqref`` to it pointing at the tail
+        fragment (#192). A trailing ``\\nonumber`` row has nothing to fuse
+        into and is emitted forced-unnumbered instead."""
+        pieces = [p for p in re.split(r'\\\\(?:\[[^\]]*\])?', body) if p.strip()]
+
+        groups: list[list[str]] = []
+        pending: list[str] = []
         for piece in pieces:
-            row = piece.strip()
-            if not row:
-                continue
-            labels = re.findall(r'\\label\{([^}]+)\}', row)
-            row = re.sub(r'\\label\{[^}]+\}', '', row).strip()
-            row = re.sub(r'\s*(?<!\\)&\s*', ' ', row).strip()
-            row = re.sub(r'[,;]\s*$', '', row).strip()
-            rows.append((row, labels))
+            pending.append(piece)
+            if not _AMSMATH_NONUMBER_RE.search(piece):
+                groups.append(pending)
+                pending = []
+        if pending:
+            groups.append(pending)
+
+        rows: list[dict] = []
+        for group in groups:
+            # Two ``\tag``s inside one ``aligned`` is a hard KaTeX
+            # ``Multiple \tag`` failure — the #46 collision this split path
+            # exists to avoid. Never fuse rows into that shape.
+            if len(group) > 1 and sum(
+                    1 for p in group if _AMSMATH_TAG_RE.search(p)) > 1:
+                rows.extend(_make_row_group([piece]) for piece in group)
+            else:
+                rows.append(_make_row_group(group))
         return rows
 
     def _emit_split_align(body: str, leading_label: str | None = None,
@@ -427,22 +593,30 @@ def convert_equations(text: str) -> str:
         don't consume equation numbers under book-wide numbering (#113)."""
         rows = _split_align_rows(body)
         out_blocks: list[str] = []
-        for i, (content, labels) in enumerate(rows):
-            if starred:
-                primary = convert_label_colons(labels[0]) if labels else None
+        for i, row in enumerate(rows):
+            content = row['content']
+            labels = row['labels']
+            primary = convert_label_colons(labels[0]) if labels else None
+            if row['enumerator']:
+                # ``\tag`` replaces the number in LaTeX — lift it into the
+                # block's ``:enumerator:``, which mystmd does not count (#192).
+                block = _emit_tagged_math(content, primary, row['enumerator'],
+                                          unnumbered=starred)
+            elif starred or row['unnumbered'] or row['tag_in_body']:
+                # ``align*``; a trailing ``\nonumber`` row; or a tag we could
+                # not represent as literal text and so left in the body — all
+                # take no number, so force the block unnumbered rather than
+                # letting book-wide numbering invent one.
                 block = _emit_unnumbered_math(content, primary)
-                for extra in labels[1:]:
-                    block = f'({convert_label_colons(extra)})=\n\n{block}'
-            elif labels:
-                primary = convert_label_colons(labels[0])
+            elif primary:
                 block = f'$$\n{content}\n$$ ({primary})'
-                # Multiple labels on the same row are rare but legal —
-                # stack any extras as ``(name)=`` anchors (one anchor
-                # → no collision risk).
-                for extra in labels[1:]:
-                    block = f'({convert_label_colons(extra)})=\n\n{block}'
             else:
                 block = f'$$\n{content}\n$$'
+            # Multiple labels on the same row are rare but legal —
+            # stack any extras as ``(name)=`` anchors (one anchor
+            # → no collision risk).
+            for extra in labels[1:]:
+                block = f'({convert_label_colons(extra)})=\n\n{block}'
             if i == 0 and leading_label:
                 block = f'({convert_label_colons(leading_label)})=\n\n{block}'
             out_blocks.append(block)
@@ -467,8 +641,14 @@ def convert_equations(text: str) -> str:
         if _align_needs_split(body):
             return _emit_split_align(body, leading_label=leading)
         content, extra = _extract_math_labels(body.strip())
+        content = _strip_nonumber_tokens(content)
+        content, enumerator = _lift_tag(content)
         leading_decoded = convert_label_colons(leading)
-        block = f'$$\n\\begin{{aligned}}\n{content}\n\\end{{aligned}}\n$$ ({leading_decoded})'
+        aligned = f'\\begin{{aligned}}\n{content}\n\\end{{aligned}}'
+        if enumerator:
+            block = _emit_tagged_math(aligned, leading_decoded, enumerator)
+        else:
+            block = f'$$\n{aligned}\n$$ ({leading_decoded})'
         if extra:
             anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in extra)
             return f'\n\n{anchors}\n\n{block}'
@@ -492,12 +672,17 @@ def convert_equations(text: str) -> str:
         if _align_needs_split(body):
             return _emit_split_align(body, starred=bool(star))
         content, labels = _extract_math_labels(body.strip())
+        content = _strip_nonumber_tokens(content)
+        content, enumerator = _lift_tag(content)
         aligned = f'\\begin{{aligned}}\n{content}\n\\end{{aligned}}'
         # ``align*`` is unnumbered in LaTeX; emit a forced-unnumbered block
         # (#113). A plain ``align`` (numbered in LaTeX) keeps the bare ``$$``
         # form so book-wide numbering numbers it. tikzcd bodies bail to the
         # bare form so TIKZCD_INLINE_MAP keeps matching (dp1 ch_fps).
-        if star and '\\begin{tikzcd}' not in content:
+        if enumerator and '\\begin{tikzcd}' not in content:
+            block = _emit_tagged_math(aligned, None, enumerator,
+                                      unnumbered=bool(star))
+        elif star and '\\begin{tikzcd}' not in content:
             block = _emit_unnumbered_math(aligned)
         else:
             block = f'$$\n{aligned}\n$$'
@@ -525,6 +710,18 @@ def convert_equations(text: str) -> str:
     def replace_math_block(m):
         star = m.group(1)
         content, labels = _extract_math_labels(m.group(2).strip())
+        content = _strip_nonumber_tokens(content)
+        content, enumerator = _lift_tag(content)
+        # A ``\tag`` replaces the number rather than adding to it (#192).
+        if enumerator and '\\begin{tikzcd}' not in content:
+            primary = convert_label_colons(labels[0]) if labels else None
+            block = _emit_tagged_math(content, primary, enumerator,
+                                      unnumbered=bool(star))
+            extra = labels[1:]
+            if extra:
+                anchors = '\n'.join(f'({convert_label_colons(lbl)})=' for lbl in extra)
+                return f'\n\n{anchors}\n\n{block}'
+            return block
         # Starred multline*/gather* is unnumbered in LaTeX (#113) — emit a
         # forced-unnumbered {math} directive REGARDLESS of label presence (a
         # stray \label in a starred env still must not consume a number). The

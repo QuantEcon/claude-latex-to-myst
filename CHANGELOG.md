@@ -15,6 +15,50 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — amsmath row-numbering tokens (`\nonumber`, `\notag`, `\tag*`) are now modelled (#192)
+
+Neither KaTeX nor mystmd understands these tokens, so forwarding them
+into the emitted MyST silently dropped their meaning. Two reader-visible
+defects followed, both live in the deep-learning book:
+
+- **A `\nonumber` row tore its equation in two.** The per-row split path
+  treated `\nonumber\\` as a row boundary, but such a row is unnumbered
+  *and* a continuation of the row after it. One ch11 equation became two
+  blocks with an unclosed `\Bigl\{` in the first and an orphan `\Bigr\}`
+  in the second, with the label landing on the tail fragment — so three
+  `{eq}` references resolved to half an expression. Such rows now **fuse
+  forward** into the following row's block, wrapped in `\begin{aligned}`
+  with their `&` columns and interior punctuation preserved. A trailing
+  `\nonumber` row (nothing to fuse into) is emitted forced-unnumbered.
+- **A `\tag*` row showed a tag *and* a number.** `\tag*` replaces the
+  number in amsmath and does not advance the counter; left in the body it
+  rendered beside the number mystmd assigned. The tag text is now lifted
+  into the block's `:enumerator:` — the one mystmd field that sets a
+  literal identifier without advancing the counter, and the one a `{eq}`
+  reference renders.
+
+Net effect on the deep-learning book: **10 spurious equation numbers
+removed**, 2 torn equations repaired, 4 cross-references re-pointed at
+their whole equation. `book-dp1` and `book-dp2` contain no non-starred
+row-numbering environments and no `\nonumber`/`\notag`/`\tag` at all, so
+both are provably unaffected.
+
+The strip and the tag lift apply at **every** emission site — `equation`,
+`multline`/`gather`, and both collapsed align paths — not only on the
+split path, since an align with a single `\label` never splits and leaked
+`\notag` straight into its `\begin{aligned}` body (ch01). Guards: a tag
+that cannot be reduced to plain text stays in the body with the block
+forced unnumbered (an *empty* `:enumerator:` is silently ignored by
+mystmd, which would re-number the block), and fusion never puts two
+`\tag`s inside one `aligned` — that is a hard `Multiple \tag` failure,
+the #46 collision the split path exists to avoid.
+
+Lesson [055](lessons/055-amsmath-row-numbering-tokens-unmodelled.md);
+golden cases `align_nonumber_continuation` and `align_tag_star_enumerator`.
+This is the converter-side share of #186 — the remaining half (a multi-row
+`align` collapsing to one enumerator) is a renderer gap tracked upstream in
+QuantEcon/mystmd#73.
+
 ### Changed — docs reorganized under `docs/`; README/CLAUDE dedup; ROADMAP refresh
 
 `GETTING-STARTED.md` → `docs/getting-started.md` and `notes/` →
