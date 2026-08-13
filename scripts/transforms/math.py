@@ -503,7 +503,13 @@ def convert_equations(text: str) -> str:
         """``True`` when the body has 2+ per-row labels or 2+ per-row
         ``\\tag*{}`` calls — the collision triggers from #70 / #46."""
         n_labels = len(re.findall(r'\\label\{', body))
-        n_tags = len(re.findall(r'\\tag\*?\{', body))
+        # Share the emission-side tag pattern rather than a second copy of
+        # it: TeX skips whitespace between a control sequence and its
+        # argument, so ``\tag* {…}`` is legal. Counting with a tighter regex
+        # than the one that later *lifts* the tag let a spaced body slip past
+        # the split path and collapse, stranding the second tag raw in the
+        # body next to the first one's ``:enumerator:``.
+        n_tags = len(_AMSMATH_TAG_RE.findall(body))
         return n_labels >= 2 or n_tags >= 2
 
     def _make_row_group(group: list[str]) -> dict:

@@ -3902,6 +3902,26 @@ def test_convert_equations_nonumber_not_fused_into_second_tag():
     assert "\\begin{aligned}" not in out
 
 
+def test_convert_equations_spaced_tag_still_triggers_split():
+    """GH #192 (Copilot review) — TeX skips whitespace between a control
+    sequence and its argument, so ``\\tag* {…}`` is legal. The split-path
+    counter must use the same tag pattern as the lift, or a spaced body
+    slips past it and collapses: the first tag becomes the block's
+    ``:enumerator:`` and the second is stranded raw in the math body."""
+    text = (
+        "$$\\begin{align}\n"
+        "a &= b \\tag* {(one)}\\\\\n"
+        "c &= d \\tag* {(two)}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert out.count("```{math}") == 2
+    assert ":enumerator: one" in out
+    assert ":enumerator: two" in out
+    assert "\\begin{aligned}" not in out
+    assert "\\tag" not in out
+
+
 def test_convert_equations_notag_stripped_on_collapsed_align():
     """GH #192 — an align with a single ``\\label`` never reaches the split
     path, so its body stays inside ``\\begin{aligned}``. ``\\notag`` leaked
