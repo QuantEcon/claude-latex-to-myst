@@ -3955,6 +3955,168 @@ def test_convert_equations_single_equation_env_tag_lifted():
     assert "\\tag" not in out
 
 
+def test_convert_equations_row_split_respects_nested_environments():
+    """GH #193 defect 1 — the flat ``\\\\`` split shredded any row holding a
+    nested env with its own row separators, producing two halves with
+    unbalanced delimiters that hard-error in KaTeX."""
+    text = (
+        "$$\\begin{align}\n"
+        "f(x) &= \\begin{cases} a \\\\ b \\end{cases} \\label{eq:a}\\\\\n"
+        "g(x) &= 0 \\label{eq:b}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert out.count("$$ (eq-") == 2
+    assert "\\begin{cases} a \\\\ b \\end{cases}" in out
+
+
+def test_convert_equations_row_split_respects_brace_groups():
+    """GH #193 — ``\\substack`` is a macro with a brace group, not an
+    environment, so an environment-only depth counter still shreds it. The
+    scan tracks brace depth too. This shape is live in the deep-learning
+    fixture, unlike the other #193 cases."""
+    text = (
+        "$$\\begin{align}\n"
+        "\\sum_{\\substack{i=1 \\\\ j=2}} x_i &= 1 \\label{eq:a}\\\\\n"
+        "y &= 2 \\label{eq:b}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert out.count("$$ (eq-") == 2
+    assert "\\substack{i=1 \\\\ j=2}" in out
+
+
+def test_convert_equations_nested_alignment_amps_preserved():
+    """GH #193 defect 2 — the ``&``-to-space rule was depth-blind, so a
+    nested matrix lost its own column separators. This one emits **no**
+    error: a 2x2 bmatrix silently became 2x1, which no build gate catches."""
+    text = (
+        "$$\\begin{align}\n"
+        "A &= \\begin{bmatrix} 1 & 2 \\\\ 3 & 4 \\end{bmatrix} \\label{eq:a}\\\\\n"
+        "B &= 0 \\label{eq:b}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    # The row's own alignment `&` is gone, the matrix's are not.
+    assert "A = \\begin{bmatrix} 1 & 2 \\\\ 3 & 4 \\end{bmatrix}" in out
+
+
+def test_convert_equations_label_only_row_keeps_addressable_anchor():
+    """GH #193 defect 3 — emptiness was tested *before* stripping, so a
+    label-only row survived as ``$$\\n\\n$$ (eq-q)``: a mystmd "No input for
+    math node" error that still consumed a number. The row now emits an
+    empty group so the label stays addressable rather than dangling."""
+    text = (
+        "$$\\begin{align}\n"
+        "x &= 1 \\label{eq:p}\\\\\n"
+        "\\label{eq:q}\\\\\n"
+        "y &= 2 \\label{eq:r}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert "$$\n{}\n$$ (eq-q)" in out
+    assert "$$\n\n$$" not in out
+
+
+def test_convert_equations_comment_only_row_dropped():
+    """GH #193 — a row reduced to nothing but a ``%`` comment is not empty
+    to a naive truth test, but renders as an empty equation and draws a
+    mystmd ``commentAtEnd`` warning. It carries no label, so it is dropped."""
+    text = (
+        "$$\\begin{align}\n"
+        "x &= 1 \\label{eq:a}\\\\\n"
+        "% just a note\n"
+        "\\\\\n"
+        "y &= 2 \\label{eq:b}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert out.count("$$ (eq-") == 2
+    assert "%" not in out
+
+
+def test_convert_equations_trailing_punctuation_strip_is_escape_aware():
+    """GH #193 defect 4 — ``[,;]\\s*$`` ate the comma of a ``\\,`` thin
+    space, leaving a bare trailing backslash that hard-errors in KaTeX."""
+    text = (
+        "$$\\begin{align}\n"
+        "x &= \\{a\\,b\\}\\, \\label{eq:s}\\\\\n"
+        "y &= 2 \\label{eq:t}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert "x = \\{a\\,b\\}\\," in out
+
+
+def test_convert_equations_starred_row_separator_consumed():
+    """GH #193 defect 5 — ``\\\\*`` was unmatched, so a stray ``*`` prefixed
+    the next row. It rendered without error, so a build gate never caught it."""
+    text = (
+        "$$\\begin{align}\n"
+        "x &= 1 \\label{eq:u}\\\\* y &= 2 \\label{eq:v}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert out.count("$$ (eq-") == 2
+    assert "* y" not in out
+
+
+def test_convert_equations_bracket_after_rowsep_is_not_a_length():
+    """GH #193 — the optional length after ``\\\\`` must bind only when the
+    bracket is adjacent. Tolerating whitespace would silently delete a real
+    ``[0,1]`` opening the next row."""
+    text = (
+        "$$\\begin{align}\n"
+        "x &= 1 \\label{eq:a}\\\\\n"
+        "[0,1] \\ni y \\label{eq:b}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert "[0,1] \\ni y" in out
+
+
+def test_convert_equations_intertext_hoisted_as_prose():
+    """GH #193 defect 6 — ``\\intertext`` was fused into the equation, which
+    hard-errors in KaTeX and loses the prose. It is hoisted out between the
+    emitted blocks instead."""
+    text = (
+        "$$\\begin{align}\n"
+        "x &= 1 \\label{eq:a}\\\\\n"
+        "\\intertext{and then}\n"
+        "y &= 2 \\label{eq:b}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert "\\intertext" not in out
+    assert "and then" in out
+    assert out.index("$$ (eq-a)") < out.index("and then") < out.index("$$ (eq-b)")
+
+
+def test_convert_equations_prose_only_align_keeps_its_prose():
+    """GH #193 — an align whose every row is ``\\intertext`` has no block to
+    attach the prose to. Dropping the rows silently deleted the words; the
+    prose is emitted on its own instead."""
+    out = postprocess.convert_equations(
+        "$$\\begin{align}\\intertext{orphan prose}\\end{align}$$"
+    )
+    assert "orphan prose" in out
+    assert "$$" not in out
+
+
+def test_convert_equations_stray_end_does_not_swallow_rows():
+    """GH #193 — an unbalanced ``\\end{}`` must not drive the depth counter
+    negative, or every later row separator is suppressed and the whole body
+    collapses into one block (taking two labels with it)."""
+    text = (
+        "$$\\begin{align}\n"
+        "x &= 1 \\end{foo} \\label{eq:a}\\\\\n"
+        "y &= 2 \\label{eq:b}\n"
+        "\\end{align}$$\n"
+    )
+    out = postprocess.convert_equations(text)
+    assert out.count("$$ (eq-") == 2
+
+
 def test_convert_equations_multline_trailing_label_extracted():
     """GH #37 — ``\\begin{multline}`` standard convention puts the
     label at the *end* of the body. The pre-fix regex required the

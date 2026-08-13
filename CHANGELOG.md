@@ -15,6 +15,53 @@ least one downstream book repo (`book-dp1`, `book-dp2`) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — math row splitting is now depth-aware (#193)
+
+The per-row align splitter cut on every `\\` with one flat regex and cleaned
+each row with two more context-free ones. `\\` is only a row terminator at the
+*top level* of a body, and `&` separates the row's own columns only at top
+level — neither is something a regex can know. Six defects followed, all
+latent in the current books but all reachable by ordinary LaTeX:
+
+- a row holding a nested `cases` / `bmatrix` / `array` / `split` was cut in
+  half, leaving unbalanced delimiters that hard-error in KaTeX;
+- the same row also lost the **nested** structure's own `&` to the row's
+  `&`→space rule — the one defect here that emits **no** error at all, so a
+  2×2 matrix silently rendered as 2×1 with a clean build log;
+- emptiness was tested *before* stripping, so a label-only row survived as
+  `$$\n\n$$ (eq-q)` — a mystmd "No input for math node" error that still
+  consumed an equation number;
+- `[,;]\s*$` was not escape-aware and ate the comma of a trailing `\,` thin
+  space, leaving a bare `\`;
+- `\\*` was unmatched, so a stray `*` prefixed the next row (rendering
+  without error, so no build gate caught it);
+- `\intertext{…}` was fused into the equation, hard-erroring and losing the
+  prose; it is now hoisted out between the emitted blocks.
+
+Row scanning is now a single left-to-right pass (`_scan_top_level`) tracking
+**both** environment depth and brace depth. Both counters are required:
+`\substack{i=1 \\ j=2}` and `\text{a \\ b}` are macros with brace groups that
+a `\begin`/`\end` counter never sees, while the braces of `\begin{cases}`
+balance before its inner `\\`. `\substack` is the one shape here that is live
+in a fixture today (7 occurrences in deep-learning), escaping the bug only
+because it sits in a `\[…\]` that never reaches the split path.
+
+**Every book's converted output is byte-identical** before and after — the
+correct signature for hardening a latent path.
+
+Deliberate non-goal: LaTeX numbers an empty row and this does not reproduce
+that. Rows carrying nothing referenceable are dropped; label-bearing empty
+rows are kept as an empty group so their references don't dangle. Zero of 234
+real row-numbering bodies across the three books carry a trailing `\\`.
+
+Not included, and deferred with no corpus demand: handlers for `flalign` /
+`alignat` / `eqnarray`, and routing `gather` onto the split path. Both were
+designed and probed; routing `gather` in newly exposes it to several of the
+defects above and wants its own change.
+
+Lesson [056](lessons/056-math-row-splitting-must-be-depth-aware.md); golden
+case `align_nested_env_rows`.
+
 ### Fixed — amsmath row-numbering tokens (`\nonumber`, `\notag`, `\tag*`) are now modelled (#192)
 
 Neither KaTeX nor mystmd understands these tokens, so forwarding them
