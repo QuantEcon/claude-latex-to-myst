@@ -23,7 +23,10 @@ env:
   # from QuantEcon/mystmd#53). A SHA or qe-vN tag on QuantEcon/mystmd.
   # Bump deliberately, re-validating the three build baselines with the
   # new ref in the same commit — never let runner drift pick the version.
-  MYSTMD_REF: "de92a9ed95748011311dbc8abc1d7c79ae13ceb0"  # v1.10.1 (qe-v9)
+  # NB a qe-vN tag is *annotated*, so `git rev-parse qe-vN` yields the tag
+  # OBJECT sha, not the commit. Pin the commit (`qe-vN^{commit}`): the tag
+  # object works for `git fetch`, but GitHub's commit APIs don't resolve it.
+  MYSTMD_REF: "24f6ae8009961bcfb5f38d24f35c470405e869ee"  # v1.10.1 (qe-v9)
 
 jobs:
   # Job 1 — the merge blocker. Unit suite + both golden tiers
