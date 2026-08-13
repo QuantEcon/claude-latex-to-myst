@@ -114,3 +114,15 @@ body.
   single number. That one is a renderer gap and is upstream; this lesson
   is the converter-side share.
 - Lesson 032 / #70, #46 — created the per-row split path this amends.
+
+## Update 2026-08-13 — the upstream half landed
+
+`QuantEcon/mystmd#73` is closed: QuantEcon/mystmd#81 (released as `qe-v9`)
+numbers `align` / `gather` / `alignat` rows per-row **with the `&` axis
+preserved**, and models `\nonumber` / `\notag` / `\tag` / per-row `\label`
+natively. So the renderer now understands the tokens this lesson is about.
+
+The lesson's reasoning still describes what the converter does **today** —
+the `qe-v8` CI pin (`MYSTMD_REF` in `.github/workflows/test.yml`) predates
+mystmd#81. Once that pin moves, the right question is not "is this still
+correct?" but "is this still *needed*?" — see ROADMAP §2 and #186.

@@ -11,7 +11,8 @@ the project is pre-release), or a SHA for fully-reproducible pinning.
 ## [Unreleased]
 
 No tagged releases yet. The first tag (`v0.1.0`) is held back until at
-least one downstream book repo (`book-dp1`, `book-dp2`) is in production
+least one downstream book repo (`book-dp1`, `book-dp2`, or the
+Deep-Learning book) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
@@ -103,8 +104,11 @@ the #46 collision the split path exists to avoid.
 Lesson [055](lessons/055-amsmath-row-numbering-tokens-unmodelled.md);
 golden cases `align_nonumber_continuation` and `align_tag_star_enumerator`.
 This is the converter-side share of #186 — the remaining half (a multi-row
-`align` collapsing to one enumerator) is a renderer gap tracked upstream in
-QuantEcon/mystmd#73.
+`align` collapsing to one enumerator) was a renderer gap tracked upstream in
+QuantEcon/mystmd#73, **closed 2026-08-13 by QuantEcon/mystmd#81** (`qe-v9`:
+per-row numbering with the `&` axis preserved, plus KaTeX `^0.16.21`). #186
+stays open here as the converter-side follow-up, gated on bumping
+`MYSTMD_REF` past qe-v8.
 
 ### Changed — docs reorganized under `docs/`; README/CLAUDE dedup; ROADMAP refresh
 

@@ -29,6 +29,17 @@ below into the corpus so they can't silently disappear.
 | 039 | `enumerate_exercise` | fully-labelled enumerate → `{exercise}` |
 | 042 | `math_thin_space_superscript` | `\,^X` gets empty base `\,{}^X` |
 | 043 | `figure_caption_citation` | caption citation recovered, no key drop |
+| 045 | `multline_gather_labels` | `multline`/`gather` label extracted from anywhere in the body |
+| 048 | `starred_equation_unnumbered` | starred envs forced unnumbered (no counter consumed) |
+| 049 | `multicols_custom_item_labels` | `multicols` mapped to a MyST grid |
+| 050 | `latex_dash_ligatures` | `--`/`---` in `{prf:*}` titles and bodies |
+| 051 | `custom_label_itemize` | `\item[label]` on `itemize`, not just `enumerate` |
+| 052 | `mailto_email_not_citation` | `@` in `mailto:`/`\url` is not a citation |
+| 053 | `lstlisting_escapeinside` | brace-valued lstlisting options stripped pre-pandoc |
+| 054 | `doubled_chapter_noun_ref` | `Chapter~\ref{}` doesn't double under book numbering |
+| 055 | `align_nonumber_continuation` | `\nonumber` row fused forward, not split |
+| 055 | `align_tag_star_enumerator` | `\tag*` lifted to `:enumerator:`, counter untouched |
+| 056 | `align_nested_env_rows` | depth-aware row split; nested `&` and `\substack` intact |
 | #98 #1 | `figure_width_option` | `:width:` percentage preserved |
 | #98 #2 | `figure_label_in_caption` | caption not leading-spaced / label recovered |
 | #98 #3 | `figure_raw_tikzpicture_with_override_bails` | tikzpicture bail (no node-text leak) |
@@ -68,3 +79,5 @@ guarded.
 | 040 | nested-fence-count is a MyST emit rule | directive emitters in `tests/test_transforms.py` |
 | 041 | nested-table double-enumerate is a MyST directive fact | `tests/test_tables_from_latex.py` |
 | 044 | this lesson *is* the §1b differential gate | `tests/test_marker_differential.py` |
+| 046 | build-warning parity *is* the render gate | `scripts/build_smoke.py` + `tests/baselines/build-*.txt` |
+| 047 | a property of the marker round-trip, not one construct | `tests/test_marker_differential.py` |

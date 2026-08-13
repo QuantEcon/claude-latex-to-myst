@@ -96,3 +96,15 @@ clean build log. Check `columnalign` in the built MathML, not the console.
 - Lesson 042 — the fence-stack precedent: state machine, never regex pairing.
 - Lesson 055 / #192 — the other half of this splitter's rework.
 - #186 — the remaining numbering gap, upstream.
+
+## Update 2026-08-13 — upstream now does the same scan
+
+QuantEcon/mystmd#81 (`qe-v9`) adds a depth-aware row scanner to the
+renderer, with the same shape as this one: `\\` inside nested environments
+or brace groups is not a row boundary, and `\\*` / `\\[2em]` are handled.
+The "Deliberate non-goal" above — that row-number parity is moot because a
+multi-row `align` collapses to one enumerator — holds only against the
+`qe-v8` CI pin. Upstream no longer collapses. The *general* rule this
+lesson exists for (a structure-bearing body needs a depth-tracking scan,
+never a flat regex) is unaffected, and is now independently confirmed by
+upstream reaching for the same design.
