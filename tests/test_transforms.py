@@ -3671,11 +3671,15 @@ def test_convert_equations_multirow_align_per_row_labels_emit_anchors():
 
 
 def test_convert_equations_align_leading_plus_per_row_labels():
-    """A ``\\begin{align}\\label{X}`` (leading label) plus additional
-    per-row ``\\label{}``s: the leading label keeps the trailing
-    ``(X)`` form for backward compatibility, extras stack as anchors
-    above. All refs resolve to the same block — numbering collapses but
-    no cross-ref is broken."""
+    """GH #186 — a ``\\begin{align}\\label{X}`` (leading label) plus
+    per-row ``\\label{}``s now passes through for mystmd's per-row
+    numbering, so BOTH labels stay in the body, colon-normalised in
+    place, and each targets its own row.
+
+    The leading label goes back into the body rather than becoming a
+    separate ``(X)=`` anchor: in amsmath it labels the first row, and
+    mystmd registers it from the body — emitting both would produce a
+    "Duplicate identifier in file" warning."""
     text = (
         "$$\\begin{align}\\label{eq:lead}\n"
         "a &= b, \\label{eq:row_a}\\\\\n"
@@ -3683,14 +3687,21 @@ def test_convert_equations_align_leading_plus_per_row_labels():
         "\\end{align}$$\n"
     )
     out = postprocess.convert_equations(text)
-    assert "(eq-row_a)=" in out
-    assert "$$ (eq-lead)" in out
-    assert "\\label{" not in out
+    assert "\\begin{align}" in out and "\\begin{aligned}" not in out
+    assert "\\label{eq-lead}" in out
+    assert "\\label{eq-row_a}" in out
+    # No separate anchor, and no colon left for mystmd to register verbatim.
+    assert "(eq-lead)=" not in out
+    assert "\\label{eq:" not in out
 
 
-def test_convert_equations_align_no_labels_unchanged_shape():
-    """Regression guard: an unlabeled multi-row align still produces
-    just the ``\\begin{aligned}`` wrap with no spurious anchors."""
+def test_convert_equations_align_no_labels_passes_through():
+    """GH #186 — an unlabelled multi-row align is exactly the shape that
+    used to LOSE numbers: collapsed into one ``aligned`` block, mystmd
+    gave N rows a single enumerator. It now passes through so each row
+    is numbered, with the ``&`` axis intact. 9 of the deep-learning
+    book's 10 collapsing aligns carry no label at all, which is where
+    the 17 recovered equation numbers come from."""
     text = (
         "$$\\begin{align}\n"
         "a &= b,\\\\\n"
@@ -3698,8 +3709,10 @@ def test_convert_equations_align_no_labels_unchanged_shape():
         "\\end{align}$$\n"
     )
     out = postprocess.convert_equations(text)
-    assert "\\begin{aligned}" in out
-    assert "=" not in [line.strip() for line in out.splitlines() if line.strip().startswith("(")]
+    assert "\\begin{align}" in out
+    assert "\\begin{aligned}" not in out
+    assert "a &= b" in out and "c &= d" in out
+    assert not [ln for ln in out.splitlines() if ln.strip().startswith("(")]
 
 
 def test_convert_equations_align_2plus_per_row_labels_splits_to_avoid_collision():
@@ -3922,7 +3935,7 @@ def test_convert_equations_spaced_tag_still_triggers_split():
     assert "\\tag" not in out
 
 
-def test_convert_equations_notag_stripped_on_collapsed_align():
+def test_convert_equations_notag_passed_through_on_align():
     """GH #192 — an align with a single ``\\label`` never reaches the split
     path, so its body stays inside ``\\begin{aligned}``. ``\\notag`` leaked
     verbatim into the published math there (dp-deep-learning ch01's
@@ -3936,9 +3949,12 @@ def test_convert_equations_notag_stripped_on_collapsed_align():
         "\\end{align}$$\n"
     )
     out = postprocess.convert_equations(text)
-    assert "\\notag" not in out
-    assert "\\begin{aligned}" in out
-    assert "(eq-only)=" in out
+    # Under passthrough the token STAYS: qe-v9 honours \notag natively,
+    # suppressing that row's number without advancing the counter, which
+    # is precisely what amsmath does. Stripping it would renumber the row.
+    assert "\\begin{align}" in out and "\\begin{aligned}" not in out
+    assert "\\notag" in out
+    assert "\\label{eq-only}" in out
 
 
 def test_convert_equations_single_equation_env_tag_lifted():

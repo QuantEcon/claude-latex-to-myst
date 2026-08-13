@@ -63,10 +63,11 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 054 | [under qe-v8 `numbering.book` a chapter `{ref}` renders "Chapter N", so `Chapter~\ref{ch:x}` doubles to "Chapter Chapter N" — the `{ref}`-role doubled-noun table must be book-configurable (`doubled_noun_refs` + `role: ref`)](lessons/054-chapter-ref-doubles-under-book-mode-numbering.md) | post-processing | 🟡 | codified |
 | 055 | [amsmath row-numbering tokens (`\nonumber`, `\notag`, `\tag*`) are invisible to KaTeX and mystmd, so the converter must resolve them — a `\nonumber` row is a CONTINUATION (fuse it forward), and a `\tag` REPLACES the number (lift it to `:enumerator:`)](lessons/055-amsmath-row-numbering-tokens-unmodelled.md) | post-processing | 🔴 | codified |
 | 056 | [splitting math rows on `\\` with a flat regex shreds nested structures — the scan must track BOTH environment and brace depth, and the `&` / punctuation cleaners must be depth- and escape-aware too](lessons/056-math-row-splitting-must-be-depth-aware.md) | regex-safety | 🔴 | codified |
+| 057 | [once the renderer numbers align rows natively, pass the environment through instead of rewriting it — but the labels must stay IN the body, colon-normalised in place](lessons/057-pass-row-numbering-envs-through-to-the-renderer.md) | post-processing | 🔴 | codified |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045, 049, 050, 054, 055
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045, 049, 050, 054, 055, 057
 - **regex-safety:** 002, 017, 024, 031, 035, 036, 052, 056
 - **pandoc:** 027, 047
 - **preprocess:** 028, 029, 030, 039, 044, 048, 051, 053
@@ -104,7 +105,9 @@ coverage.**
   what KaTeX and mystmd do *not* understand about amsmath's row-numbering
   tokens, so the converter has to resolve them before emission), 056 (a
   property of our own transforms — a structure-bearing body needs a
-  depth-tracking scan, never a flat regex).
+  depth-tracking scan, never a flat regex), 057 (a rule about migrating off a
+  compensation once the renderer gains the capability — check what the renderer
+  reads as input before deleting anything).
 
 ## Open (gaps to close on the next book)
 
