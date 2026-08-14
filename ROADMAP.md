@@ -14,7 +14,7 @@ All three consumer books run on the pipeline, each on its
 |------|--------------------|-------|
 | `book-dp1` | `16f7a3d` (2026-06-20) | Migrated — the former "in flight" migration is done; dp1's bespoke conversion scripts retired. |
 | `book-dp2` | `9d8367b` (2026-06-18) | Originating book; validation batches complete. |
-| Deep Learning | `b01fa92` (2026-08-14) | **Current with `main`**, and the only book validating recent work end-to-end. Renderer pinned at `qe-v9`; its build is 2 warnings / 0 errors, with both remaining warnings kept by design. Adopted #192/#193/#186 with `qe-v9` (equation numbers 272/272 vs the printed PDF), then #194 on `qe-v9` alone — that fix has no renderer dependency. |
+| Deep-Learning | `b01fa92` (2026-08-14) | **Current with `main`**, and the only book validating recent work end-to-end. Renderer pinned at `qe-v9`; its build is 2 warnings / 0 errors, with both remaining warnings kept by design. Adopted #192/#193/#186 with `qe-v9` (equation numbers 272/272 vs the printed PDF), then #194 on `qe-v9` alone — that fix has no renderer dependency. |
 
 The Deep-Learning book is where the **renderer floor** gets decided in
 practice, and the two couplings it has hit differ in severity — worth
@@ -115,7 +115,7 @@ mystmd#88 resolved both, in opposite directions:
   (heading attribute blocks: `{#id .class .unnumbered}`), so a starred
   section can finally be emitted as an unnumbered heading that keeps its
   TOC entry and anchor. Scope measured from real pandoc output: pandoc
-  marks `.unnumbered` on 30 headings — dp1 0, dp2 2, Deep Learning 28, of
+  marks `.unnumbered` on 30 headings — dp1 0, dp2 2, Deep-Learning 28, of
   which 4 are absorbed `\chapter*` H1s, leaving 26 to fix. #205 left the
   class tokens in a named local, so this is emitting that channel plus a
   golden case. **Requires the `qe-v10` floor in the same commit** — see the
