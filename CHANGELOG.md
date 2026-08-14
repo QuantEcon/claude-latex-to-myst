@@ -48,6 +48,15 @@ cross-references** in any book, and all three render gates pass. Lesson
 [058](lessons/058-derived-heading-slugs-must-not-become-anchors.md); golden
 case `derived_heading_anchor_suppressed`.
 
+**Confirmed in a consumer book.** The Deep-Learning book adopted this on
+`qe-v9` (no renderer dependency) and reproduced the prediction exactly: 24
+deletions, 0 additions, build **4 warnings → 2** with both duplicate-identifier
+warnings gone, 813 cross-references still resolving, and equation enumerators
+byte-identical to the previous round. It also verified the claim this fix
+rests on — that dropping the anchor costs nothing — directly in the built
+HTML: `id="exercises"` and `id="further-reading"` are still emitted per page,
+so in-page deep links are unaffected while the project-wide collision is gone.
+
 ### Fixed — non-starred `align` is passed through for per-row numbering (#186)
 
 **The deep-learning book's HTML equation numbers now match the printed PDF
