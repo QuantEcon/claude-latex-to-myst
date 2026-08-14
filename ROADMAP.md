@@ -105,16 +105,29 @@ output.
   contradicts the docs. The alias must keep working (dp1 and dp2 both
   carry the legacy file on their conversion branches).
 
-### Upstream trackers — blocked on `QuantEcon/mystmd`
+### Upstream trackers — both unblocked as of 2026-08-14
 
-Converter output is correct, spec-valid MyST; the publisher can't render
-it yet (tier-3 routing). Nothing to do here but track:
+Neither is "blocked on `QuantEcon/mystmd`" any more. The priority survey in
+mystmd#88 resolved both, in opposite directions:
 
-- [#160](https://github.com/QuantEcon/claude-latex-to-myst/issues/160) →
-  mystmd#68 — starred `\section*` / `\paragraph` emitted as numbered
-  headings.
-- [#169](https://github.com/QuantEcon/claude-latex-to-myst/issues/169) →
-  mystmd#70 — algorithm line numbering restarts inside loop bodies.
+- [#160](https://github.com/QuantEcon/claude-latex-to-myst/issues/160) —
+  **unblocked; converter work now.** mystmd#68 shipped as `qe-v10`
+  (heading attribute blocks: `{#id .class .unnumbered}`), so a starred
+  section can finally be emitted as an unnumbered heading that keeps its
+  TOC entry and anchor. Scope measured from real pandoc output: pandoc
+  marks `.unnumbered` on 30 headings — dp1 0, dp2 2, Deep Learning 28, of
+  which 4 are absorbed `\chapter*` H1s, leaving 26 to fix. #205 left the
+  class tokens in a named local, so this is emitting that channel plus a
+  golden case. **Requires the `qe-v10` floor in the same commit** — see the
+  renderer-floor rule above; this coupling is the unforgiving kind.
+- [#169](https://github.com/QuantEcon/claude-latex-to-myst/issues/169) —
+  **may need no converter change at all.** mystmd#70 was routed out of the
+  engine to quantecon-theme.mystmd#119 as CSS counters, since the AST
+  already represents the algorithm faithfully and continuous numbering is
+  presentation. Whether the converter emits an opt-in `:class:` depends on
+  a decision open in that issue (house style for every `prf:algorithm`
+  vs. opt-in); house style is recommended, and would close #169 with no
+  work here.
 
 ### Later
 
