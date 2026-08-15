@@ -83,11 +83,18 @@ the existing `(label)=` target line makes mystmd warn `label "x" replaced
 with "y"` and dangles refs to the loser. Keep the target line; add only the
 class.
 
-**3. Emit only `.unnumbered`.** The block is all-or-nothing: the parser
-returns `undefined` on any token it doesn't recognize and the braces are
-then left as literal text in the title. Passing through whatever classes
-pandoc attached puts that failure mode one unfamiliar class away, for no
-gain — nothing downstream reads them.
+**3. Emit only `.unnumbered`, and assemble the block rather than passing
+pandoc's through.** Be precise about what the parser rejects, because the
+obvious guess is wrong: an *unfamiliar class* is **accepted** and carried as
+an inert `class` attribute (`{.myclass}` → `class: "myclass"`, still
+numbered), and so is `.unlisted`. What it rejects is a token of an
+unrecognized **kind** — `{not-a-class}`, `{foo=bar}` — and then it abandons
+the whole block and leaves the braces as literal text in the title. So the
+argument for emitting only `.unnumbered` is not safety, it is that nothing
+downstream gives another class meaning and pandoc attaches nothing else here
+anyway (measured across all three books: the block is always exactly
+`{#slug}` or `{#slug .unnumbered}`). Assembling from a fixed vocabulary is
+what keeps the reject case unreachable.
 
 **4. The leading space in `' {.unnumbered}'` is load-bearing.** The
 renderer's pattern is `/(?:^|[ \t])\{([^{}]+)\}[ \t]*$/` — the brace must be

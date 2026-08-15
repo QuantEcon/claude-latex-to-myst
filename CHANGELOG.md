@@ -37,12 +37,15 @@ render the section *title*, the only honest rendering for a section with no
 number to show.
 
 Only `.unnumbered` is re-emitted; any other class pandoc attached is dropped
-as before. The attribute block is all-or-nothing at the renderer — one token
-it doesn't recognize and it abandons the block, leaving literal braces in the
-title — so the emitted vocabulary is kept to what we rely on. The slug is
-*not* moved into the block either: the existing `(label)=` target line stays,
-and emitting both would make the renderer warn that one label replaced the
-other.
+as before — not for safety (the renderer accepts an unknown class and carries
+it inertly) but because nothing downstream gives one meaning, and pandoc
+attaches nothing else here anyway. The block is *assembled* from a fixed
+vocabulary rather than passed through, which keeps the parser's actual reject
+case — a token of an unrecognized **kind**, like `{foo=bar}`, on which it
+abandons the block and leaves literal braces in the title — out of reach. The
+slug is *not* moved into the block either: the existing `(label)=` target
+line stays, and emitting both would make the renderer warn that one label
+replaced the other.
 
 Note this rides the #194 path rather than the anchor path. All 25 affected
 headings have a pandoc-*derived* slug, so every one of them takes the branch

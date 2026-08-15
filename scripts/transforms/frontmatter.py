@@ -82,11 +82,15 @@ def convert_section_labels(text: str) -> str:
     forfeiting the fix.
 
     Only ``.unnumbered`` is re-emitted; any other class pandoc attached is
-    dropped as before. The renderer would accept an unknown class, but
-    nothing downstream gives it meaning, and the attribute block is
-    all-or-nothing — a token the parser doesn't recognize makes it abandon
-    the whole block and leave the braces as literal text. Emitting only the
-    vocabulary we rely on keeps that failure mode out of reach.
+    dropped as before. Not for safety — the renderer accepts an unknown
+    class and simply carries it as an inert ``class`` attribute — but
+    because nothing downstream gives one meaning, and pandoc attaches
+    nothing else here anyway (measured across all three books: the block is
+    always exactly ``{#slug}`` or ``{#slug .unnumbered}``). What the parser
+    *does* reject is a token of an unrecognized **kind** (``{foo=bar}``,
+    ``{not-a-class}``), and then it abandons the whole block and leaves the
+    braces as literal text — which is why the emitted block is assembled
+    from a fixed vocabulary rather than passed through from pandoc.
 
     **Derived slugs are not promoted (#194).** Pandoc's ``auto_identifiers``
     mints an id for every heading, whether or not the author wrote a
