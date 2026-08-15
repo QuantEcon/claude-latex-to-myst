@@ -135,6 +135,9 @@ converter change: `## Rates {.5}` parses `.5` as a class and the braces
 vanish from the title. `## The set {1, 2, 3}` is safe (the tokenizer rejects
 it and leaves it literal), and no heading in any of the three books ends in
 a brace group at all — but a book whose section titles do will meet this.
+Tracked as [#210](https://github.com/QuantEcon/claude-latex-to-myst/issues/210):
+it is tier 1, because escaping the title's braces as `\{…\}` defends it and
+composes with our own `{.unnumbered}` block — both verified on `qe-v10`.
 
 ## Prevention
 

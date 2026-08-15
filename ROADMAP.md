@@ -14,7 +14,7 @@ All three consumer books run on the pipeline, each on its
 |------|--------------------|-------|
 | `book-dp1` | `16f7a3d` (2026-06-20) | Migrated — the former "in flight" migration is done; dp1's bespoke conversion scripts retired. |
 | `book-dp2` | `9d8367b` (2026-06-18) | Originating book; validation batches complete. |
-| Deep-Learning | `b01fa92` (2026-08-14) | **Current with `main`**, and the only book validating recent work end-to-end. Renderer pinned at `qe-v9`; its build is 2 warnings / 0 errors, with both remaining warnings kept by design. Adopted #192/#193/#186 with `qe-v9` (equation numbers 272/272 vs the printed PDF), then #194 on `qe-v9` alone — that fix has no renderer dependency. **Its next adoption must move the pin to `qe-v10`**: #160A is where its 24 wrongly-numbered starred headings get fixed, and on `qe-v9` that change corrupts them instead. |
+| Deep-Learning | `b01fa92` (2026-08-14) | The only book validating recent work end-to-end, but **one release behind `main` since #160A** (`e9a4e94`). Renderer pinned at `qe-v9`; its build is 2 warnings / 0 errors, with both remaining warnings kept by design. Adopted #192/#193/#186 with `qe-v9` (equation numbers 272/272 vs the printed PDF), then #194 on `qe-v9` alone — that fix has no renderer dependency. **Catching up requires moving the pin to `qe-v10` in the same commit**: #160A fixes its 24 wrongly-numbered starred headings, and on `qe-v9` that same change corrupts them instead. Tracked book-side. |
 
 The Deep-Learning book is where the **renderer floor** gets decided in
 practice, and the two couplings it has hit differ in severity — worth
@@ -32,6 +32,13 @@ A converter change with no renderer dependency (#194) ships on its own.
 **The floor is now `qe-v10`.** A book adopting anything at or after #160A
 must move its renderer pin in the same step; the unforgiving failure mode
 means a stale pin corrupts pages rather than forfeiting an improvement.
+
+**Nothing here is upstream-blocked any more.** The priority survey in
+mystmd#88 cleared the whole set on 2026-08-14, in opposite directions:
+mystmd#68 shipped as `qe-v10` and #160A consumed it, while mystmd#70 was
+routed out of the engine to quantecon-theme.mystmd#119 as CSS counters,
+closing #169 with no converter work. This section carried an "Upstream
+trackers" list for months; it is retired rather than left to rot.
 
 No conversion branch has merged to a book's **default** branch yet. That
 merge is the bar for tagging the first release (see CHANGELOG
@@ -108,20 +115,14 @@ output.
   `tikz_overrides.py` filename and config key, so a book created today
   contradicts the docs. The alias must keep working (dp1 and dp2 both
   carry the legacy file on their conversion branches).
-
-### Upstream trackers
-
-The priority survey in mystmd#88 unblocked both of these on 2026-08-14, in
-opposite directions. #160A has since shipped; #169 is the one left.
-
-- [#169](https://github.com/QuantEcon/claude-latex-to-myst/issues/169) —
-  **may need no converter change at all.** mystmd#70 was routed out of the
-  engine to quantecon-theme.mystmd#119 as CSS counters, since the AST
-  already represents the algorithm faithfully and continuous numbering is
-  presentation. Whether the converter emits an opt-in `:class:` depends on
-  a decision open in that issue (house style for every `prf:algorithm`
-  vs. opt-in); house style is recommended, and would close #169 with no
-  work here.
+- [#210](https://github.com/QuantEcon/claude-latex-to-myst/issues/210) —
+  `qe-v10` consumes a trailing brace group in a heading *title* when it
+  parses as attributes (`## Rates {.5}` loses the braces). Exposed by the
+  #160A floor bump rather than by the `{.unnumbered}` emission, so a book
+  with no starred sections is equally exposed. Latent — zero occurrences
+  in any of the three books, and `{1, 2, 3}` is safe because the parser
+  bails on it. Tier 1: escaping `\{` in the title defends it and composes
+  with our own block, both verified on `qe-v10`.
 
 ### Later
 
