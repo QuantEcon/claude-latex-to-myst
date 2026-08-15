@@ -1514,6 +1514,22 @@ def test_absorbed_bare_h1_with_attribute_block_is_still_absorbed():
     assert absorbed == '---\ntitle: "Preface"\n---\n\nBody.\n'
 
 
+def test_absorbed_bare_h1_keeps_an_authors_own_brace_group():
+    """The optional block above is matched *literally*, not as
+    ``\\{[^}]*\\}``. This branch deletes the heading on a match, so a
+    permissive group would read ``# Preface {see note}`` as the title
+    ``Preface`` and drop content the author wrote.
+
+    Reachable: ``\\chapter{Preface \\{see note\\}}`` reaches us as exactly
+    that line — pandoc omits the ``{#id}`` block because its derived id is
+    redundant, so nothing else distinguishes it from a bare H1.
+    """
+    out = postprocess.add_frontmatter(
+        "# Preface {see note}\n\nBody.\n", "Preface", style="absorbed"
+    )
+    assert "# Preface {see note}" in out
+
+
 def test_pandoc_auto_id_reconstruction():
     """The reconstruction follows pandoc's documented algorithm, and every
     shape it can't reproduce must fail *safe* (no suppression)."""
