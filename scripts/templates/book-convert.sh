@@ -17,6 +17,15 @@
 #   bash mystmd/convert.sh --build          # convert + run `myst build --html`
 #   bash mystmd/convert.sh ch_intro         # convert just one chapter
 #
+# Renderer:
+#   Building this output needs the QuantEcon mystmd FORK
+#   (github.com/QuantEcon/mystmd) at `qe-v10` or later — not upstream npm
+#   `mystmd`. Both report `v1.10.1`; only the `(qe-v10)` suffix in
+#   `myst --version` tells them apart. On an older renderer a starred
+#   `\section*` renders its `{.unnumbered}` marker as literal text in the
+#   heading title, so a stale pin corrupts pages rather than merely
+#   forfeiting a fix. `--build` warns if the version on PATH is too old.
+#
 # Env overrides:
 #   CLAUDE_LATEX_TO_MYST_URL    Alternate clone URL (forks, mirrors).
 #   CLAUDE_LATEX_TO_MYST_TOOLS  Override the _tools/ directory location.

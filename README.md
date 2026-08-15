@@ -108,7 +108,7 @@ so installs are reproducible across machines.
 | `scripts/` | The pipeline: `convert.sh` (driver), `preprocess.sh` + `_apply_*.py` marker preprocessors (pre-pandoc), `postprocess.py` + `transforms/` (post-pandoc), `validate.py` (structural counts), `new-book.sh` (book scaffolder). |
 | `config.example.yaml` | Per-project config: chapter list, bib, preprocess/postprocess rewrites, TikZ map, validation toggles. |
 | `lessons/` + `LESSONS.md` | The pitfall catalogue — one file per lesson (59 and counting), plus the index. |
-| `tests/` | ~940 unit tests, the `.tex`-rooted golden tier (58 cases), and the marker differential gate; run in CI with a pinned pandoc. |
+| `tests/` | ~940 unit tests, the `.tex`-rooted golden tier (57 cases), and the marker differential gate; run in CI with a pinned pandoc. |
 | `docs/` | [`getting-started.md`](docs/getting-started.md) (guided first conversion) and [`design/`](docs/design/) (architecture design records). |
 | `reports/` | Parity reports against the consumer books ([`reports/README.md`](reports/README.md)). |
 | `examples/` | Reference configurations from the originating `book-dp1` / `book-dp2` conversions. |

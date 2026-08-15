@@ -1379,6 +1379,20 @@ def test_section_label_emits_only_the_unnumbered_class():
     assert ".unlisted" not in out
 
 
+def test_section_label_suffix_keeps_its_leading_space():
+    """The renderer only recognises an attribute block whose ``{`` is
+    preceded by whitespace or starts the line
+    (``/(?:^|[ \\t])\\{([^{}]+)\\}[ \\t]*$/``). Emit ``## Title{.unnumbered}``
+    and it stops being a block: the braces stay in the rendered title *and*
+    the heading is still numbered — both failure modes at once. Verified
+    against a real qe-v10 build (#160A)."""
+    out = postprocess.convert_section_labels(
+        "## Summary {#summary .unnumbered}\n\nBody.\n"
+    )
+    assert out.startswith("## Summary {.unnumbered}")
+    assert "Summary{.unnumbered}" not in out
+
+
 def test_section_label_omits_the_block_for_a_numbered_heading():
     """A heading with no ``.unnumbered`` gets no attribute block at all —
     the fix must not make every heading grow braces."""

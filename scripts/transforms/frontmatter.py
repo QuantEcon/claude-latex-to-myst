@@ -380,8 +380,14 @@ def add_frontmatter(text: str, title: str, style: str | None = None, ctx=None) -
         # depth-1 anchor, so such a heading always arrives as the
         # ``(label)=`` pair matched above — but the title-equality test
         # would otherwise fail on the braces alone and resurrect #3.
+        #
+        # Matched literally, not as ``\{[^}]*\}``: this branch *deletes* the
+        # heading on a match, so a permissive group would make
+        # ``# Preface {see note}`` read as the title ``Preface`` and drop a
+        # heading the author wrote. Only the exact block we emit is absorbed.
         bare_h1 = re.match(
-            r'#\s+' + re.escape(title) + r'(?:[ \t]+\{[^}\n]*\})?\s*\n+', text
+            r'#\s+' + re.escape(title) + r'(?:[ \t]+\{\.unnumbered\})?\s*\n+',
+            text,
         )
         if bare_h1:
             text = text[bare_h1.end():]

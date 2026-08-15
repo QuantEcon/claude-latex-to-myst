@@ -89,9 +89,13 @@ then left as literal text in the title. Passing through whatever classes
 pandoc attached puts that failure mode one unfamiliar class away, for no
 gain — nothing downstream reads them.
 
-**4. Keep the leading space in `' {.unnumbered}'`.** `convert_pandoc_spans`
-runs later and matches `[text]{.smallcaps}` — bracket abutting brace. A
-title ending in `]` plus a space-less suffix would form that shape.
+**4. The leading space in `' {.unnumbered}'` is load-bearing.** The
+renderer's pattern is `/(?:^|[ \t])\{([^{}]+)\}[ \t]*$/` — the brace must be
+preceded by whitespace or start the line. Emit `## Title{.unnumbered}` and it
+is not an attribute block at all: the braces stay in the title *and* the
+heading is still numbered, which is both failure modes at once. Verified
+against a real build; pinned by
+`test_section_label_suffix_keeps_its_leading_space`.
 
 ## The renderer floor is the unforgiving kind
 
