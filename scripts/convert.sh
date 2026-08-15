@@ -221,9 +221,10 @@ if [[ "$RUN_BUILD" -eq 1 ]]; then
   echo "Stage 7: myst build --html..."
   if ! command -v myst &>/dev/null; then
     echo "  WARN: 'myst' not on PATH; skipping. This pipeline needs the" >&2
-    echo "        QuantEcon fork (github.com/QuantEcon/mystmd) at qe-v9 or" >&2
-    echo "        later. Older builds render fine but number a multi-row" >&2
-    echo "        align as ONE equation, so numbering drifts from the source." >&2
+    echo "        QuantEcon fork (github.com/QuantEcon/mystmd) at qe-v10 or" >&2
+    echo "        later. Older builds render a starred section's" >&2
+    echo "        '{.unnumbered}' as LITERAL text in the title, and number a" >&2
+    echo "        multi-row align as ONE equation." >&2
   else
     BUILD_LOG="$OUTPUT_DIR/_build.log"
     (cd "$OUTPUT_DIR" && myst build --html 2>&1) > "$BUILD_LOG" || true

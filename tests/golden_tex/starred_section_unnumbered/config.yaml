@@ -1,0 +1,19 @@
+# Issue #160A: `\section*` is unnumbered in LaTeX, and pandoc records that as a
+# `.unnumbered` class on the heading. The converter used to discard the class,
+# so mystmd's book-mode numbering numbered the heading anyway — a "Summary"
+# section taking §1.5 and pushing the following section to §1.6.
+#
+# From `qe-v10` the renderer parses a pandoc-style attribute block on a heading
+# and reads `.unnumbered` as `enumerated: false`, so the class is re-emitted.
+#
+# This case pins the whole family end-to-end: numbered headings gain no block,
+# a derived-slug starred section keeps its class while losing its anchor (the
+# #194 interaction), a starred `\subsection*` behaves the same one level down,
+# and an author-labelled starred section carries BOTH the `(label)=` target and
+# the class.
+source_dir: "."
+output_dir: "."
+tmp_dir: "./tmp"
+
+chapters:
+  - { stem: input, title: "Approximation" }

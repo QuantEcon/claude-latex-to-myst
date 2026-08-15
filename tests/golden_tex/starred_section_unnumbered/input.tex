@@ -1,0 +1,34 @@
+\chapter{Approximation}
+\label{c:approx}
+
+\section{Value Iteration}
+\label{sec:vi}
+
+A numbered section. It must come out with a plain heading and no attribute
+block at all --- the fix adds the block only where pandoc marked one.
+
+\section*{Summary}
+
+A starred section. Unnumbered in \LaTeX{}, so it must not take a section
+number, and it must not advance the counter either: the next numbered
+section below is the \emph{second}, not the third.
+
+\subsection*{Validation Protocol}
+
+Starred one level deeper. Same treatment, at any depth.
+
+\section*{Further Reading}
+\label{sec:fr}
+
+A starred section the author \emph{also} labelled. Both channels are
+needed: the anchor so \verb|\ref| resolves, and the class so it stays
+unnumbered.
+
+\section{Policy Iteration}
+\label{sec:pi}
+
+The counter check. This is §1.2 --- the starred sections between it and
+\Cref{sec:vi} contributed nothing.
+
+Cross-references still resolve: \Cref{sec:fr} renders its title (a starred
+section has no number to show), while \Cref{sec:pi} renders a number.

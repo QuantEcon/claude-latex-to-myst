@@ -6,7 +6,7 @@ This guide assumes you have:
 
 - A LaTeX source tree for an academic book (chapters in separate `.tex` files, or a single file split by `\chapter{}`).
 - [Claude Code](https://claude.com/claude-code) installed and configured.
-- The mechanical prerequisites installed: `pandoc` ≥ 3.0, [`uv`](https://docs.astral.sh/uv/), and `mystmd` **built from the [QuantEcon fork](https://github.com/QuantEcon/mystmd) at `qe-v9` or later** (not upstream npm `mystmd` — see [README](../README.md#requirements), which explains why and how to tell them apart).
+- The mechanical prerequisites installed: `pandoc` ≥ 3.0, [`uv`](https://docs.astral.sh/uv/), and `mystmd` **built from the [QuantEcon fork](https://github.com/QuantEcon/mystmd) at `qe-v10` or later** (not upstream npm `mystmd` — see [README](../README.md#requirements), which explains why and how to tell them apart).
 
 If you just want the mechanical "how do I run the script" answer, see the [README](../README.md#quick-start). This guide is about **what to ask Claude to do** and **how to work with it iteratively** to get a clean conversion.
 

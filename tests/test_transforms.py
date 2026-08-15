@@ -1356,25 +1356,46 @@ def test_frontmatter_standalone_synthesises_when_missing():
     assert out.startswith("(c-foo)=\n# Foo\n")
 
 
-# ── Heading auto-id class strip + explicit-label preference (FIX Issue 2) ────
+# ── Heading auto-id class handling + explicit-label preference (FIX Issue 2) ─
 
 
-def test_section_label_strips_unnumbered_class():
+def test_section_label_keeps_slug_out_of_the_attribute_block():
     """Pandoc emits ``# Title {#slug .unnumbered}`` for \\chapter*{}; the
-    ``.unnumbered`` class must not leak into the MyST label."""
+    slug becomes a ``(label)=`` target, never part of the emitted block."""
     body = "# Common Symbols {#common-symbols .unnumbered}\n\nBody.\n"
     out = postprocess.convert_section_labels(body)
     assert "(common-symbols)=" in out
-    assert ".unnumbered" not in out
+    assert "{#" not in out
 
 
-def test_section_label_strips_multiple_classes():
+def test_section_label_emits_only_the_unnumbered_class():
+    """``.unnumbered`` is the one class with a MyST meaning (#160A), so it
+    survives; anything else pandoc attached is dropped. The block is
+    all-or-nothing at the renderer, so passing a token it doesn't know
+    would cost the whole thing."""
     body = "# Title {#slug .unnumbered .unlisted}\n"
     out = postprocess.convert_section_labels(body)
-    assert "(slug)=" in out
-    assert "# Title" in out
-    assert ".unnumbered" not in out
+    assert out == "(slug)=\n# Title {.unnumbered}"
     assert ".unlisted" not in out
+
+
+def test_section_label_omits_the_block_for_a_numbered_heading():
+    """A heading with no ``.unnumbered`` gets no attribute block at all —
+    the fix must not make every heading grow braces."""
+    body = "## Value Iteration {#sec:vi}\n\nBody.\n"
+    out = postprocess.convert_section_labels(body)
+    assert out == "(sec-vi)=\n## Value Iteration\nBody.\n"
+    assert "{" not in out
+
+
+def test_section_label_conversion_is_idempotent():
+    """Re-running the transform on its own output is a no-op: the emitted
+    ``{.unnumbered}`` carries no ``{#``, so it can't re-match and grow a
+    second block."""
+    once = postprocess.convert_section_labels(
+        "## Summary {#summary .unnumbered}\n\nBody.\n"
+    )
+    assert postprocess.convert_section_labels(once) == once
 
 
 # ── Derived heading anchors are not promoted (#194) ─────────────────────────
@@ -1383,14 +1404,14 @@ def test_section_label_strips_multiple_classes():
 def test_derived_section_slug_is_not_promoted():
     """A ``\\section*{Exercises}`` reaches us as ``## Exercises {#exercises
     .unnumbered}``. The slug is exactly pandoc's auto-id for the title, so
-    it's derived, not author-chosen — no ``(exercises)=`` anchor, and the
-    attribute block must not survive as literal text."""
+    it's derived, not author-chosen — no ``(exercises)=`` anchor. The
+    numbering class stays behind (#160A): dropping the anchor must not cost
+    the heading its ``\\section*`` semantics."""
     body = "## Exercises {#exercises .unnumbered}\n\nBody.\n"
     out = postprocess.convert_section_labels(body)
-    assert out == "## Exercises\nBody.\n"
+    assert out == "## Exercises {.unnumbered}\nBody.\n"
     assert "(exercises)=" not in out
     assert "{#" not in out
-    assert ".unnumbered" not in out
 
 
 def test_derived_slug_suppression_clears_cross_file_collision():
@@ -1401,15 +1422,17 @@ def test_derived_slug_suppression_clears_cross_file_collision():
         out = postprocess.convert_section_labels(
             f"### {title} {{#{slug} .unnumbered}}\n\nBody.\n"
         )
-        assert out == f"### {title}\nBody.\n"
+        assert out == f"### {title} {{.unnumbered}}\nBody.\n"
 
 
 def test_author_section_label_still_promoted():
     """``\\label{sec:foo}`` arrives as ``sec:foo``; pandoc never emits a
-    colon, so an author label can't collide with its title slug."""
+    colon, so an author label can't collide with its title slug. A starred
+    section the author also labelled needs *both* channels — the target and
+    the numbering class."""
     body = "## Further reading {#sec:further .unnumbered}\n\nBody.\n"
     out = postprocess.convert_section_labels(body)
-    assert out == "(sec-further)=\n## Further reading\nBody.\n"
+    assert out == "(sec-further)=\n## Further reading {.unnumbered}\nBody.\n"
 
 
 def test_author_label_unlike_title_still_promoted():
@@ -1427,7 +1450,7 @@ def test_derived_h1_anchor_is_never_suppressed():
     style and duplicates the H1 in the second, so H1 is gated out."""
     body = "# Preface {#preface .unnumbered}\n\nBody.\n"
     out = postprocess.convert_section_labels(body)
-    assert out == "(preface)=\n# Preface\nBody.\n"
+    assert out == "(preface)=\n# Preface {.unnumbered}\nBody.\n"
 
 
 def test_pandoc_dedup_suffix_slug_is_kept():
@@ -1436,7 +1459,7 @@ def test_pandoc_dedup_suffix_slug_is_kept():
     would mint ``optimality``, a different string)."""
     body = "## Optimality {#optimality-1 .unnumbered}\n\nBody.\n"
     out = postprocess.convert_section_labels(body)
-    assert out == "(optimality-1)=\n## Optimality\nBody.\n"
+    assert out == "(optimality-1)=\n## Optimality {.unnumbered}\nBody.\n"
 
 
 def test_derived_slug_suppression_is_frontmatter_safe():
@@ -1448,9 +1471,33 @@ def test_derived_slug_suppression_is_frontmatter_safe():
     )
     absorbed = postprocess.add_frontmatter(body, "Preface", style="absorbed")
     assert "label: preface" in absorbed
+    # ``absorbed`` lifts the title out of the body into YAML, so the H1 and
+    # its attribute block go with it — the block must not ride along into
+    # the ``title:`` value (#160A).
+    assert 'title: "Preface"' in absorbed
+    assert ".unnumbered" not in absorbed
 
     standalone = postprocess.add_frontmatter(body, "Preface", style="standalone")
     assert standalone.count("# Preface") == 1
+    # ``standalone`` keeps the heading in the body, so here the block must
+    # survive — a \\chapter* is unnumbered in either style.
+    assert "# Preface {.unnumbered}" in standalone
+
+
+def test_absorbed_bare_h1_with_attribute_block_is_still_absorbed():
+    """The ``bare_h1`` path matches on title equality, so an H1 carrying a
+    ``{.unnumbered}`` block (#160A) must not read as a *different* title —
+    that would leave the heading in the body under a YAML title of the same
+    name, which is issue #3's duplicate-heading regression.
+
+    Unreachable through the pipeline (a depth-1 anchor is never suppressed,
+    so such a heading arrives as a ``(label)=`` pair) — this pins the
+    function against its own input rather than against a distant invariant.
+    """
+    absorbed = postprocess.add_frontmatter(
+        "# Preface {.unnumbered}\n\nBody.\n", "Preface", style="absorbed"
+    )
+    assert absorbed == '---\ntitle: "Preface"\n---\n\nBody.\n'
 
 
 def test_pandoc_auto_id_reconstruction():

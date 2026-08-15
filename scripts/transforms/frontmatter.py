@@ -56,11 +56,37 @@ def convert_section_labels(text: str) -> str:
     # Title {#sec:label} → (sec-label)=\\n# Title
 
     Pandoc may append class/property tokens after the slug for unnumbered
-    or unlisted headings (``{#slug .unnumbered .unlisted}``); these are
-    HTML class attributes and must be stripped before forming the MyST
-    label. Only the first whitespace-delimited token of the attribute block
-    (``slug`` — the regex captures from after the ``{#``, so the token
-    carries no leading ``#``) is treated as the identifier.
+    or unlisted headings (``{#slug .unnumbered .unlisted}``). Only the first
+    whitespace-delimited token of the attribute block (``slug`` — the regex
+    captures from after the ``{#``, so the token carries no leading ``#``)
+    is treated as the identifier.
+
+    **``.unnumbered`` is re-emitted (#160A).** A *starred* sectioning
+    command (``\\section*``) is unnumbered in LaTeX, and pandoc records that
+    as a ``.unnumbered`` class. Discarding it made book-mode numbering
+    number the heading anyway — a "Summary" section taking §1.5 and pushing
+    the next section to §1.6, against the printed book. From ``qe-v10`` the
+    renderer parses a pandoc-style attribute block on a heading, so the
+    class is re-emitted as a bare ``{.unnumbered}`` block, which it reads as
+    ``enumerated: false``: the heading renders with no number *and does not
+    advance the counter*, which is exactly ``\\section*`` semantics. It
+    keeps its target and TOC entry, so cross-references still resolve (they
+    render the section *title* rather than a number — the only honest
+    rendering, since a starred section has no number to show).
+
+    **This needs the ``qe-v10`` renderer floor.** On ``qe-v9`` and earlier
+    there is no heading-attribute parser, so the block would render as
+    literal ``{.unnumbered}`` text in the title *and* pollute the derived
+    slug. Unlike the ``qe-v9`` coupling from #186, this one is not
+    forgiving — an older renderer corrupts the page rather than silently
+    forfeiting the fix.
+
+    Only ``.unnumbered`` is re-emitted; any other class pandoc attached is
+    dropped as before. The renderer would accept an unknown class, but
+    nothing downstream gives it meaning, and the attribute block is
+    all-or-nothing — a token the parser doesn't recognize makes it abandon
+    the whole block and leave the braces as literal text. Emitting only the
+    vocabulary we rely on keeps that failure mode out of reach.
 
     **Derived slugs are not promoted (#194).** Pandoc's ``auto_identifiers``
     mints an id for every heading, whether or not the author wrote a
@@ -100,16 +126,18 @@ def convert_section_labels(text: str) -> str:
     def replace_header(m):
         hashes = m.group(1)
         title = m.group(2).strip()
-        attrs = m.group(3)
-        slug = attrs.split()[0]
+        attrs = m.group(3).split()
+        slug = attrs[0]
+        # Re-emit the numbering channel, drop every other class (#160A).
+        suffix = ' {.unnumbered}' if '.unnumbered' in attrs[1:] else ''
         derived = _pandoc_auto_id(title)
         if len(hashes) >= 2 and derived and slug == derived:
-            # Drop the whole attribute block along with the anchor —
-            # leaving ``{#slug .unnumbered}`` on the line would render as
-            # literal text.
-            return f'{hashes} {title}'
+            # The id is redundant with the implicit one mystmd mints from
+            # the title, so the anchor goes — but the heading still has to
+            # carry its numbering class.
+            return f'{hashes} {title}{suffix}'
         label = convert_label_colons(slug)
-        return f'({label})=\n{hashes} {title}'
+        return f'({label})=\n{hashes} {title}{suffix}'
 
     text = re.sub(
         r'^(#{1,6})\s+(.+?)\s+\{#([^}]+)\}\s*$',
@@ -345,7 +373,16 @@ def add_frontmatter(text: str, title: str, style: str | None = None, ctx=None) -
         # configured frontmatter title, drop it — otherwise we'd render
         # two identical headings in a row (issue #3). Mismatched titles
         # are left alone: the author wrote two distinct things.
-        bare_h1 = re.match(r'#\s+' + re.escape(title) + r'\s*\n+', text)
+        #
+        # The trailing block is optional because an H1 can now carry one
+        # (``# Preface {.unnumbered}``, #160A). Nothing reaches this line
+        # with a block today — ``convert_section_labels`` never suppresses a
+        # depth-1 anchor, so such a heading always arrives as the
+        # ``(label)=`` pair matched above — but the title-equality test
+        # would otherwise fail on the braces alone and resurrect #3.
+        bare_h1 = re.match(
+            r'#\s+' + re.escape(title) + r'(?:[ \t]+\{[^}\n]*\})?\s*\n+', text
+        )
         if bare_h1:
             text = text[bare_h1.end():]
     frontmatter = f'---\ntitle: "{title}"\n'

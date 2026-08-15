@@ -20,13 +20,14 @@ env:
   # upstream npm mystmd: the committed build baselines
   # (tests/baselines/build-*.txt) assume fork behavior (qe-v5 book-mode
   # numbering, fancy lists from QuantEcon/mystmd#50, the cite-scanner fix
-  # from QuantEcon/mystmd#53). A SHA or qe-vN tag on QuantEcon/mystmd.
+  # from QuantEcon/mystmd#53, heading attribute blocks from
+  # QuantEcon/mystmd#89). A SHA or qe-vN tag on QuantEcon/mystmd.
   # Bump deliberately, re-validating the three build baselines with the
   # new ref in the same commit — never let runner drift pick the version.
   # NB a qe-vN tag is *annotated*, so `git rev-parse qe-vN` yields the tag
   # OBJECT sha, not the commit. Pin the commit (`qe-vN^{commit}`): the tag
   # object works for `git fetch`, but GitHub's commit APIs don't resolve it.
-  MYSTMD_REF: "24f6ae8009961bcfb5f38d24f35c470405e869ee"  # v1.10.1 (qe-v9)
+  MYSTMD_REF: "12a8b26b200703c7d22bba2531cf497b7baa23c2"  # v1.10.1 (qe-v10)
 
 jobs:
   # Job 1 — the merge blocker. Unit suite + both golden tiers

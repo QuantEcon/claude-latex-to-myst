@@ -107,8 +107,8 @@ so installs are reproducible across machines.
 |------|---------|
 | `scripts/` | The pipeline: `convert.sh` (driver), `preprocess.sh` + `_apply_*.py` marker preprocessors (pre-pandoc), `postprocess.py` + `transforms/` (post-pandoc), `validate.py` (structural counts), `new-book.sh` (book scaffolder). |
 | `config.example.yaml` | Per-project config: chapter list, bib, preprocess/postprocess rewrites, TikZ map, validation toggles. |
-| `lessons/` + `LESSONS.md` | The pitfall catalogue — one file per lesson (56 and counting), plus the index. |
-| `tests/` | ~900 unit tests, the `.tex`-rooted golden tier (54 cases), and the marker differential gate; run in CI with a pinned pandoc. |
+| `lessons/` + `LESSONS.md` | The pitfall catalogue — one file per lesson (59 and counting), plus the index. |
+| `tests/` | ~940 unit tests, the `.tex`-rooted golden tier (58 cases), and the marker differential gate; run in CI with a pinned pandoc. |
 | `docs/` | [`getting-started.md`](docs/getting-started.md) (guided first conversion) and [`design/`](docs/design/) (architecture design records). |
 | `reports/` | Parity reports against the consumer books ([`reports/README.md`](reports/README.md)). |
 | `examples/` | Reference configurations from the originating `book-dp1` / `book-dp2` conversions. |
@@ -150,21 +150,30 @@ yet automated) or `codified` (the pipeline now handles it). Use
 
 - [`uv`](https://docs.astral.sh/uv/) — manages the Python interpreter and `pyyaml`
 - `pandoc` ≥ 3.0
-- `mystmd` for building the output — **the [QuantEcon fork](https://github.com/QuantEcon/mystmd) at `qe-v9` or
-  later**, not upstream npm `mystmd`. Since #201 the converter emits `align`
-  verbatim and relies on the fork's per-row equation numbering
-  (QuantEcon/mystmd#81). Older builds — upstream included — render the math
-  fine, but number a multi-row `align` as a *single* equation, so a chapter's
-  numbering silently drifts from the LaTeX source. Both report `v1.10.1`;
-  only the `(qe-v9)` suffix tells them apart, so check `myst --version`
-  rather than assuming.
+- `mystmd` for building the output — **the [QuantEcon fork](https://github.com/QuantEcon/mystmd) at `qe-v10` or
+  later**, not upstream npm `mystmd`. Two converter behaviours depend on it,
+  and they fail differently on an older build:
+
+  - Since #160 a starred section (`\section*`) is emitted as
+    `## Summary {.unnumbered}`, relying on the fork's heading attribute
+    blocks (QuantEcon/mystmd#89, `qe-v10`). A renderer without them has no
+    heading-attribute parser, so the braces land on the page as **literal
+    text** in the title and pollute its derived slug. This one is not
+    forgiving — check your version before building.
+  - Since #201 the converter emits `align` verbatim and relies on the fork's
+    per-row equation numbering (QuantEcon/mystmd#81, `qe-v9`). Older builds
+    render the math fine but number a multi-row `align` as a *single*
+    equation, so a chapter's numbering silently drifts from the source.
+
+  Both the fork and upstream report `v1.10.1`; only the `(qe-v10)` suffix
+  tells them apart, so check `myst --version` rather than assuming.
 
   The fork isn't published to npm, so build it from source (this is what CI
   does — see `MYSTMD_REF` in `.github/workflows/test.yml` for the pinned ref):
 
   ```bash
   git clone https://github.com/QuantEcon/mystmd.git && cd mystmd
-  git checkout qe-v9
+  git checkout qe-v10
   bun install && bun run build      # needs bun; see the fork's package.json
   # then put packages/mystmd/dist/myst.cjs on PATH as `myst`, e.g.
   printf '#!/bin/sh\nexec node "%s/packages/mystmd/dist/myst.cjs" "$@"\n' "$PWD" \

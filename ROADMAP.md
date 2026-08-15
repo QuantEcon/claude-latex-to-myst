@@ -14,7 +14,7 @@ All three consumer books run on the pipeline, each on its
 |------|--------------------|-------|
 | `book-dp1` | `16f7a3d` (2026-06-20) | Migrated — the former "in flight" migration is done; dp1's bespoke conversion scripts retired. |
 | `book-dp2` | `9d8367b` (2026-06-18) | Originating book; validation batches complete. |
-| Deep-Learning | `b01fa92` (2026-08-14) | **Current with `main`**, and the only book validating recent work end-to-end. Renderer pinned at `qe-v9`; its build is 2 warnings / 0 errors, with both remaining warnings kept by design. Adopted #192/#193/#186 with `qe-v9` (equation numbers 272/272 vs the printed PDF), then #194 on `qe-v9` alone — that fix has no renderer dependency. |
+| Deep-Learning | `b01fa92` (2026-08-14) | **Current with `main`**, and the only book validating recent work end-to-end. Renderer pinned at `qe-v9`; its build is 2 warnings / 0 errors, with both remaining warnings kept by design. Adopted #192/#193/#186 with `qe-v9` (equation numbers 272/272 vs the printed PDF), then #194 on `qe-v9` alone — that fix has no renderer dependency. **Its next adoption must move the pin to `qe-v10`**: #160A is where its 24 wrongly-numbered starred headings get fixed, and on `qe-v9` that change corrupts them instead. |
 
 The Deep-Learning book is where the **renderer floor** gets decided in
 practice, and the two couplings it has hit differ in severity — worth
@@ -24,10 +24,14 @@ knowing before proposing the next one:
   `align` takes one number, so the fix is *silently forfeited*, not broken.
 - **#160A (`qe-v10`)** — **not** forgiving. On `qe-v9` and earlier a
   `{.unnumbered}` attribute block leaks as literal braces into the rendered
-  heading text *and* its auto-slug id. That is visible corruption, so the
-  converter change and the renderer bump must land in one commit.
+  heading text *and* its auto-slug id. That is visible corruption, which is
+  why it shipped together with the `MYSTMD_REF` bump rather than ahead of it.
 
 A converter change with no renderer dependency (#194) ships on its own.
+
+**The floor is now `qe-v10`.** A book adopting anything at or after #160A
+must move its renderer pin in the same step; the unforgiving failure mode
+means a stale pin corrupts pages rather than forfeiting an improvement.
 
 No conversion branch has merged to a book's **default** branch yet. That
 merge is the bar for tagging the first release (see CHANGELOG
@@ -105,21 +109,11 @@ output.
   contradicts the docs. The alias must keep working (dp1 and dp2 both
   carry the legacy file on their conversion branches).
 
-### Upstream trackers — both unblocked as of 2026-08-14
+### Upstream trackers
 
-Neither is "blocked on `QuantEcon/mystmd`" any more. The priority survey in
-mystmd#88 resolved both, in opposite directions:
+The priority survey in mystmd#88 unblocked both of these on 2026-08-14, in
+opposite directions. #160A has since shipped; #169 is the one left.
 
-- [#160](https://github.com/QuantEcon/claude-latex-to-myst/issues/160) —
-  **unblocked; converter work now.** mystmd#68 shipped as `qe-v10`
-  (heading attribute blocks: `{#id .class .unnumbered}`), so a starred
-  section can finally be emitted as an unnumbered heading that keeps its
-  TOC entry and anchor. Scope measured from real pandoc output: pandoc
-  marks `.unnumbered` on 30 headings — dp1 0, dp2 2, Deep-Learning 28, of
-  which 4 are absorbed `\chapter*` H1s, leaving 26 to fix. #205 left the
-  class tokens in a named local, so this is emitting that channel plus a
-  golden case. **Requires the `qe-v10` floor in the same commit** — see the
-  renderer-floor rule above; this coupling is the unforgiving kind.
 - [#169](https://github.com/QuantEcon/claude-latex-to-myst/issues/169) —
   **may need no converter change at all.** mystmd#70 was routed out of the
   engine to quantecon-theme.mystmd#119 as CSS counters, since the AST
