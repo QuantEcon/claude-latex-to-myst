@@ -16,6 +16,64 @@ Deep-Learning book) is in production
 on this pipeline — tagging earlier would freeze a contract that consumers
 haven't validated. Everything below is on `main` and available now.
 
+### Fixed — a starred `\section*` is no longer numbered (#160A)
+
+**24 headings in the Deep-Learning book stop carrying a section number they
+never had in the printed book**, and stop pushing their numbered siblings
+along: `Further Reading` and `Exercises` at the end of each chapter, plus
+ch03's `\subsection*{Validation Protocol}`.
+
+`\section*` is unnumbered in LaTeX, and pandoc records that as a
+`.unnumbered` class on the heading. `convert_section_labels` read only the
+slug out of the attribute block and discarded the rest, so book-mode
+numbering numbered the heading anyway — dp2's `Summary` took §1.5 and pushed
+`Chapter Notes` to §1.6, against the PDF's §1.5.
+
+The class is now re-emitted as a bare `{.unnumbered}` block, which the
+renderer reads as `enumerated: false`: the heading renders with no number
+*and does not advance the counter*, which is exactly `\section*` semantics.
+It keeps its target and TOC entry, so cross-references still resolve — they
+render the section *title*, the only honest rendering for a section with no
+number to show.
+
+Only `.unnumbered` is re-emitted; any other class pandoc attached is dropped
+as before — not for safety (the renderer accepts an unknown class and carries
+it inertly) but because nothing downstream gives one meaning, and pandoc
+attaches nothing else here anyway. The block is *assembled* from a fixed
+vocabulary rather than passed through, which keeps the parser's actual reject
+case — a token of an unrecognized **kind**, like `{foo=bar}`, on which it
+abandons the block and leaves literal braces in the title — out of reach. The
+slug is *not* moved into the block either: the existing `(label)=` target
+line stays, and emitting both would make the renderer warn that one label
+replaced the other.
+
+Note this rides the #194 path rather than the anchor path. All 25 affected
+headings have a pandoc-*derived* slug, so every one of them takes the branch
+that drops the attribute block wholesale; re-emitting only where an anchor is
+promoted would have fixed none of them.
+
+**Requires `qe-v10` or later** (heading attribute blocks, QuantEcon/mystmd#89
+from the #68 ask); `MYSTMD_REF` is bumped in the same change. Unlike the
+`qe-v9` coupling from #186 — where an older renderer silently forfeits the
+fix — this one is **not** forgiving: without a heading-attribute parser the
+`{.unnumbered}` lands on the page as literal text in the title and pollutes
+its derived slug. Build against an older renderer and you get visible
+corruption, not a missing improvement.
+
+Effect, isolated against `main`: exactly **25 heading lines change across
+dp1 / dp2 / deep-learning (0 / 1 / 24), no other line touched**, and no
+line-count drift. In the built Deep-Learning AST the headings carrying an
+enumerator drop 234 → 210 while the 24 newly-unnumbered ones carry none, and
+all three render gates pass with **zero new build warnings**. Lesson
+[059](lessons/059-starred-sections-need-heading-attribute-blocks.md);
+golden case `starred_section_unnumbered`.
+
+**Not closed by this: `\chapter*` under `absorbed` frontmatter.** There the
+H1 is lifted into the YAML block, so there is no heading node left to mark —
+the 5 such pages across dp2 and Deep-Learning get their unnumbered rendering
+from the `myst.yml` TOC instead. Nothing regresses; the fix simply doesn't
+reach that half.
+
 ### Fixed — pandoc-derived heading slugs are no longer promoted to anchors (#194)
 
 **The deep-learning book's two recurring `Duplicate identifier in project`

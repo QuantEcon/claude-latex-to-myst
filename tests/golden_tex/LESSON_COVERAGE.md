@@ -41,6 +41,8 @@ below into the corpus so they can't silently disappear.
 | 055 | `align_tag_star_enumerator` | `\tag*` lifted to `:enumerator:`, counter untouched |
 | 056 | `align_nested_env_rows` | depth-aware row split; nested `&` and `\substack` intact |
 | 057 | `align_passthrough_row_numbering` | non-starred align passed through; labels kept in-body, dashified |
+| 058 | `derived_heading_anchor_suppressed` | pandoc-derived heading slug not promoted to `(slug)=`; author labels and depth-1 kept |
+| 059 | `starred_section_unnumbered` | `\section*` keeps `{.unnumbered}`; numbered headings gain no block |
 | #98 #1 | `figure_width_option` | `:width:` percentage preserved |
 | #98 #2 | `figure_label_in_caption` | caption not leading-spaced / label recovered |
 | #98 #3 | `figure_raw_tikzpicture_with_override_bails` | tikzpicture bail (no node-text leak) |

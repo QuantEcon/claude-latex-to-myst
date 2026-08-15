@@ -212,6 +212,8 @@ def test_golden_tex_seeded():
         'algorithm2e_block',              # 014 / 023
         'enumerate_exercise',             # 039
         'multline_gather_labels',         # 037
+        'derived_heading_anchor_suppressed',  # 058 / #194
+        'starred_section_unnumbered',     # 059 / #160A
     }
     missing = required - cases
     assert not missing, f'golden_tex missing seeded reproducer cases: {sorted(missing)}'

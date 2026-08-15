@@ -65,10 +65,11 @@ Severity legend: 🔴 high · 🟡 medium · 🟢 low
 | 056 | [splitting math rows on `\\` with a flat regex shreds nested structures — the scan must track BOTH environment and brace depth, and the `&` / punctuation cleaners must be depth- and escape-aware too](lessons/056-math-row-splitting-must-be-depth-aware.md) | regex-safety | 🔴 | codified |
 | 057 | [once the renderer numbers align rows natively, pass the environment through instead of rewriting it — but the labels must stay IN the body, colon-normalised in place](lessons/057-pass-row-numbering-envs-through-to-the-renderer.md) | post-processing | 🔴 | codified |
 | 058 | [pandoc mints an auto-id for every heading and `\section*` forces it into the output — promote a heading slug only when the author could have chosen it, and never at depth 1](lessons/058-derived-heading-slugs-must-not-become-anchors.md) | post-processing | 🟡 | codified |
+| 059 | [`\section*` is unnumbered and pandoc says so with a `.unnumbered` class — dropping it lets book numbering number the heading AND advance the counter; re-emitting it needs a renderer that parses heading attribute blocks (`qe-v10`)](lessons/059-starred-sections-need-heading-attribute-blocks.md) | post-processing | 🟡 | codified |
 
 ## By category
 
-- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045, 049, 050, 054, 055, 057, 058
+- **post-processing:** 001, 004, 005, 007, 008, 011, 012, 014, 015, 016, 018, 019, 020, 021, 022, 023, 025, 026, 032, 033, 034, 037, 043, 045, 049, 050, 054, 055, 057, 058, 059
 - **regex-safety:** 002, 017, 024, 031, 035, 036, 052, 056
 - **pandoc:** 027, 047
 - **preprocess:** 028, 029, 030, 039, 044, 048, 051, 053
@@ -111,7 +112,10 @@ coverage.**
   reads as input before deleting anything), 058 (pandoc's derived heading id is
   a *correct* emission — promoting it was our transform's choice; plus a fact
   about mystmd minting implicit heading identifiers, and headings never move
-  onto the marker path).
+  onto the marker path), 059 (pandoc's `.unnumbered` class is likewise a
+  *correct* emission — discarding it was our choice, forced while the renderer
+  had no way to express it; plus the rule that a renderer floor whose failure
+  mode is visible corruption must ship in one commit with the change).
 
 ## Open (gaps to close on the next book)
 

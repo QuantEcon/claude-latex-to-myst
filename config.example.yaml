@@ -243,6 +243,11 @@ preprocess:
 # No block-aware exclusion: rewrites apply to the whole Markdown
 # (including inside fenced code blocks and `$$` display math). Rely on
 # pattern specificity and `stems:` to keep matches targeted.
+#
+# Careful with `$`-anchored heading patterns. A heading converted from a
+# starred command ends in an attribute block — `## Summary {.unnumbered}`,
+# not `## Summary` (#160A) — so `^## Summary$` matches nothing. Anchor on
+# the title instead (`^## Summary\b`) when the heading might be starred.
 
 # postprocess:
 #   rewrites:

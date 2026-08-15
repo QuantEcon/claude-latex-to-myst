@@ -221,10 +221,37 @@ if [[ "$RUN_BUILD" -eq 1 ]]; then
   echo "Stage 7: myst build --html..."
   if ! command -v myst &>/dev/null; then
     echo "  WARN: 'myst' not on PATH; skipping. This pipeline needs the" >&2
-    echo "        QuantEcon fork (github.com/QuantEcon/mystmd) at qe-v9 or" >&2
-    echo "        later. Older builds render fine but number a multi-row" >&2
-    echo "        align as ONE equation, so numbering drifts from the source." >&2
+    echo "        QuantEcon fork (github.com/QuantEcon/mystmd) at qe-v10 or" >&2
+    echo "        later. Older builds render a starred section's" >&2
+    echo "        '{.unnumbered}' as LITERAL text in the title, and number a" >&2
+    echo "        multi-row align as ONE equation." >&2
   else
+    # Check the fork version before building. The floor matters because the
+    # #160A coupling is the *unforgiving* kind: without heading attribute
+    # blocks (qe-v10) a starred section's '{.unnumbered}' renders as literal
+    # text in the title and pollutes its slug. Warning only when 'myst' is
+    # ABSENT would announce the requirement in the one case where nothing is
+    # built and no damage is possible.
+    #
+    # The fork stamps its tag into --version as 'v1.10.1 (qe-v10)'; upstream
+    # prints no suffix. An unparseable or absent suffix is reported, not
+    # fatal — this is a smoke stage, and a maintainer running an unreleased
+    # build from source should not be blocked by it.
+    MYST_VERSION=$(myst --version 2>/dev/null | head -1 || true)
+    MYST_QE=$(printf '%s' "$MYST_VERSION" | sed -nE 's/.*\(qe-v([0-9]+)\).*/\1/p')
+    if [[ -z "$MYST_QE" ]]; then
+      echo "  WARN: 'myst' does not report a QuantEcon fork tag (got:" >&2
+      echo "        '${MYST_VERSION:-unknown}'). This pipeline's output needs" >&2
+      echo "        the fork (github.com/QuantEcon/mystmd) at qe-v10+; on" >&2
+      echo "        upstream mystmd a starred section's '{.unnumbered}'" >&2
+      echo "        renders as LITERAL text in the heading title." >&2
+    elif [[ "$MYST_QE" -lt 10 ]]; then
+      echo "  WARN: myst is qe-v${MYST_QE}; this pipeline's output needs qe-v10+." >&2
+      echo "        Starred sections will render '{.unnumbered}' as LITERAL" >&2
+      echo "        text in the heading title and pollute the derived slug" >&2
+      echo "        (#160A). Upgrade before publishing this build." >&2
+    fi
+
     BUILD_LOG="$OUTPUT_DIR/_build.log"
     (cd "$OUTPUT_DIR" && myst build --html 2>&1) > "$BUILD_LOG" || true
     # Guard each grep with || true so set -e doesn't fire on "no matches".
